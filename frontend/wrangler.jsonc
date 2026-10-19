@@ -1,0 +1,11 @@
+// Konfigurasi deploy Cloudflare Workers (static assets) untuk frontend.
+// Yang di-serve adalah HASIL BUILD (folder dist), bukan kode sumber.
+{
+  "name": "rubber-intelligence",
+  "compatibility_date": "2026-10-12",
+  "observability": { "enabled": true },
+  "assets": {
+    "directory": "dist",
+    "not_found_handling": "single-page-application"
+  }
+}
