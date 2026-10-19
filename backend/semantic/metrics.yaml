@@ -1,0 +1,208 @@
+# Definisi metrik OP Margin (sumber kebenaran untuk kartu query di fase API).
+# Satuan default: tonase & harga memakai berat kering.
+# Dimensi filter berdaftar-putih (fase API): tanggal, bulan, vendor, grade,
+# eudr, provinsi, kabupaten, kecamatan, desa.
+
+metrics:
+  harga_rp_kg:
+    deskripsi: Harga beli harian
+    rumus: amount_rp / qty_kering_kg
+    satuan: Rp/kg
+    tanpa_pembelian: 0
+  harga_usc_kg:
+    deskripsi: Harga beli harian dalam sen dolar
+    rumus: harga_rp_kg / kurs * 100
+    satuan: USc/kg
+  margin_harian:
+    deskripsi: OP Margin harian
+    rumus: sicom_usc - harga_usc_kg
+    satuan: USc/kg
+    tanpa_pembelian: 0
+  sicom_bulan:
+    deskripsi: SICOM bulanan tertimbang tonase kering (hanya hari pembelian)
+    rumus: SUM(qty_kg * sicom) / SUM(qty_kg)
+    satuan: USc/kg
+  harga_beli_bulan_usc:
+    deskripsi: Harga beli bulanan
+    rumus: 100 * SUM(amount_rp / kurs) / SUM(qty_kg)
+    satuan: USc/kg
+  op_margin_bulan:
+    deskripsi: OP Margin bulanan (angka utama)
+    rumus: sicom_bulan - harga_beli_bulan_usc
+    satuan: USc/kg
+  pencapaian:
+    deskripsi: Pencapaian terhadap target (di Excel berlabel %)
+    rumus: op_margin_bulan / target_bulan
+    satuan: rasio
+  avg_ytd_sederhana:
+    deskripsi: Rata-rata sederhana bulan berdata (resmi, seperti Excel)
+    rumus: AVG(op_margin_bulan)
+    satuan: USc/kg
+  avg_ytd_tertimbang:
+    deskripsi: Rata-rata tertimbang tonase (informasi)
+    rumus: SUM(op_margin_bulan * qty_ton) / SUM(qty_ton)
+    satuan: USc/kg
+  days:
+    deskripsi: Hari olah yang tersisa dari stok
+    rumus: (stok_kg / 1000) / kapasitas_ton_per_hari
+    satuan: hari
+  rasio_stok:
+    deskripsi: Rasio stok terhadap safety stock
+    rumus: stok_ton / safety_ton
+    satuan: rasio
+  harga_beli_maks_usc:
+    deskripsi: Harga beli maksimum menurut aturan stok
+    rumus: sicom_hari_ini - (target_bulan + penyesuaian_aturan)
+    satuan: USc/kg
+    catatan: Bila tabel aturan kosong tampilkan "ATURAN BELUM DIISI"
+  net_margin_rencana:
+    deskripsi: Perencanaan tahun depan (pengganti Y27)
+    rumus: AVG(op_margin bulan sama, tahun terpilih) + penyesuaian_manual + effort
+    satuan: USc/kg
+    default_tahun: 4 tahun terakhir
+
+# Teks "Cara dihitung" untuk setiap kartu di layar (Fase 3).
+kartu:
+  ringkasan:
+    judul: Ringkasan OP Margin per tahun
+    cara_dihitung: >
+      Per bulan (bobot = tonase kering, hanya hari pembelian):
+      SICOM bulan = SUM(qty x SICOM)/SUM(qty);
+      OP Price = 100 x SUM(Amount/kurs)/SUM(qty);
+      OP Margin = SICOM bulan - OP Price; Pencapaian = OP Margin / target.
+      Avg YTD resmi = rata-rata sederhana bulan berdata (seperti Excel lama);
+      rata-rata tertimbang tonase ditampilkan sebagai informasi.
+      Kurs = baris terbaru dengan berlaku_dari <= tanggal. SICOM hari libur
+      memakai harga terakhir. Apr 2022 memakai nilai koreksi 4,3391
+      (Excel lama salah ketik di sel T147).
+  tonase:
+    judul: Tonase per vendor / wilayah / grade
+    cara_dihitung: >
+      Jumlah Dry (kg kering) dari baris tiket, dibagi 1000 menjadi ton.
+      Tiket nol (Wet = 0) tidak dihitung. Drill-down wilayah berantai:
+      provinsi -> kabupaten -> kecamatan -> desa. Tanggal memakai Ticket Date.
+  konsentrasi_vendor:
+    judul: Konsentrasi vendor (top 5/10)
+    cara_dihitung: >
+      Tonase kering per vendor diurutkan menurun; porsi = ton vendor / total ton.
+      Porsi top = jumlah porsi 5 atau 10 vendor teratas.
+  bauran_grade:
+    judul: Bauran grade dan porsi EUDR
+    cara_dihitung: >
+      Tonase kering per Item Code. Kode TTSR = karet bahan ekspor EUDR;
+      porsi EUDR = jumlah porsi grade ber-flag EUDR. LATEX OP = getah cair.
+  reject:
+    judul: KPI reject%
+    cara_dihitung: >
+      Reject% = SUM(Reject kg) / SUM(Wet kg) per bulan. CATATAN [TERBUKA]:
+      Reject belum dikurangkan dari Wet/Dry. Bila Amount dibayar atas berat
+      bersih tetapi Quantity memakai Dry kotor, harga per kg terlihat terlalu
+      rendah dan margin terlalu tinggi sekitar 2-3 US sen/kg.
+  margin_harian:
+    judul: Margin harian
+    cara_dihitung: >
+      harga_rp_kg = Amount / qty kering; harga_usc = harga_rp_kg / kurs x 100;
+      margin = SICOM - harga_usc. Hari tanpa pembelian: margin = 0, harga = 0.
+  margin_bulanan:
+    judul: OP Margin bulanan vs target
+    cara_dihitung: >
+      Angka sama dengan ringkasan per tahun (rumus resmi bagian 6).
+      Tampilan "Tren & capaian target" - satu batang per bulan urut waktu;
+      hijau = margin mencapai target, merah = di bawah target, garis kuning
+      putus-putus = target yang berlaku bulan itu. Tampilan "Banding antar
+      tahun" - garis pola Jan-Des untuk tahun-tahun yang dipilih (bawaan
+      2 tahun terakhir) untuk melihat pola musiman.
+  margin_per:
+    judul: Margin per grade / vendor
+    cara_dihitung: >
+      Hanya dihitung bila Amount pembelian tersedia pada tingkat itu.
+      Bila Amount hanya total per hari, kartu menampilkan "data harga belum
+      tersedia" - sistem TIDAK mengalokasikan harga diam-diam.
+  rekonsiliasi:
+    judul: Rekonsiliasi tonase
+    cara_dihitung: >
+      Aturan kunci: jumlah Dry tiket per tanggal tiket = Quantity harian di
+      Pembelian. Kebijakan: tiket adalah sumber resmi tonase; selisih perlu
+      persetujuan pengguna sebelum angka lama dikoreksi [TERBUKA].
+  stok:
+    judul: Stok, Days, dan safety stock
+    cara_dihitung: >
+      stok_ton = stok_kg / 1000. days = stok_ton / kapasitas olah (ton/hari).
+      Bila Safety_Stock_Ton kosong: safety = Safety_Stock_Hari x kapasitas.
+      rasio_stok = stok_ton / safety_ton. Kapasitas dan safety diambil dari
+      parameter pabrik yang BERLAKU pada tanggal itu (berversi), jadi mengubah
+      parameter tidak mengubah hasil historis sebelum tanggal berlaku.
+  stok_margin:
+    judul: Analisis stok vs margin
+    cara_dihitung: >
+      Per bulan - rata-rata rasio stok harian dibandingkan OP Margin bulanan.
+      Korelasi Pearson dihitung dari bulan-bulan yang punya data stok.
+      PENTING - ini asosiasi, bukan bukti sebab-akibat; bukan aturan.
+  aturan:
+    judul: Aturan stok -> harga beli maksimum
+    cara_dihitung: >
+      Baris aturan - rentang rasio stok (batas bawah <= rasio < batas atas)
+      menentukan penyesuaian target margin. target_efektif = target bulan +
+      penyesuaian. harga_beli_maks_usc = SICOM hari itu - target_efektif;
+      harga_beli_maks_rp = harga_beli_maks_usc x kurs / 100. Aturan berversi
+      tanggal berlaku; versi lama tetap dipakai untuk tanggal lama. Semua
+      angka adalah DATA (bisa diedit), bukan kode. Bila tabel kosong -
+      tampil "ATURAN BELUM DIISI".
+  simulasi:
+    judul: Simulasi SICOM / kurs / stok
+    cara_dihitung: >
+      Memakai rumus yang sama dengan rekomendasi harga, tetapi dengan nilai
+      SICOM, kurs, dan stok yang Anda geser. Margin simulasi = SICOM simulasi
+      dikurangi harga beli aktual terakhir yang dikonversi dengan kurs
+      simulasi. TIDAK ada yang disimpan ke database.
+  perencanaan:
+    judul: Perencanaan tahun depan (pengganti sheet Y27)
+    cara_dihitung: >
+      net_margin bulan m = rata-rata OP Margin bulan m dari tahun-tahun yang
+      dipilih (default 4 tahun terakhir, tertaut OTOMATIS ke angka aktual)
+      + penyesuaian manual + effort. "Sebelum effort" = dasar + penyesuaian.
+      Bulan yang tahun dasarnya belum lengkap ditandai "perkiraan".
+  alarm:
+    judul: Alarm
+    cara_dihitung: >
+      Dievaluasi ulang setelah tiap unggahan/perubahan data. Jenis - stok di
+      bawah safety, margin di bawah target, data SICOM/kurs/stok/tiket
+      terlambat, selisih rekonsiliasi, harga beli aktual di atas harga beli
+      maksimum. Ambang dan aktif/nonaktif diatur admin (data, bukan kode).
+  unggah:
+    judul: Unggah file data
+    cara_dihitung: >
+      File .xlsx disimpan apa adanya (lapisan raw + folder unggahan yang ikut
+      backup harian), lalu divalidasi dan dimuat ke lapisan clean dengan kunci
+      alami (unggah ulang tidak menggandakan). Baris salah DITOLAK dengan pesan
+      yang menyebut sheet, baris, kolom, dan cara memperbaiki. Setelah impor,
+      mart dan alarm dihitung ulang otomatis. Amount pembelian per hari =
+      hasil kalkulasi total pembayaran getah intake per hari (aplikasi internal).
+  grade_harga:
+    judul: Master grade & harga per grade
+    cara_dihitung: >
+      Harga grade berlaku sejak tanggal isian sampai ada harga baru (baris
+      terbaru dengan tanggal <= tanggal dicari). US¢/kg = harga_rp / kurs
+      berlaku x 100; margin indikatif = SICOM berlaku - US¢/kg.
+      INDIKATIF karena Amount resmi = total pembayaran intake per hari,
+      belum per grade - sistem tidak mengalokasikan diam-diam. Bulk import
+      lewat sheet 'Harga_Grade' di tab Unggah Data; kode TTSR otomatis EUDR.
+  elemen_op_margin:
+    judul: RM Stock - Intake vs Pricing
+    cara_dihitung: >
+      Meniru sheet Excel 'RM Stock-Intake VS Pricing'. RM Stock = stok ton
+      pada hari terakhir berdata di bulan itu; Safety Level = safety stock
+      yang berlaku pada hari itu (parameter berversi). Intake = tonase kering
+      TIKET bulan itu (tiket = sumber resmi tonase); bila tiket belum ada
+      dipakai angka referensi rekonsiliasi (Jul/Agu 2026), lalu kuantitas
+      Pembelian. SICOM dan OP Price = angka bulanan tertimbang tonase (rumus
+      resmi bagian 6). Baris proyeksi di Excel tidak direplikasi karena rumus
+      proyeksi belum ditetapkan.
+  penerimaan:
+    judul: Penerimaan karet biasa vs EUDR
+    cara_dihitung: >
+      Jumlah Dry (kg kering) dari baris tiket per dimensi (vendor, provinsi,
+      kabupaten, kecamatan, desa), tanpa tiket nol, pada periode terpilih.
+      Dipisah dua tumpukan - grade biasa dan grade EUDR (grade ber-flag EUDR
+      atau kode mengandung TTSR). Filter "Hanya EUDR" menampilkan vendor/
+      wilayah yang memasok karet EUDR saja. Tanggal memakai Ticket Date.

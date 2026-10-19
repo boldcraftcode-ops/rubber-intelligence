@@ -1,0 +1,18 @@
+# Konfigurasi Cloudflare Tunnel untuk backend OP Margin.
+# Salin menjadi: C:\Users\NAMA_ANDA\.cloudflared\config.yml
+# lalu ganti semua yang bertanda [ISI-...].
+#
+# Prinsip: TIDAK ADA port yang dibuka di router. Backend hanya mendengarkan
+# 127.0.0.1:8000; cloudflared yang membuat koneksi KELUAR ke Cloudflare,
+# dan Cloudflare meneruskan pengunjung yang sudah lolos Access ke tunnel.
+
+tunnel: [ISI-TUNNEL-ID]            # hasil dari: cloudflared tunnel create op-margin
+credentials-file: C:\Users\[ISI-NAMA-USER]\.cloudflared\[ISI-TUNNEL-ID].json
+
+ingress:
+  # API backend. Pastikan sama dengan hostname di Cloudflare Access.
+  - hostname: api.[ISI-DOMAIN]     # contoh: api.perusahaanku.co.id
+    service: http://127.0.0.1:8000
+
+  # Wajib ada sebagai baris terakhir: tolak selain hostname di atas.
+  - service: http_status:404

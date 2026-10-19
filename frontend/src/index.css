@@ -1,0 +1,53 @@
+@import "tailwindcss";
+
+/* ===== Tema Galaxy (Milky Way) ===== */
+
+body {
+  color: #e2e8f0;
+  background-color: #050312;
+}
+
+/* Langit malam: nebula + pita galaksi + tiga lapis bintang */
+.galaxy {
+  background-color: #050312;
+  background-image:
+    /* nebula */
+    radial-gradient(ellipse 60% 45% at 18% 22%, rgba(124, 58, 237, 0.22), transparent 70%),
+    radial-gradient(ellipse 50% 40% at 85% 12%, rgba(56, 189, 248, 0.12), transparent 70%),
+    radial-gradient(ellipse 55% 50% at 70% 85%, rgba(217, 70, 239, 0.10), transparent 70%),
+    /* pita milky way diagonal */
+    linear-gradient(115deg, transparent 38%, rgba(167, 139, 250, 0.10) 48%,
+                    rgba(226, 232, 240, 0.06) 52%, transparent 64%),
+    /* bintang: tiga lapis dengan kerapatan berbeda */
+    radial-gradient(1.6px 1.6px at 31px 47px, rgba(255, 255, 255, 0.95) 50%, transparent 51%),
+    radial-gradient(1px 1px at 141px 109px, rgba(255, 255, 255, 0.7) 50%, transparent 51%),
+    radial-gradient(1.2px 1.2px at 227px 23px, rgba(199, 210, 254, 0.8) 50%, transparent 51%),
+    radial-gradient(1px 1px at 73px 181px, rgba(255, 255, 255, 0.5) 50%, transparent 51%),
+    radial-gradient(2px 2px at 289px 151px, rgba(255, 255, 255, 0.85) 50%, transparent 51%),
+    radial-gradient(1px 1px at 187px 67px, rgba(165, 180, 252, 0.6) 50%, transparent 51%);
+  background-size:
+    100% 100%, 100% 100%, 100% 100%, 100% 100%,
+    340px 220px, 340px 220px, 340px 220px, 340px 220px, 340px 220px, 340px 220px;
+  background-attachment: fixed;
+}
+
+/* Scrollbar gelap */
+* { scrollbar-width: thin; scrollbar-color: rgba(139, 92, 246, 0.4) transparent; }
+*::-webkit-scrollbar { width: 8px; height: 8px; }
+*::-webkit-scrollbar-thumb { background: rgba(139, 92, 246, 0.35); border-radius: 4px; }
+*::-webkit-scrollbar-track { background: transparent; }
+
+/* Grafik Recharts menyesuaikan tema gelap */
+.recharts-cartesian-axis-tick-value { fill: #a5b4fc !important; }
+.recharts-cartesian-grid line { stroke: rgba(148, 163, 184, 0.14) !important; }
+.recharts-legend-item-text { color: #cbd5e1 !important; }
+.recharts-default-tooltip {
+  background: #12102e !important;
+  border: 1px solid rgba(139, 92, 246, 0.45) !important;
+  border-radius: 8px;
+  color: #e2e8f0 !important;
+}
+.recharts-tooltip-item, .recharts-tooltip-label { color: #e2e8f0 !important; }
+
+/* Kalender bawaan input date agar terbaca di latar gelap */
+input[type="date"] { color-scheme: dark; }
