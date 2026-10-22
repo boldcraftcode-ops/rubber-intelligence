@@ -4,7 +4,7 @@ import {
   Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer,
   Tooltip, XAxis, YAxis,
 } from "recharts";
-import { Kartu, NAMA_BULAN, ambilJson, fmtAngka, kelasInput, kelasTombolKecil } from "../bersama";
+import { Kartu, NAMA_BULAN, Panel5W1H, ambilJson, fmtAngka, kelasInput, kelasTombolAnalisa, kelasTombolKecil } from "../bersama";
 
 const TAHUN_SEMUA: (number | "")[] = ["", 2020, 2021, 2022, 2023, 2024, 2025, 2026, 2027];
 
@@ -545,8 +545,42 @@ function KartuMarginPer() {
 }
 
 export default function Analisis() {
+  const [bukaAnalisa, setBukaAnalisa] = useState(false);
+  const [dariA, setDariA] = useState("");
+  const [sampaiA, setSampaiA] = useState("");
+  const paramsA = new URLSearchParams();
+  if (dariA) paramsA.set("dari", dariA);
+  if (sampaiA) paramsA.set("sampai", sampaiA);
+
   return (
     <div className="grid gap-6 lg:grid-cols-2">
+      <div className="lg:col-span-2 rounded-xl bg-[#15143a]/90 border border-violet-500/20 shadow-lg shadow-black/30 px-5 py-3 flex flex-wrap items-end gap-3">
+        <div className="mr-auto">
+          <h2 className="text-base font-semibold text-slate-100">Analisa halaman ini (5W1H)</h2>
+          <p className="text-xs text-slate-400">
+            Merangkum seluruh data di halaman ini: penerimaan, konsentrasi vendor,
+            bauran grade & EUDR, reject%, dan margin — pada periode terpilih.
+          </p>
+        </div>
+        <div>
+          <label className="block text-xs text-slate-400 mb-1">Dari bulan</label>
+          <input type="month" className="rounded-md border border-violet-400/30 bg-[#0b0a26]/80 px-2 py-1.5 text-xs text-slate-100"
+                 value={dariA} onChange={(e) => setDariA(e.target.value)} />
+        </div>
+        <div>
+          <label className="block text-xs text-slate-400 mb-1">Sampai bulan</label>
+          <input type="month" className="rounded-md border border-violet-400/30 bg-[#0b0a26]/80 px-2 py-1.5 text-xs text-slate-100"
+                 value={sampaiA} onChange={(e) => setSampaiA(e.target.value)} />
+        </div>
+        <button className={kelasTombolAnalisa} onClick={() => setBukaAnalisa(true)}>
+          ✨ Analisa semua data
+        </button>
+      </div>
+      {bukaAnalisa && (
+        <Panel5W1H judul="Analisa halaman Analisis — 5W1H"
+                   url={`/api/analisis/analisa${paramsA.size ? "?" + paramsA.toString() : ""}`}
+                   tutup={() => setBukaAnalisa(false)} />
+      )}
       <div className="lg:col-span-2"><KartuPenerimaan /></div>
       <KartuTonase />
       <KartuKonsentrasi />

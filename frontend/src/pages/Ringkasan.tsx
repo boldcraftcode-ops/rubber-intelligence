@@ -4,7 +4,8 @@ import {
   Bar, CartesianGrid, Cell, ComposedChart, Legend, Line, LineChart,
   ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from "recharts";
-import { Kartu, NAMA_BULAN, ambilJson, fmtAngka, fmtTanggal, kelasTombolKecil } from "../bersama";
+import { Kartu, NAMA_BULAN, Panel5W1H, ambilJson, fmtAngka, fmtTanggal, kelasTombolAnalisa, kelasTombolKecil } from "../bersama";
+import { useBahasa } from "../i18n";
 
 const WARNA = ["#60a5fa", "#fbbf24", "#34d399", "#f87171", "#c084fc",
                "#2dd4bf", "#f472b6"];
@@ -134,8 +135,10 @@ function Telusur({ tahun, bulan, tutup }: { tahun: number; bulan: number; tutup:
 
 /* ---------- elemen OP Margin: RM Stock-Intake vs Pricing (seperti Excel) ---------- */
 function KartuElemen() {
+  const { t } = useBahasa();
   const [dari, setDari] = useState("");
   const [sampai, setSampai] = useState("");
+  const [bukaAnalisa, setBukaAnalisa] = useState(false);
   const params = new URLSearchParams();
   if (dari) params.set("dari", dari);
   if (sampai) params.set("sampai", sampai);
@@ -147,32 +150,41 @@ function KartuElemen() {
   });
 
   return (
-    <Kartu idMetrik="elemen_op_margin" judul="RM Stock – Intake vs Pricing"
-           keterangan="Elemen pemengaruh OP Margin per bulan, disamakan dengan Excel: batang = ton (sumbu kiri), garis = US¢/kg (sumbu kanan)."
+    <Kartu idMetrik="elemen_op_margin" judul={t("RM Stock – Intake vs Pricing")}
+           keterangan={t("Elemen pemengaruh OP Margin per bulan, disamakan dengan Excel: batang = ton (sumbu kiri), garis = US¢/kg (sumbu kanan).")}
            urlEkspor={url}
            anak={
       <>
         <div className="flex flex-wrap items-end gap-3 mb-3 text-xs">
           <div>
-            <label className="block text-slate-400 mb-1">Dari bulan</label>
+            <label className="block text-slate-400 mb-1">{t("Dari bulan")}</label>
             <input type="month" className="rounded-md border border-violet-400/30 bg-[#0b0a26]/80 px-2 py-1.5 text-slate-100"
                    value={dari} onChange={(e) => setDari(e.target.value)} />
           </div>
           <div>
-            <label className="block text-slate-400 mb-1">Sampai bulan</label>
+            <label className="block text-slate-400 mb-1">{t("Sampai bulan")}</label>
             <input type="month" className="rounded-md border border-violet-400/30 bg-[#0b0a26]/80 px-2 py-1.5 text-slate-100"
                    value={sampai} onChange={(e) => setSampai(e.target.value)} />
           </div>
           {(dari || sampai) && (
             <button className="rounded-md border border-violet-400/30 bg-white/5 px-2.5 py-1.5 text-slate-300 hover:bg-violet-500/20"
                     onClick={() => { setDari(""); setSampai(""); }}>
-              tampilkan semua periode
+              {t("tampilkan semua periode")}
             </button>
           )}
           <span className="text-slate-500">
-            {q.data ? `${q.data.baris.length} bulan ditampilkan` : ""}
+            {q.data ? `${q.data.baris.length} ${t("bulan ditampilkan")}` : ""}
           </span>
+          <button className={`ml-auto ${kelasTombolAnalisa}`}
+            onClick={() => setBukaAnalisa(true)}>
+            ✨ Analisa grafik ini
+          </button>
         </div>
+        {bukaAnalisa && (
+          <Panel5W1H judul="Analisa grafik — 5W1H"
+                     url={`/api/ringkasan-elemen/analisa${params.size ? "?" + params.toString() : ""}`}
+                     tutup={() => setBukaAnalisa(false)} />
+        )}
         <div className="h-96">
           <ResponsiveContainer>
             <ComposedChart data={q.data?.baris ?? []}
@@ -206,13 +218,14 @@ function KartuElemen() {
           <table className="w-full text-xs">
             <thead>
               <tr className="text-left text-slate-400 border-b">
-                <th className="py-1">Date</th>
+                <th className="py-1">{t("Date")}</th>
                 <th className="text-right">RM Stock</th>
                 <th className="text-right">Intake</th>
-                <th className="text-right">Safety</th>
+                <th className="text-right">{t("Safety")}</th>
                 <th className="text-right">SICOM</th>
                 <th className="text-right">OP Price</th>
-                <th className="pl-2">Sumber intake</th>
+                <th className="text-right">OP Margin</th>
+                <th className="pl-2">{t("Sumber intake")}</th>
               </tr>
             </thead>
             <tbody>
@@ -225,6 +238,11 @@ function KartuElemen() {
                   <td className="text-right font-mono">{fmtAngka(b.safety_ton, 1)}</td>
                   <td className="text-right font-mono">{fmtAngka(b.sicom, 4)}</td>
                   <td className="text-right font-mono">{fmtAngka(b.op_price, 4)}</td>
+                  <td className={`text-right font-mono font-semibold ${
+                    b.op_margin === null ? "" : b.op_margin >= 0
+                      ? "text-emerald-400" : "text-red-400"}`}>
+                    {fmtAngka(b.op_margin, 4)}
+                  </td>
                   <td className="pl-2 text-slate-500">{b.sumber_intake ?? "-"}</td>
                 </tr>
               ))}
@@ -243,6 +261,7 @@ function KartuElemen() {
 
 /* ---------- grafik margin: tren vs target & banding antar tahun ---------- */
 function KartuGrafikMargin() {
+  const { t } = useBahasa();
   const [mode, setMode] = useState<"tren" | "banding">("tren");
   const bulanan = useQuery({
     queryKey: ["margin-bulanan-grafik"],
@@ -275,13 +294,13 @@ function KartuGrafikMargin() {
   });
 
   return (
-    <Kartu idMetrik="margin_bulanan" judul="OP Margin bulanan vs target"
-           keterangan="Tujuan grafik: menjawab “apakah margin tiap bulan mencapai target, dan bagaimana trennya?”"
+    <Kartu idMetrik="margin_bulanan" judul={t("OP Margin bulanan vs target")}
+           keterangan={t("Tujuan grafik: menjawab “apakah margin tiap bulan mencapai target, dan bagaimana trennya?”")}
            urlEkspor="/api/kartu/margin-bulanan"
            anak={
       <>
         <div className="flex flex-wrap items-center gap-2 mb-3">
-          {([["tren", "Tren & capaian target"], ["banding", "Banding antar tahun"]] as const)
+          {([["tren", t("Tren & capaian target")], ["banding", t("Banding antar tahun")]] as const)
             .map(([id, label]) => (
             <button key={id}
               className={`rounded-md px-3 py-1.5 text-xs font-medium ${mode === id
@@ -292,8 +311,8 @@ function KartuGrafikMargin() {
           ))}
           {mode === "tren" && adaTarget.length > 0 && (
             <span className="ml-auto text-xs text-slate-400">
-              <b className="text-emerald-400">{capai}</b> dari {adaTarget.length} bulan
-              mencapai target ({fmtAngka((capai / adaTarget.length) * 100, 0)}%)
+              <b className="text-emerald-400">{capai}</b> {t("dari")} {adaTarget.length}{" "}
+              {t("bulan mencapai target")} ({fmtAngka((capai / adaTarget.length) * 100, 0)}%)
             </span>
           )}
         </div>
@@ -347,7 +366,7 @@ function KartuGrafikMargin() {
         ) : (
           <>
             <div className="flex flex-wrap gap-2 mb-2 text-xs">
-              <span className="text-slate-400">Pilih tahun yang dibandingkan:</span>
+              <span className="text-slate-400">{t("Pilih tahun yang dibandingkan:")}</span>
               {tahunSemua.map((th) => (
                 <label key={th} className="flex items-center gap-1 text-slate-300">
                   <input type="checkbox" className="accent-violet-500"
@@ -395,14 +414,15 @@ function KartuGrafikMargin() {
 
 /* ---------- halaman ---------- */
 export default function Ringkasan() {
+  const { t } = useBahasa();
   const tahunQ = useQuery({ queryKey: ["tahun"], queryFn: () => ambilJson("/api/tahun") });
   const [tahun, setTahun] = useState<number | null>(null);
-  const t = tahun ?? (tahunQ.data ? tahunQ.data[tahunQ.data.length - 1] : null);
+  const thn = tahun ?? (tahunQ.data ? tahunQ.data[tahunQ.data.length - 1] : null);
 
   const ringkas = useQuery({
-    queryKey: ["ringkasan", t],
-    queryFn: () => ambilJson(`/api/ringkasan/${t}`),
-    enabled: t !== null,
+    queryKey: ["ringkasan", thn],
+    queryFn: () => ambilJson(`/api/ringkasan/${thn}`),
+    enabled: thn !== null,
   });
   const [telusur, setTelusur] = useState<number | null>(null);
 
@@ -414,15 +434,15 @@ export default function Ringkasan() {
 
   return (
     <div className="grid gap-6">
-      <Kartu idMetrik="ringkasan" judul={`Ringkasan OP Margin ${t ?? ""}`}
-             keterangan="US¢/kg, basis berat kering — meniru Excel lama. Klik angka OP Margin untuk menelusuri asal angkanya."
-             urlEkspor={t ? `/api/ringkasan/${t}` : undefined}
+      <Kartu idMetrik="ringkasan" judul={`${t("Ringkasan OP Margin")} ${thn ?? ""}`}
+             keterangan={t("US¢/kg, basis berat kering — meniru Excel lama. Klik angka OP Margin untuk menelusuri asal angkanya.")}
+             urlEkspor={thn ? `/api/ringkasan/${thn}` : undefined}
              anak={
         <>
           <div className="mb-3 flex gap-1 flex-wrap">
             {tahunQ.data?.map((th: number) => (
               <button key={th}
-                className={`rounded-md px-3 py-1 text-sm ${th === t
+                className={`rounded-md px-3 py-1 text-sm ${th === thn
                   ? "bg-violet-600 text-white" : "bg-white/10 text-slate-300 hover:bg-white/20"}`}
                 onClick={() => setTahun(th)}>
                 {th}
@@ -437,14 +457,14 @@ export default function Ringkasan() {
                   {ringkas.data?.bulan.map((b: any) => (
                     <th key={b.bulan} className="text-right px-1">{NAMA_BULAN[b.bulan]}</th>
                   ))}
-                  <th className="text-right px-1 font-semibold">Avg YTD</th>
-                  <th className="text-right px-1">Tertimbang</th>
+                  <th className="text-right px-1 font-semibold">{t("Avg YTD")}</th>
+                  <th className="text-right px-1">{t("Tertimbang")}</th>
                 </tr>
               </thead>
               <tbody>
                 {label.map(([kunci, nama, des]) => (
                   <tr key={kunci} className="border-b border-white/5">
-                    <td className="py-1 pr-2 font-medium text-slate-300 whitespace-nowrap">{nama}</td>
+                    <td className="py-1 pr-2 font-medium text-slate-300 whitespace-nowrap">{t(nama)}</td>
                     {ringkas.data?.bulan.map((b: any) => (
                       <td key={b.bulan}
                           className={`text-right px-1 font-mono ${
@@ -470,12 +490,11 @@ export default function Ringkasan() {
           </div>
           {ringkas.data?.catatan.map((c: string, i: number) => (
             <p key={i} className="mt-2 rounded-md bg-amber-400/10 border border-amber-400/30 px-3 py-2 text-xs text-amber-300">
-              Catatan koreksi: {c}
+              {t("Catatan koreksi:")} {c}
             </p>
           ))}
           <p className="mt-2 text-xs text-slate-500">
-            Avg YTD = rata-rata sederhana bulan berdata (resmi, seperti Excel);
-            kolom "Tertimbang" = rata-rata tertimbang tonase (informasi).
+            {t('Avg YTD = rata-rata sederhana bulan berdata (resmi, seperti Excel); kolom "Tertimbang" = rata-rata tertimbang tonase (informasi).')}
           </p>
         </>
       } />
@@ -484,8 +503,8 @@ export default function Ringkasan() {
 
       <KartuElemen />
 
-      {telusur !== null && t !== null && (
-        <Telusur tahun={t} bulan={telusur} tutup={() => setTelusur(null)} />
+      {telusur !== null && thn !== null && (
+        <Telusur tahun={thn} bulan={telusur} tutup={() => setTelusur(null)} />
       )}
     </div>
   );

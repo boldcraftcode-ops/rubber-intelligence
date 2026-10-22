@@ -14,6 +14,7 @@ import InputHarian from "./pages/InputHarian";
 import UnggahData from "./pages/UnggahData";
 import GradeHarga from "./pages/GradeHarga";
 import { ambilJson } from "./bersama";
+import { useBahasa } from "./i18n";
 
 const TAB = [
   { id: "ringkasan", label: "Ringkasan", ikon: "✦" },
@@ -34,6 +35,7 @@ const TAB = [
 type TabId = (typeof TAB)[number]["id"];
 
 export default function App() {
+  const { lang, setLang, t } = useBahasa();
   const [tab, setTab] = useState<TabId>("ringkasan");
   const [pengisi, setPengisi] = useState(
     () => localStorage.getItem("op-margin.pengisi") ?? ""
@@ -58,25 +60,36 @@ export default function App() {
           <p className="mt-1 text-xs leading-snug text-indigo-300/80">
             Rubber Raw Material Big Data
           </p>
+          <div className="mt-3 inline-flex rounded-lg border border-violet-500/30 overflow-hidden">
+            {([["id", "ID"], ["en", "EN"]] as const).map(([kode, label]) => (
+              <button key={kode}
+                className={`px-3 py-1 text-xs font-semibold ${lang === kode
+                  ? "bg-violet-600 text-white"
+                  : "bg-transparent text-slate-400 hover:bg-white/10"}`}
+                onClick={() => setLang(kode)}>
+                {label}
+              </button>
+            ))}
+          </div>
         </div>
 
         <nav className="flex-1 px-3 flex flex-col gap-1">
-          {TAB.map((t) => (
+          {TAB.map((tb) => (
             <button
-              key={t.id}
+              key={tb.id}
               className={`w-full flex items-center justify-between rounded-lg px-3 py-2
                           text-sm text-left transition-colors ${
-                tab === t.id
+                tab === tb.id
                   ? "bg-violet-600/30 text-white border border-violet-400/40 shadow-lg shadow-violet-950/40"
                   : "text-slate-300 hover:bg-white/10 border border-transparent"
               }`}
-              onClick={() => setTab(t.id)}
+              onClick={() => setTab(tb.id)}
             >
               <span>
-                <span className="mr-2 text-violet-300/90">{t.ikon}</span>
-                {t.label}
+                <span className="mr-2 text-violet-300/90">{tb.ikon}</span>
+                {t(tb.label)}
               </span>
-              {t.id === "alarm" && jumlahAlarm > 0 && (
+              {tb.id === "alarm" && jumlahAlarm > 0 && (
                 <span className="rounded-full bg-red-600 text-white text-xs px-1.5 py-0.5 shadow">
                   {jumlahAlarm}
                 </span>
@@ -87,13 +100,13 @@ export default function App() {
 
         <div className="px-5 py-4 border-t border-violet-500/20">
           <label className="block text-xs text-indigo-300/80 mb-1">
-            Nama Anda (untuk catatan)
+            {t("Nama Anda (untuk catatan)")}
           </label>
           <input
             className="w-full rounded-md border border-violet-400/30 bg-[#0b0a26]/80
                        px-3 py-1.5 text-sm text-slate-100 placeholder-slate-500
                        focus:outline-none focus:ring-2 focus:ring-violet-500"
-            placeholder="nama pengisi"
+            placeholder={t("nama pengisi")}
             value={pengisi}
             onChange={(e) => {
               setPengisi(e.target.value);
