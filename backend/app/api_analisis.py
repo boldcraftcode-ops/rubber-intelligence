@@ -268,11 +268,39 @@ def pasang_router(app, ambil_session):
             return respon_xlsx(
                 "rm_stock_intake_vs_pricing.xlsx",
                 ["Date", "RM Stock", "Intake", "Safety Level Stock", "SICOM",
-                 "OP Price", "Sumber intake", "Catatan"],
+                 "OP Price", "OP Margin", "Sumber intake", "Catatan"],
                 [[b["label"], b["rm_stock_ton"], b["intake_ton"], b["safety_ton"],
-                  b["sicom"], b["op_price"], b["sumber_intake"],
+                  b["sicom"], b["op_price"], b["op_margin"], b["sumber_intake"],
                   "stok sebagian" if b["stok_sebagian"] else ""] for b in baris])
         return hasil
+
+    @router.get("/ringkasan-elemen/analisa")
+    def analisa_elemen(dari: str | None = None, sampai: str | None = None,
+                       session: Session = dep):
+        """Analisa 5W1H otomatis atas grafik RM Stock - Intake vs Pricing,
+        dihitung dari data pada periode terfilter."""
+        from .core.analisa import analisa_5w1h
+        data = ringkasan_elemen(dari=dari, sampai=sampai, session=session)
+        return analisa_5w1h(data["baris"], session)
+
+    @router.get("/analisis/analisa")
+    def analisa_halaman_analisis(dari: str | None = None, sampai: str | None = None,
+                                 session: Session = dep):
+        """Analisa 5W1H otomatis atas SELURUH data halaman Analisis."""
+        from .core.analisa import analisa_analitik
+
+        def _bulan(teks, nama):
+            try:
+                th, bl = teks.split("-")[:2]
+                th, bl = int(th), int(bl)
+                assert 1 <= bl <= 12
+                return th, bl
+            except Exception:
+                raise HTTPException(422, f"Parameter '{nama}' harus format "
+                                         f"YYYY-MM, contoh 2024-01 (bukan '{teks}').")
+        d = _bulan(dari, "dari") if dari else None
+        z = _bulan(sampai, "sampai") if sampai else None
+        return analisa_analitik(session, d, z)
 
     @router.get("/grafik/margin-antar-tahun")
     def grafik_margin(session: Session = dep):

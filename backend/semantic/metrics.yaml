@@ -206,3 +206,13 @@ kartu:
       Dipisah dua tumpukan - grade biasa dan grade EUDR (grade ber-flag EUDR
       atau kode mengandung TTSR). Filter "Hanya EUDR" menampilkan vendor/
       wilayah yang memasok karet EUDR saja. Tanggal memakai Ticket Date.
+  analisa_5w1h:
+    judul: Analisa grafik (5W1H)
+    cara_dihitung: >
+      Dihasilkan otomatis dari data periode terfilter - What (stok vs safety,
+      tren margin, tren intake), When (titik penting - SICOM jatuh, intake
+      tertinggi/terendah, stok terendah, margin turun beruntun), Where/Who
+      (dari data tiket bila ada; bila belum, keterbatasan disebut jujur),
+      Why (fakta - perbandingan laju SICOM vs OP Price, konsumsi implisit;
+      hipotesis SELALU ditandai), How (rekomendasi terkait fitur sistem).
+      Asosiasi bukan bukti sebab-akibat.
