@@ -12,6 +12,7 @@ import Rekonsiliasi from "./pages/Rekonsiliasi";
 import Kualitas from "./pages/Kualitas";
 import InputHarian from "./pages/InputHarian";
 import UnggahData from "./pages/UnggahData";
+import Database from "./pages/Database";
 import GradeHarga from "./pages/GradeHarga";
 import { ambilJson } from "./bersama";
 import { useBahasa } from "./i18n";
@@ -30,6 +31,7 @@ const TAB = [
   { id: "gradeharga", label: "Grade & Harga", ikon: "◈" },
   { id: "unggah", label: "Unggah Data", ikon: "⬆" },
   { id: "input", label: "Input Harian", ikon: "✎" },
+  { id: "database", label: "Database", ikon: "⛁" },
 ] as const;
 
 type TabId = (typeof TAB)[number]["id"];
@@ -135,6 +137,7 @@ export default function App() {
           {tab === "gradeharga" && <GradeHarga />}
           {tab === "unggah" && <UnggahData />}
           {tab === "input" && <InputHarian pengisi={pengisi} />}
+          {tab === "database" && <Database />}
         </div>
       </main>
     </div>

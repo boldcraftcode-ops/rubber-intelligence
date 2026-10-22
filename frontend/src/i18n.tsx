@@ -20,6 +20,7 @@ const KAMUS: Record<string, string> = {
   "Grade & Harga": "Grades & Prices",
   "Unggah Data": "Upload Data",
   "Input Harian": "Daily Input",
+  "Database": "Database",
   "Rubber Raw Material Big Data": "Rubber Raw Material Big Data",
   "Nama Anda (untuk catatan)": "Your name (for audit trail)",
   "nama pengisi": "your name",
