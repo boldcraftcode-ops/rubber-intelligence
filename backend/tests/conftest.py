@@ -5,7 +5,13 @@ lalu dipakai bersama oleh semua tes baca-saja.
 """
 from __future__ import annotations
 
+import os
 import pathlib
+
+# Tes selalu berjalan mode development TANPA login, apa pun isi .env lokal.
+# (load_dotenv tidak menimpa variabel yang sudah ada, jadi ini aman.)
+os.environ["APP_ENV"] = "development"
+os.environ["AUTH_DISABLED"] = "true"
 
 import pytest
 from sqlalchemy import create_engine

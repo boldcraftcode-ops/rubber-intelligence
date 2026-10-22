@@ -9,6 +9,14 @@
 """
 from __future__ import annotations
 
+import pathlib
+
+from dotenv import load_dotenv
+
+# Baca backend/.env SEBELUM konfigurasi apa pun dibaca. Variabel yang sudah
+# ada di lingkungan (mis. di-set service/OS) TIDAK ditimpa.
+load_dotenv(pathlib.Path(__file__).resolve().parents[1] / ".env")
+
 import datetime as dt
 import hashlib
 import json
@@ -145,6 +153,10 @@ def buat_app(engine: Engine | None = None) -> FastAPI:
     # Rute Fase 7 (master grade & harga per grade)
     from .api_grade import pasang_router_grade
     pasang_router_grade(app, ambil_session)
+
+    # Rute modul Database (info, kosongkan, ekspor, impor)
+    from .api_database import pasang_router_database
+    pasang_router_database(app, ambil_session, engine)
 
     @app.exception_handler(RequestValidationError)
     async def validasi_gagal(request: Request, exc: RequestValidationError):

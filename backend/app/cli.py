@@ -12,6 +12,12 @@ from __future__ import annotations
 
 import argparse
 import datetime as dt
+import pathlib
+
+from dotenv import load_dotenv
+
+# Baca backend/.env (mis. DATABASE_URL) sebelum membuat koneksi database.
+load_dotenv(pathlib.Path(__file__).resolve().parents[1] / ".env")
 
 from .core.perencanaan import hitung_rencana
 from .core.rekomendasi import rekomendasi_harga

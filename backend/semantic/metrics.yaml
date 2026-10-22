@@ -169,6 +169,17 @@ kartu:
       bawah safety, margin di bawah target, data SICOM/kurs/stok/tiket
       terlambat, selisih rekonsiliasi, harga beli aktual di atas harga beli
       maksimum. Ambang dan aktif/nonaktif diatur admin (data, bukan kode).
+  database:
+    judul: Database
+    cara_dihitung: >
+      Modul pemeliharaan database. Info - jumlah baris dihitung langsung dari
+      tiap tabel. Ekspor - seluruh database disalin dengan API backup SQLite
+      (konsisten walau sedang dipakai) lalu diunduh sebagai satu file .db.
+      Impor - file .db diperiksa dulu (harus SQLite dan berisi tabel OP
+      Margin), database lama dicadangkan otomatis ke folder cadangan/, lalu
+      diganti; mart dan alarm dihitung ulang. Kosongkan - semua tabel dihapus
+      setelah cadangan otomatis dibuat; perlu mengetik kata KOSONGKAN dan
+      tercatat di audit log.
   unggah:
     judul: Unggah file data
     cara_dihitung: >
