@@ -15,13 +15,15 @@ import shutil
 import sqlite3
 import tempfile
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi import (APIRouter, Depends, File, Form, HTTPException, Request,
+                     UploadFile)
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from sqlalchemy import delete, func, select
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
+from .auth_lokal import wajib_admin
 from .core.alarm import catat_audit, evaluasi_alarm
 from .mart import bangun_mart
 from .models import Base
@@ -97,7 +99,8 @@ def pasang_router_database(app, ambil_session, engine: Engine):
 
     # ------------------------------------------------------------ kosongkan
     @router.post("/kosongkan")
-    def kosongkan(data: KosongkanMasuk, session: Session = dep):
+    def kosongkan(data: KosongkanMasuk, request: Request, session: Session = dep):
+        wajib_admin(request)  # hanya admin (saat login lokal aktif)
         if data.konfirmasi.strip().upper() != KATA_KONFIRMASI:
             raise HTTPException(422, "Konfirmasi tidak cocok. Ketik kata "
                                      f"'{KATA_KONFIRMASI}' persis untuk melanjutkan.")
@@ -150,7 +153,9 @@ def pasang_router_database(app, ambil_session, engine: Engine):
 
     # ------------------------------------------------------------ impor
     @router.post("/impor")
-    async def impor(file: UploadFile = File(...), pengisi: str = Form("?")):
+    async def impor(request: Request, file: UploadFile = File(...),
+                    pengisi: str = Form("?")):
+        wajib_admin(request)  # hanya admin (saat login lokal aktif)
         path = _path_sqlite(engine)
         if path is None:
             raise HTTPException(422, "Impor file hanya tersedia untuk database "

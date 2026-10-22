@@ -33,6 +33,10 @@ class KonfigurasiAuth:
     def __init__(self) -> None:
         self.app_env = os.environ.get("APP_ENV", "development").strip().lower()
         self.auth_disabled = os.environ.get("AUTH_DISABLED", "").strip().lower() == "true"
+        # Mode login: "lokal" (form username+sandi, data di tabel pengguna)
+        # atau "access" (Cloudflare Access).
+        self.mode = os.environ.get("AUTH_MODE", "access").strip().lower()
+        self.secret = os.environ.get("SECRET_KEY", "").strip()
         self.team_domain = os.environ.get("CF_ACCESS_TEAM_DOMAIN", "").strip()
         self.aud = os.environ.get("CF_ACCESS_AUD", "").strip()
         self.certs_url = os.environ.get("CF_ACCESS_CERTS_URL", "").strip() or (
@@ -44,8 +48,15 @@ class KonfigurasiAuth:
 
     @property
     def aktif(self) -> bool:
-        """Auth dipasang bila tidak dimatikan dan konfigurasi lengkap."""
-        return (not self.auth_disabled) and bool(self.aud and self.certs_url)
+        """Auth Cloudflare Access dipasang bila mode access, tidak dimatikan,
+        dan konfigurasi lengkap."""
+        return (self.mode != "lokal" and not self.auth_disabled
+                and bool(self.aud and self.certs_url))
+
+    @property
+    def lokal_aktif(self) -> bool:
+        """Login lokal (form sendiri) dipasang bila mode lokal & tidak dimatikan."""
+        return self.mode == "lokal" and not self.auth_disabled
 
     def validasi_start(self) -> None:
         """Dipanggil saat aplikasi start. Gagal-tertutup di produksi."""
@@ -55,6 +66,14 @@ class KonfigurasiAuth:
             raise RuntimeError(
                 "APP_ENV=produksi tetapi AUTH_DISABLED=true. Ini DILARANG: "
                 "aplikasi menolak start. Hapus AUTH_DISABLED dari .env produksi.")
+        if self.mode == "lokal":
+            if len(self.secret) < 32:
+                raise RuntimeError(
+                    "AUTH_MODE=lokal di produksi membutuhkan SECRET_KEY minimal "
+                    "32 karakter di .env (untuk menandatangani sesi login). "
+                    "Buat dengan: python -c \"import secrets; "
+                    "print(secrets.token_hex(32))\"")
+            return
         if not (self.aud and self.certs_url):
             raise RuntimeError(
                 "APP_ENV=produksi tetapi CF_ACCESS_TEAM_DOMAIN / CF_ACCESS_AUD "

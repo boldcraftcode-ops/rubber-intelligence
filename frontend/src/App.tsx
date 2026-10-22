@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useEffect, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Ringkasan from "./pages/Ringkasan";
 import Analisis from "./pages/Analisis";
 import Stok from "./pages/Stok";
@@ -12,9 +12,12 @@ import Rekonsiliasi from "./pages/Rekonsiliasi";
 import Kualitas from "./pages/Kualitas";
 import InputHarian from "./pages/InputHarian";
 import UnggahData from "./pages/UnggahData";
-import Database from "./pages/Database";
 import GradeHarga from "./pages/GradeHarga";
-import { ambilJson } from "./bersama";
+import Database from "./pages/Database";
+import Pengguna from "./pages/Pengguna";
+import Login from "./pages/Login";
+import { ambilJson, kirimJson, kelasInput, kelasLabel, kelasTombol,
+         kelasTombolKecil } from "./bersama";
 import { useBahasa } from "./i18n";
 
 const TAB = [
@@ -31,23 +34,109 @@ const TAB = [
   { id: "gradeharga", label: "Grade & Harga", ikon: "◈" },
   { id: "unggah", label: "Unggah Data", ikon: "⬆" },
   { id: "input", label: "Input Harian", ikon: "✎" },
-  { id: "database", label: "Database", ikon: "⛁" },
+  { id: "database", label: "Database", ikon: "⛁", hanyaAdmin: true },
+  { id: "pengguna", label: "Pengguna", ikon: "☺", hanyaAdmin: true },
 ] as const;
 
 type TabId = (typeof TAB)[number]["id"];
 
+/* ---------- modal ganti sandi ---------- */
+function ModalGantiSandi({ tutup }: { tutup: () => void }) {
+  const [lama, setLama] = useState("");
+  const [baru, setBaru] = useState("");
+  const [ulang, setUlang] = useState("");
+  const [pesan, setPesan] = useState<{ ok: boolean; teks: string } | null>(null);
+
+  const kirim = useMutation({
+    mutationFn: () => kirimJson("/api/auth/ganti-sandi",
+      { sandi_lama: lama, sandi_baru: baru }),
+    onSuccess: (j) => setPesan({ ok: true, teks: j.pesan }),
+    onError: (e: Error) => setPesan({ ok: false, teks: e.message }),
+  });
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+         onClick={tutup}>
+      <div className="w-full max-w-sm rounded-xl bg-[#1a1844] border border-violet-500/30 p-6 shadow-2xl"
+           onClick={(e) => e.stopPropagation()}>
+        <h3 className="text-lg font-semibold text-slate-100 mb-3">Ganti sandi</h3>
+        <label className={kelasLabel}>Sandi lama</label>
+        <input className={kelasInput} type="password" value={lama}
+               onChange={(e) => setLama(e.target.value)} />
+        <label className={`${kelasLabel} mt-3`}>Sandi baru (min. 8 karakter)</label>
+        <input className={kelasInput} type="password" value={baru}
+               onChange={(e) => setBaru(e.target.value)} />
+        <label className={`${kelasLabel} mt-3`}>Ulangi sandi baru</label>
+        <input className={kelasInput} type="password" value={ulang}
+               onChange={(e) => setUlang(e.target.value)} />
+        {baru && ulang && baru !== ulang && (
+          <p className="mt-2 text-xs text-amber-300">Sandi baru tidak sama.</p>
+        )}
+        {pesan && (
+          <p className={`mt-3 rounded-md px-3 py-2 text-sm border ${pesan.ok
+            ? "bg-emerald-500/10 text-emerald-300 border-emerald-400/30"
+            : "bg-red-500/10 text-red-300 border-red-400/30"}`}>{pesan.teks}</p>
+        )}
+        <div className="mt-4 flex justify-end gap-2">
+          <button className={kelasTombolKecil} onClick={tutup}>Tutup</button>
+          <button className={kelasTombol}
+                  disabled={!lama || baru.length < 8 || baru !== ulang || kirim.isPending}
+                  onClick={() => kirim.mutate()}>
+            {kirim.isPending ? "Menyimpan…" : "Simpan"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
   const { lang, setLang, t } = useBahasa();
+  const qc = useQueryClient();
   const [tab, setTab] = useState<TabId>("ringkasan");
-  const [pengisi, setPengisi] = useState(
-    () => localStorage.getItem("op-margin.pengisi") ?? ""
-  );
+  const [bukaSandi, setBukaSandi] = useState(false);
+
+  /* ---- sesi login ---- */
+  const saya = useQuery({
+    queryKey: ["saya"],
+    queryFn: () => ambilJson("/api/auth/saya"),
+    retry: false,
+    staleTime: 5 * 60_000,
+  });
+  const admin = saya.data?.peran === "admin";
+  const modeLokal = saya.data?.mode === "lokal";
+
+  // nama pengisi otomatis mengikuti akun login
+  useEffect(() => {
+    if (saya.data?.nama) localStorage.setItem("op-margin.pengisi", saya.data.nama);
+  }, [saya.data?.nama]);
+
+  const keluar = useMutation({
+    mutationFn: () => kirimJson("/api/auth/logout", {}),
+    onSettled: () => qc.resetQueries(),
+  });
+
   const alarm = useQuery({
     queryKey: ["alarm"],
     queryFn: () => ambilJson("/api/alarm"),
     refetchInterval: 60_000,
+    enabled: !!saya.data,
   });
   const jumlahAlarm = alarm.data?.alarm.length ?? 0;
+
+  /* ---- gerbang: belum login -> form login ---- */
+  if (saya.isLoading) {
+    return (
+      <div className="galaxy min-h-screen flex items-center justify-center text-slate-300">
+        <p className="text-sm animate-pulse">🪐 Memuat…</p>
+      </div>
+    );
+  }
+  if (saya.error) {
+    return <Login onSukses={() => qc.invalidateQueries({ queryKey: ["saya"] })} />;
+  }
+
+  const tabTampil = TAB.filter((tb: any) => !tb.hanyaAdmin || admin);
 
   return (
     <div className="galaxy min-h-screen flex text-slate-200">
@@ -76,7 +165,7 @@ export default function App() {
         </div>
 
         <nav className="flex-1 px-3 flex flex-col gap-1">
-          {TAB.map((tb) => (
+          {tabTampil.map((tb) => (
             <button
               key={tb.id}
               className={`w-full flex items-center justify-between rounded-lg px-3 py-2
@@ -100,21 +189,24 @@ export default function App() {
           ))}
         </nav>
 
+        {/* ===== info akun ===== */}
         <div className="px-5 py-4 border-t border-violet-500/20">
-          <label className="block text-xs text-indigo-300/80 mb-1">
-            {t("Nama Anda (untuk catatan)")}
-          </label>
-          <input
-            className="w-full rounded-md border border-violet-400/30 bg-[#0b0a26]/80
-                       px-3 py-1.5 text-sm text-slate-100 placeholder-slate-500
-                       focus:outline-none focus:ring-2 focus:ring-violet-500"
-            placeholder={t("nama pengisi")}
-            value={pengisi}
-            onChange={(e) => {
-              setPengisi(e.target.value);
-              localStorage.setItem("op-margin.pengisi", e.target.value);
-            }}
-          />
+          <p className="text-sm font-semibold text-slate-100 truncate">
+            ☺ {saya.data?.nama}
+          </p>
+          <p className="text-[11px] text-indigo-300/70 mb-2">
+            {saya.data?.username} · {saya.data?.peran}
+          </p>
+          {modeLokal && (
+            <div className="flex gap-1.5">
+              <button className={kelasTombolKecil} onClick={() => setBukaSandi(true)}>
+                {t("Ganti sandi")}
+              </button>
+              <button className={kelasTombolKecil} onClick={() => keluar.mutate()}>
+                {t("Keluar")}
+              </button>
+            </div>
+          )}
           <p className="mt-3 text-[10px] text-indigo-300/50">
             ✦ tema: Milky Way
           </p>
@@ -136,10 +228,13 @@ export default function App() {
           {tab === "kualitas" && <Kualitas />}
           {tab === "gradeharga" && <GradeHarga />}
           {tab === "unggah" && <UnggahData />}
-          {tab === "input" && <InputHarian pengisi={pengisi} />}
-          {tab === "database" && <Database />}
+          {tab === "input" && <InputHarian pengisi={saya.data?.nama ?? "?"} />}
+          {tab === "database" && admin && <Database />}
+          {tab === "pengguna" && admin && <Pengguna saya={saya.data?.username} />}
         </div>
       </main>
+
+      {bukaSandi && <ModalGantiSandi tutup={() => setBukaSandi(false)} />}
     </div>
   );
 }

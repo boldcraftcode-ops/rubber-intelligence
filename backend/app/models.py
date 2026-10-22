@@ -255,6 +255,21 @@ class HargaGrade(Base):
     unggahan_id: Mapped[int | None] = mapped_column(ForeignKey("raw_unggahan.id"), nullable=True)
 
 
+class Pengguna(Base):
+    """Akun login aplikasi (mode AUTH_MODE=lokal). Sandi disimpan sebagai
+    hash PBKDF2-SHA256 (tidak pernah plain text)."""
+
+    __tablename__ = "pengguna"
+
+    username: Mapped[str] = mapped_column(String(50), primary_key=True)
+    nama: Mapped[str] = mapped_column(String(100))
+    hash_sandi: Mapped[str] = mapped_column(String(255))
+    peran: Mapped[str] = mapped_column(String(20), default="pengguna")  # admin | pengguna
+    aktif: Mapped[bool] = mapped_column(Boolean, default=True)
+    dibuat_pada: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
+    login_terakhir: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)
+
+
 class AuditLog(Base):
     """Jejak perubahan: siapa mengubah aturan/parameter/perencanaan, kapan,
     dan apa isinya. Tidak pernah dihapus."""

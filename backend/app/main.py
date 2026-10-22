@@ -100,8 +100,15 @@ def buat_app(engine: Engine | None = None) -> FastAPI:
                            allow_methods=["GET", "POST"],
                            allow_headers=["Content-Type"])
 
+    # --- login lokal (form sendiri, data pengguna di database) --------------
+    if cfg_auth.lokal_aktif:
+        from .auth_lokal import pasang_middleware_lokal, pastikan_admin
+        pasang_middleware_lokal(app, cfg_auth)
+        with SessionLocal() as _s:
+            if pastikan_admin(_s):
+                _s.commit()
     # --- verifikasi Cloudflare Access ---------------------------------------
-    if cfg_auth.aktif:
+    elif cfg_auth.aktif:
         import jwt as _jwt
 
         verifikator = VerifikatorAccess(cfg_auth)
@@ -157,6 +164,11 @@ def buat_app(engine: Engine | None = None) -> FastAPI:
     # Rute modul Database (info, kosongkan, ekspor, impor)
     from .api_database import pasang_router_database
     pasang_router_database(app, ambil_session, engine)
+
+    # Rute login/sesi/kelola pengguna (selalu terpasang; perilaku
+    # menyesuaikan mode auth di .env)
+    from .auth_lokal import pasang_router_auth
+    pasang_router_auth(app, ambil_session, cfg_auth)
 
     @app.exception_handler(RequestValidationError)
     async def validasi_gagal(request: Request, exc: RequestValidationError):
