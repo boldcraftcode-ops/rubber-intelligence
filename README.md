@@ -8,8 +8,11 @@ US¢/kg, basis berat kering).
 - Asumsi & pertanyaan terbuka: `docs/ASUMSI.md`
 - Definisi metrik: `docs/KAMUS_METRIK.md`
 - Tema & identitas visual (palet, logo, aturan): `docs/TEMA.md`
+- **Serah terima proyek** (untuk pengganti): `docs/SERAH_TERIMA.md`
 
-Status: **Fase 8** — kartu **RM Stock – Intake vs Pricing** (menu Ringkasan)
+Status: **v0.7.3** — halaman depan **Margin Performance**: strip angka kunci
+(OP Margin vs target, SICOM, Days of Cover, intake) + panel "perlu perhatian
+hari ini". Kartu **RM Stock – Intake vs Pricing**
 punya tiga tombol analisa dengan periode mengikuti filter kartu:
 **5W1H**, **Margin Bridge** (ΔM = ΔSICOM − ΔOP Price, dua penyebab: pasar vs
 keputusan, + bridge per bulan), dan **Days of Cover** (pemakaian implisit dari
