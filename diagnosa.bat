@@ -29,6 +29,16 @@ echo   VERSI.txt :
 type "VERSI.txt"
 
 :cek_git
+rem  Penanda paling pasti: kode 0.7.0 TIDAK memuat login Cloudflare Access.
+if not exist "backend\app\main.py" goto :cek_git2
+findstr /c:"Cloudflare Access" "backend\app\main.py" >nul 2>nul
+if errorlevel 1 goto :cek_git2
+echo.
+echo   *** KODE LAMA: backend\app\main.py masih memuat login Cloudflare
+echo       Access. Versi 0.7.0 sudah menghapusnya, jadi folder ini BELUM
+echo       diperbarui. Jalankan perbarui-kode.bat. ***
+
+:cek_git2
 if exist ".git" goto :pakai_git
 echo.
 echo   *** Folder ini BUKAN hasil "git clone" (tidak ada folder .git) ***

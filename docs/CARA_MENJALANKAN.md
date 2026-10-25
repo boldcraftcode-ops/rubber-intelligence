@@ -147,10 +147,14 @@ Cara memperbaiki:
    jendela itu). Kalau lupa mana, jalankan saja `start-web.bat` — skrip itu
    akan menanyakan sendiri: `Tutup proses itu sekarang? [Y] ya / [N] biarkan`.
    Jawab `Y` lalu Enter.
-2. Jalankan `start-web.bat` lagi. Skrip ini memeriksa port 8000 dan 5173 lebih
-   dulu, menjalankan API dengan `--reload`, lalu memverifikasi daftar `fitur`:
-   kalau masih versi lama akan muncul peringatan **API VERSI LAMA**, bukan
-   diam-diam membuka aplikasi setengah jalan.
+2. Jalankan `start-web.bat` lagi. Skrip ini sekarang:
+   - **menutup paksa** proses lama di port 8000 dan 5173 (termasuk proses
+     induk `uvicorn --reload` yang menghidupkan ulang anaknya),
+   - menjalankan API dan web,
+   - **membandingkan versi** API yang menjawab dengan `VERSI.txt`. Bila beda,
+     skrip menutup port sekali lagi dan menjalankan API ulang secara otomatis;
+     bila tetap beda, muncul **GAGAL: ... tetap VERSI LAIN** dengan langkah
+     lanjutan.
 3. Di browser, muat ulang dengan **Ctrl+F5** (agar berkas lama tidak dipakai).
 
 `start-web.bat` kini juga **menyiapkan sendiri** apa pun yang belum ada:
@@ -197,6 +201,23 @@ dihapus. Untuk membersihkannya sekaligus menyiapkan `SECRET_KEY`:
 cd backend
 .venv\Scripts\python -m app.cli atur-login-lokal
 ```
+
+### Bukti paling cepat: folder ini kode lama atau bukan
+
+Pesan **"Belum login ... Cloudflare Access"** sudah **tidak ada lagi** di kode
+sejak versi 0.7.0. Kalau pesan itu masih muncul, yang menjawab di port 8000
+pasti kode lama. Cara membuktikannya dari folder aplikasi:
+
+```powershell
+findstr /c:"Cloudflare Access" backend\app\main.py
+```
+
+- **Ada hasilnya** → folder ini masih kode lama (belum diperbarui). Jalankan
+  `perbarui-kode.bat`.
+- **Tidak ada hasil** → folder sudah 0.7.0; berarti ada proses lama di port
+  8000. Jalankan `start-web.bat` (sekarang menutupnya otomatis).
+
+`diagnosa.bat` juga memeriksa hal ini dan menuliskannya di bagian [0].
 
 ### Kalau masih tidak bisa masuk: jalankan `diagnosa.bat`
 

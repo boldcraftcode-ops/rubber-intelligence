@@ -32,6 +32,8 @@ echo  Versi kode: (VERSI.txt tidak ada - kemungkinan kode lama)
 goto :lewat_versi
 
 :cetak_versi
+rem  Baris pertama VERSI.txt = nomor versi kode di folder ini.
+set "VERSI_KODE="
 set /p VERSI_KODE=<"VERSI.txt"
 echo  Versi kode: %VERSI_KODE%
 
@@ -149,8 +151,11 @@ rem  4. Port yang mungkin masih dipakai sesi sebelumnya
 rem     (proses API lama = kode lama = fitur baru 404)
 rem ------------------------------------------------------------
 :punya_web
-call :cek_port 8000 "API"
-call :cek_port 5173 "tampilan web"
+echo.
+echo [4] Menutup proses lama di port 8000 dan 5173 (bila ada).
+echo     Proses lama = kode lama = login & fitur baru gagal.
+call :bersihkan_port 8000 "API" "app.main:app"
+call :bersihkan_port 5173 "tampilan web" "vite"
 
 rem ------------------------------------------------------------
 rem  5. Jalankan API + web di jendela terpisah
@@ -184,21 +189,43 @@ echo Buka jendela "OP Margin - API" dan baca pesan errornya (paling bawah).
 goto :buka
 
 :health_ok
-rem  Pastikan proses yang menjawab memang kode TERBARU.
+rem  Pastikan proses yang menjawab memang kode TERBARU di folder ini.
+if not defined VERSI_KODE goto :versi_tak_dikenal
+findstr /c:"%VERSI_KODE%" "%TMPH%" >nul 2>nul
+if errorlevel 1 goto :versi_lama
+echo API siap: kode %VERSI_KODE% (login username + sandi).
+goto :buka
+
+:versi_tak_dikenal
 findstr /c:"margin-bridge" "%TMPH%" >nul 2>nul
 if errorlevel 1 goto :versi_lama
-echo API siap: kode terbaru (margin-bridge, days-of-cover, jelaskan ada).
+echo API siap (VERSI.txt tidak ada, jadi versi tidak bisa dipastikan).
 goto :buka
 
 :versi_lama
+if defined SUDAH_ULANG goto :versi_tetap_lama
+set "SUDAH_ULANG=1"
+echo.
+echo API yang menjawab BUKAN kode di folder ini. Menutup paksa port 8000
+echo lalu menjalankan API sekali lagi (otomatis).
+call :bersihkan_port 8000 "API" "app.main:app"
+start "OP Margin - API" /D "%~dp0backend" cmd /k ".venv\Scripts\python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload"
+set /a NCOBA=0
+goto :menu_health
+
+:versi_tetap_lama
 echo.
 echo ============================================================
-echo PERINGATAN: API di port 8000 masih VERSI LAMA.
-echo Fitur "Margin Bridge" dan "Days of Cover" tidak dikenali proses
-echo itu, jadi tombolnya akan gagal walau kode di folder ini sudah baru.
+echo GAGAL: API di port 8000 tetap VERSI LAIN walau sudah diulang.
+echo Aplikasi ini butuh kode %VERSI_KODE%.
 echo.
-echo Perbaikan: tutup jendela "OP Margin - API" yang lama, lalu
-echo jalankan start-web.bat ini sekali lagi.
+echo Kemungkinan penyebab:
+echo  1. Ada program lain yang memakai port 8000 (bukan aplikasi ini).
+echo     Cek: netstat -ano ^| findstr :8000
+echo  2. Folder ini masih kode lama: jalankan perbarui-kode.bat
+echo  3. Windows menahan proses lama: restart komputer, lalu ulangi.
+echo.
+echo Jendela "OP Margin - API" sekarang menampilkan pesan errornya.
 echo ============================================================
 goto :buka
 
@@ -219,35 +246,19 @@ endlocal
 exit /b 0
 
 rem ============================================================
-rem  :cek_port PORT NAMA
-rem  Bila port sedang dipakai, tawarkan menutup proses lamanya.
+rem  :bersihkan_port PORT NAMA POLA
+rem  Menutup paksa proses aplikasi lama:
+rem   - pemegang port itu, dan
+rem   - proses yang baris perintahnya cocok dengan POLA (perlu, karena
+rem     "uvicorn --reload" punya proses induk yang menghidupkan ulang
+rem     anaknya, sehingga mematikan anaknya saja tidak cukup).
+rem  Tidak bertanya: proses lama itulah penyebab login & fitur gagal.
 rem ============================================================
-:cek_port
+:bersihkan_port
 set "PORT=%~1"
 set "NAMA=%~2"
-if exist "%TMPP%" del "%TMPP%" >nul 2>nul
-powershell -NoProfile -ExecutionPolicy Bypass -Command "$x = netstat -ano | Select-String 'LISTENING' | Select-String ':%PORT% '; if ($x) { (($x[0].ToString().Trim() -split '\s+')[-1]) }" > "%TMPP%" 2>nul
-set "PID="
-if not exist "%TMPP%" goto :eof
-< "%TMPP%" set /p PID=
-if not defined PID goto :eof
-
-echo.
-echo Port %PORT% (%NAMA%) masih dipakai proses lain, PID %PID%.
-echo Kemungkinan itu jendela "%NAMA%" dari sesi sebelumnya yang belum
-echo ditutup. Proses lama memakai kode lama, jadi fitur baru bisa gagal.
-set "JAWAB="
-set /p "JAWAB=Tutup proses itu sekarang? [Y] ya / [N] biarkan (lalu Enter): "
-if /i "%JAWAB%"=="Y" goto :tutup_port
-if /i "%JAWAB%"=="T" goto :tutup_port
-if /i "%JAWAB%"=="YA" goto :tutup_port
-echo Dibiarkan. Fitur baru bisa gagal selama proses lama masih hidup.
-goto :eof
-
-:tutup_port
-taskkill /f /pid %PID% >nul 2>nul
-echo Proses lama di port %PORT% sudah ditutup.
-timeout /t 1 >nul 2>nul
+set "POLA=%~3"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$p=%PORT%; $nama='%NAMA%'; $pola='%POLA%'; $saya=$PID; $induk=0; try { $induk=(Get-CimInstance Win32_Process -Filter ('ProcessId=' + $saya)).ParentProcessId } catch {}; $pernah=$false; for ($i=0; $i -lt 5; $i++) { $kandidat=@(); try { $kandidat += (Get-CimInstance Win32_Process -ErrorAction Stop | Where-Object { $_.CommandLine -and ($_.CommandLine -match $pola) } | ForEach-Object { $_.ProcessId }) } catch {}; try { $kandidat += (Get-NetTCPConnection -LocalPort $p -State Listen -ErrorAction Stop).OwningProcess } catch { $kandidat += @(netstat -ano | Select-String 'LISTENING\s*$' | Select-String (':' + $p + '\s') | ForEach-Object { ($_.ToString().Trim() -split '\s+')[-1] }) }; $kandidat = $kandidat | Where-Object { $_ -and $_ -ne 0 -and $_ -ne $saya -and $_ -ne $induk } | Sort-Object -Unique; if (-not $kandidat) { break }; foreach ($id in $kandidat) { $pernah=$true; Write-Host ('   port ' + $p + ' (' + $nama + '): PID ' + $id + ' ditutup'); Stop-Process -Id $id -Force -ErrorAction SilentlyContinue }; Start-Sleep -Milliseconds 900 }; if (-not $pernah) { Write-Host ('   port ' + $p + ' (' + $nama + ') sudah bebas') } else { Write-Host ('   port ' + $p + ' (' + $nama + ') dibersihkan') }"
 goto :eof
 
 rem ============================================================

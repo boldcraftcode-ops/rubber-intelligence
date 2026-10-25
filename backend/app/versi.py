@@ -16,7 +16,11 @@ AKAR = pathlib.Path(__file__).resolve().parents[2]
 
 
 def versi_folder() -> str:
-    """Versi menurut VERSI.txt; VERSI bila berkas itu tidak ada."""
+    """Versi menurut baris pertama VERSI.txt; VERSI bila berkas tidak ada.
+
+    VERSI.txt baris 1 = nomor versi, baris 2 = tanggal. Format ini sengaja
+    sederhana supaya bisa dibaca start-web.bat dengan `set /p` (tanpa for /f).
+    """
     berkas = AKAR / "VERSI.txt"
     try:
         baris = berkas.read_text(encoding="utf-8").strip().splitlines()

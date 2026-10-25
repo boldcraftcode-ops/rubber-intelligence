@@ -15,7 +15,8 @@ import UnggahData from "./pages/UnggahData";
 import GradeHarga from "./pages/GradeHarga";
 import Database from "./pages/Database";
 import Pengguna from "./pages/Pengguna";
-import Login, { LayarGalat } from "./pages/Login";
+import Login, { LayarApiLama, LayarGalat } from "./pages/Login";
+import { VERSI_UI } from "./versi";
 import { ambilJson, kirimJson, pesanGalat, kelasInput, kelasLabel,
          kelasTombol, kelasTombolKecil } from "./bersama";
 import { useBahasa } from "./i18n";
@@ -99,6 +100,14 @@ export default function App() {
   /* ---- cara login yang berlaku di proses API ini ----
      Dipakai untuk membedakan "belum login" (tampilkan form) dari
      "login dimatikan / API bermasalah" (tampilkan penjelasan). */
+  /* ---- versi API yang menjawab (publik, tanpa login) ---- */
+  const health = useQuery({
+    queryKey: ["health"],
+    queryFn: () => ambilJson("/api/health"),
+    retry: false,
+    staleTime: 60_000,
+  });
+
   const caraLogin = useQuery({
     queryKey: ["cara-login"],
     queryFn: () => ambilJson("/api/auth/mode"),
@@ -144,6 +153,15 @@ export default function App() {
   }
   if (saya.error) {
     const detail = pesanGalat(saya.error);
+    const versiApi: string | undefined = health.data?.versi;
+    // API yang menjawab bukan kode di folder ini -> jelaskan, jangan tampilkan
+    // form yang pasti gagal (kode lama bisa menjawab "Cloudflare Access").
+    if (versiApi !== undefined && versiApi !== VERSI_UI) {
+      return <LayarApiLama versiApi={versiApi} versiUi={VERSI_UI} detail={detail} />;
+    }
+    if (versiApi === undefined && /cloudflare access/i.test(detail)) {
+      return <LayarApiLama versiUi={VERSI_UI} detail={detail} />;
+    }
     // Login dimatikan di API (mode pengembangan) -> penjelasan, bukan form.
     if (caraLogin.data?.cara === "tanpa-login") {
       return <LayarGalat detail={detail} ulangi={() => qc.invalidateQueries()} />;

@@ -89,3 +89,64 @@ export default function Login({ onSukses }: { onSukses: () => void }) {
     </div>
   );
 }
+
+/* ---------------------------------------------------------------------------
+   Layar bila API yang menjawab BUKAN kode di folder ini (versi berbeda).
+
+   Penyebab yang paling sering: jendela "OP Margin - API" dari sesi sebelumnya
+   masih hidup dan memegang port 8000, jadi yang menjawab adalah kode lama.
+   Kode lama bisa menjawab dengan pesan yang membingungkan (mis. "Belum login
+   ... Cloudflare Access") — layar ini menggantinya dengan penjelasan dan
+   langkah perbaikan.
+--------------------------------------------------------------------------- */
+export function LayarApiLama({ versiApi, versiUi, detail }:
+  { versiApi?: string; versiUi: string; detail?: string }) {
+  return (
+    <div className="galaxy min-h-screen flex items-center justify-center p-4 text-slate-200">
+      <div className="w-full max-w-lg rounded-2xl bg-[#15143a]/90 border border-amber-400/30 p-8">
+        <p className="text-4xl text-center mb-3">🧩</p>
+        <h1 className="text-lg font-bold text-white text-center">
+          Aplikasi dan servernya beda versi
+        </h1>
+        <p className="mt-3 text-sm text-slate-300 leading-relaxed">
+          Halaman ini versi <b>{versiUi}</b>, tetapi API yang menjawab di
+          port 8000 {versiApi ? <>versi <b>{versiApi}</b></> : "masih versi lama"}.
+          Karena itu login tidak bisa diproses.
+        </p>
+        <div className="mt-4 rounded-md bg-amber-500/10 border border-amber-400/30
+                        px-3 py-2 text-[12px] text-amber-200 leading-relaxed">
+          Biasanya karena jendela <b>OP Margin - API</b> dari sesi sebelumnya
+          masih hidup. Perbaikan:
+          <ol className="list-decimal list-inside mt-1 space-y-1">
+            <li>Tutup jendela <b>OP Margin - API</b> (dan <b>OP Margin - Web</b>).</li>
+            <li>Jalankan <b>start-web.bat</b> lagi — skrip itu menutup paksa
+                port lama lalu memastikan versinya cocok.</li>
+            <li>Muat ulang halaman ini (Ctrl+F5).</li>
+          </ol>
+        </div>
+        <p className="mt-3 text-[11px] text-indigo-300/60 leading-relaxed">
+          Periksa juga <code>http://localhost:8000/api/health</code> — nilai
+          <code>versi</code> harus {versiUi}. Bila tetap beda, jalankan
+          <b> diagnosa.bat</b>, atau <b>perbarui-kode.bat</b> bila folder ini
+          hasil unduhan ZIP.
+        </p>
+        <div className="mt-4 flex gap-2">
+          <button className={`${kelasTombol} flex-1`}
+                  onClick={() => window.location.reload()}>
+            Muat ulang halaman
+          </button>
+          <a className={`${kelasTombol} flex-1 text-center`}
+             href="http://localhost:8000/api/health" target="_blank"
+             rel="noreferrer">
+            Buka /api/health
+          </a>
+        </div>
+        {detail && (
+          <p className="mt-3 text-[11px] text-indigo-300/40 leading-relaxed">
+            Pesan dari server: {detail}
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}

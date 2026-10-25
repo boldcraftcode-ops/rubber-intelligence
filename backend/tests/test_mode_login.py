@@ -144,10 +144,22 @@ def test_health_memuat_identitas_versi(monkeypatch):
     assert isi["kode"] == versi_folder()
 
 
-def test_versi_txt_ada_di_akar_repo():
-    """VERSI.txt dipakai diagnosa.bat untuk folder hasil unduhan ZIP."""
+def test_versi_tiga_sumber_harus_sama():
+    """VERSI.txt, backend/app/versi.py, dan frontend/src/versi.ts harus sama.
+
+    Bila berbeda, aplikasi akan menampilkan layar "beda versi" padahal
+    sebenarnya tidak ada masalah — jadi ketiganya dijaga oleh tes ini.
+    """
+    import re
+
     from app.versi import AKAR, VERSI, versi_folder
 
     berkas = AKAR / "VERSI.txt"
     assert berkas.exists(), "VERSI.txt harus ada di akar repo"
-    assert versi_folder().startswith(VERSI)
+    assert versi_folder() == VERSI
+
+    ts = (AKAR / "frontend" / "src" / "versi.ts").read_text(encoding="utf-8")
+    cocok = re.search(r'VERSI_UI\s*=\s*"([^"]+)"', ts)
+    assert cocok, "frontend/src/versi.ts harus berisi VERSI_UI"
+    assert cocok.group(1) == VERSI, (
+        f"versi UI ({cocok.group(1)}) != versi backend ({VERSI})")
