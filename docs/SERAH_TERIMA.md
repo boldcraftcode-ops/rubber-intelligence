@@ -9,7 +9,7 @@ Kalau Anda hanya punya 15 menit, baca bagian **1 (Status)**, **3 (Cara
 menjalankan)**, dan **7 (Aturan yang tidak boleh dilanggar)**. Selebihnya bisa
 dibaca saat mengerjakan tugas pertama.
 
-Terakhir diperbarui: **2026-10-25**, versi kode **0.8.1**.
+Terakhir diperbarui: **2026-10-25**, versi kode **0.8.2**.
 
 ---
 
@@ -36,7 +36,7 @@ ini setiap hari untuk memutuskan **harga beli maksimum** yang masih aman.
 
 | Hal | Nilai |
 |---|---|
-| Versi kode | **0.8.1** (`VERSI.txt`, `backend/app/versi.py`, `frontend/src/versi.ts`) |
+| Versi kode | **0.8.2** (`VERSI.txt`, `backend/app/versi.py`, `frontend/src/versi.ts`) |
 | Branch kerja | `arena/18670644-rubber-intelligence` |
 | Pull request | **#1 masih terbuka** — https://github.com/boldcraftcode-ops/rubber-intelligence/pull/1 |
 | Branch `main` | belum memuat pekerjaan v0.7.x–v0.8.x |
@@ -229,7 +229,7 @@ tetesan lateks merah + simpul data, dibuat manual sebagai SVG
 **Jangan memakai font/CDN/gambar eksternal.** Aplikasi harus jalan di jaringan
 tertutup pabrik; semua aset lokal.
 
-### Periode tampilan menu Stok (v0.8.1)
+### Periode tampilan menu Stok (v0.8.2)
 
 Menu **Stok** kini punya pemilih periode di bagian paling atas, dengan isi
 bawaan **1 Januari tahun berjalan s.d. bulan berjalan** (dibuka Oktober 2026 →
@@ -254,9 +254,10 @@ Pemilih periode ini dipakai bersama oleh menu Stok dan Intake Analisis
 (`PilihRentangBulan` di `frontend/src/bersama.tsx`), supaya bentuk, warna, dan
 perilakunya tidak bercabang.
 
-### Daftar intake terakhir & batas 12 bulan KPI Reject (v0.8.1)
+### Daftar intake terakhir & batas 12 bulan KPI Reject (v0.8.2)
 
-**Kartu "Daftar intake terakhir"** (paling atas halaman Intake Analisis) menjawab
+**Kartu "Daftar intake terakhir"** (paling bawah halaman Intake Analisis, setelah
+kartu margin) menjawab
 pertanyaan *"kapan intake terakhir masuk?"* tanpa perlu membuka Excel:
 
 | Bagian | Isi |
@@ -513,7 +514,7 @@ cd ../frontend && npm run build                       # bersih
 # 2. naikkan versi di 6 berkas (isi dua variabel, sisanya otomatis)
 cd ..
 LAMA=$(tr -d '\r\n' < VERSI.txt)     # versi yang masih terpakai
-BARU=0.8.1                            # <- tulis versi baru di sini
+BARU=0.8.2                            # <- tulis versi baru di sini
 for f in VERSI.txt backend/app/versi.py frontend/src/versi.ts \
          docs/CARA_MENJALANKAN.md diagnosa.bat hentikan-api.bat; do
   sed -i "s/$LAMA/$BARU/g" "$f"

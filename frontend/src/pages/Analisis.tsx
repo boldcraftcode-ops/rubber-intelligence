@@ -1143,7 +1143,6 @@ export default function Analisis() {
                    url={`/api/analisis/analisa${paramsA.size ? "?" + paramsA.toString() : ""}`}
                    tutup={() => setBukaAnalisa(false)} />
       )}
-      <div className="lg:col-span-2"><KartuIntakeTerakhir /></div>
       <div className="lg:col-span-2"><KartuPenerimaan /></div>
       <KartuTonase />
       <KartuKonsentrasi />
@@ -1151,6 +1150,7 @@ export default function Analisis() {
       <KartuReject />
       <KartuMarginHarian />
       <KartuMarginPer />
+      <div className="lg:col-span-2"><KartuIntakeTerakhir /></div>
       <p className="lg:col-span-2 text-xs text-[#64676C]">
         Kartu tonase/grade/reject memakai data tiket; data tiket historis penuh belum
         diunggah (template hanya berisi contoh), jadi angka akan terisi setelah ekspor

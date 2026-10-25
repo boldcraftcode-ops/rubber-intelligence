@@ -205,7 +205,7 @@ cd backend
 ### Bukti paling cepat: folder ini kode lama atau bukan
 
 Pesan **"Belum login ... Cloudflare Access"** sudah **tidak ada lagi** di kode
-sejak versi 0.8.1. Kalau pesan itu masih muncul, yang menjawab di port 8000
+sejak versi 0.8.2. Kalau pesan itu masih muncul, yang menjawab di port 8000
 pasti kode lama. Cara membuktikannya dari folder aplikasi:
 
 ```powershell
@@ -214,7 +214,7 @@ findstr /c:"Cloudflare Access" backend\app\main.py
 
 - **Ada hasilnya** → folder ini masih kode lama (belum diperbarui). Jalankan
   `perbarui-kode.bat`.
-- **Tidak ada hasil** → folder sudah 0.8.1; berarti ada proses lama di port
+- **Tidak ada hasil** → folder sudah 0.8.2; berarti ada proses lama di port
   8000. Jalankan `start-web.bat` (sekarang menutupnya otomatis).
 
 `diagnosa.bat` juga memeriksa hal ini dan menuliskannya di bagian [0].
@@ -232,7 +232,7 @@ Bacanya:
 
 | Yang tertulis | Artinya | Tindakan |
 |---|---|---|
-| `mode login : lokal (username-sandi)` dan API menjawab `0.8.1` + `lokal` | sudah benar | login dengan akun Anda (Ctrl+F5 dulu) |
+| `mode login : lokal (username-sandi)` dan API menjawab `0.8.2` + `lokal` | sudah benar | login dengan akun Anda (Ctrl+F5 dulu) |
 | API menjawab `mode: nonaktif` | `AUTH_DISABLED=true` masih ada di `.env` | hapus baris itu, lalu jalankan `start-web.bat` lagi |
 | API tidak menjawab / `404` di `/api/auth/mode` | prosesnya **kode lama** | tutup jendela API lama, jalankan `start-web.bat` lagi |
 | bagian [2] tidak ada akun, atau sandi lupa | akun belum dibuat / sandi salah | `python -m app.cli reset-sandi admin` (dari folder `backend`) |
@@ -258,11 +258,11 @@ Perbaikan:
    melaporkan apakah **port 8000 dan 5173 sudah BEBAS**. Kalau ada yang gagal
    ditutup, skrip mengatakannya (tidak diam-diam).
 2. Jalankan **`start-web.bat`** dari folder aplikasi yang benar — folder yang
-   `VERSI.txt`-nya berisi `0.8.1`. Tunggu tulisan **`API siap: kode 0.8.1`**.
+   `VERSI.txt`-nya berisi `0.8.2`. Tunggu tulisan **`API siap: kode 0.8.2`**.
 3. Buka `http://localhost:5173`, tekan **Ctrl+F5**.
 
 Cek cepat kapan saja: `http://localhost:8000/api/health` — nilai `versi` dan
-`kode` harus `0.8.1`, dan `folder` harus menunjuk folder aplikasi Anda.
+`kode` harus `0.8.2`, dan `folder` harus menunjuk folder aplikasi Anda.
 
 ## Cara tercepat membereskan: `perbaiki.bat`
 
@@ -319,7 +319,7 @@ berkas ini dari folder lama ke folder baru **sebelum** menjalankan
 - `backend\.env` — setelan login (opsional; bila tidak ada, dibuat otomatis)
 
 Cara memastikan folder baru benar-benar versi terbaru: lihat **`VERSI.txt`** di
-akar folder (versi terbaru saat dokumen ini ditulis: **0.8.1**), atau buka
+akar folder (versi terbaru saat dokumen ini ditulis: **0.8.2**), atau buka
 `http://localhost:8000/api/health` dan periksa `"versi"` serta `"kode"`.
 
 ## Login berhasil tetapi kembali ke form login lagi
@@ -334,7 +334,7 @@ Sebabnya **cookie sesi tidak terkirim**, dan itu terjadi bila:
 - halaman web dan API berada di **situs berbeda**, atau
 - browser memblokir cookie pihak ketiga.
 
-Sejak versi 0.8.1 hal ini ditangani otomatis: saat login, API mengirim `token`
+Sejak versi 0.8.2 hal ini ditangani otomatis: saat login, API mengirim `token`
 di badan respons; tampilan web menyimpannya dan mengirimnya lewat header
 `Authorization: Bearer` sebagai **cadangan** di samping cookie. Jadi login tetap
 bekerja walau cookie diblokir. Cookie (HttpOnly) tetap cara utama.
