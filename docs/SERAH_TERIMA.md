@@ -9,7 +9,7 @@ Kalau Anda hanya punya 15 menit, baca bagian **1 (Status)**, **3 (Cara
 menjalankan)**, dan **7 (Aturan yang tidak boleh dilanggar)**. Selebihnya bisa
 dibaca saat mengerjakan tugas pertama.
 
-Terakhir diperbarui: **2026-10-25**, versi kode **0.9.3**.
+Terakhir diperbarui: **2026-10-25**, versi kode **0.9.4**.
 
 ---
 
@@ -36,7 +36,7 @@ ini setiap hari untuk memutuskan **harga beli maksimum** yang masih aman.
 
 | Hal | Nilai |
 |---|---|
-| Versi kode | **0.9.3** (`VERSI.txt`, `backend/app/versi.py`, `frontend/src/versi.ts`) |
+| Versi kode | **0.9.4** (`VERSI.txt`, `backend/app/versi.py`, `frontend/src/versi.ts`) |
 | Branch kerja | `arena/18670644-rubber-intelligence` |
 | Pull request | **#1 masih terbuka** — https://github.com/boldcraftcode-ops/rubber-intelligence/pull/1 |
 | Branch `main` | belum memuat pekerjaan v0.7.x–v0.8.x |
@@ -230,7 +230,7 @@ tetesan lateks merah + simpul data, dibuat manual sebagai SVG
 **Jangan memakai font/CDN/gambar eksternal.** Aplikasi harus jalan di jaringan
 tertutup pabrik; semua aset lokal.
 
-### Periode tampilan menu Stok (v0.9.3)
+### Periode tampilan menu Stok (v0.8.0)
 
 Menu **Stok** kini punya pemilih periode di bagian paling atas, dengan isi
 bawaan **1 Januari tahun berjalan s.d. bulan berjalan** (dibuka Oktober 2026 →
@@ -255,7 +255,7 @@ Pemilih periode ini dipakai bersama oleh menu Stok dan Intake Analisis
 (`PilihRentangBulan` di `frontend/src/bersama.tsx`), supaya bentuk, warna, dan
 perilakunya tidak bercabang.
 
-### Daftar intake terakhir & batas 12 bulan KPI Reject (v0.9.3)
+### Daftar intake terakhir & batas 12 bulan KPI Reject (v0.8.1)
 
 **Kartu "Daftar intake terakhir"** (paling bawah halaman Intake Analisis, setelah
 kartu margin) menjawab
@@ -285,7 +285,7 @@ seluruh riwayat 2020–2026:
   `bulan` di luar 0–120 → 422). Filter tahun tetap jalan dan dihitung setelah
   filter itu.
 
-### Master Vendor — CRUD & bulk import (v0.9.3)
+### Master Vendor — CRUD & bulk import (v0.9.0)
 
 Menu baru **Master Vendor** (sidebar, di atas Grade & Harga) merawat daftar
 vendor: daftar + cari + saring status, tambah, ubah, hapus, dan impor massal
@@ -311,7 +311,7 @@ sebagai `aktif` (dibakukan huruf kecil) supaya cocok dengan pilihan di layar.
 CORS kini mengizinkan `PUT` dan `DELETE` — tanpa itu tombol ubah/hapus gagal
 bila tampilan web dan API berada di domain berbeda (deploy tunnel).
 
-### Analisis tren & musiman + normalisasi wilayah (v0.9.3)
+### Analisis tren & musiman + normalisasi wilayah (v0.9.1)
 
 Disematkan di kartu **Penerimaan karet (kg) — biasa vs EUDR** sebagai
 **tombol `📈 Analisis tren & musiman`** yang rata kanan di baris filter —
@@ -432,6 +432,43 @@ rentang per bulan 12,6–13,3% (Okt-26 39,7% karena bulan itu baru 3 tiket,
 jangan dibandingkan langsung). Angka Sumatera Utara berbeda dari contoh di
 permintaan (575.792 kg) karena sekarang ejaan `Sumatera Utara` dan
 `SUMATERA UTARA` sudah digabung.
+
+### Menu samping jadi pohon dua tingkat (v0.9.4)
+
+Menu kiri yang tadinya **16 tombol datar** sekarang **6 grup + 16 halaman**
+(semua halaman lama tetap ada, hanya dikelompokkan):
+
+| Grup (ID / EN) | Isi |
+|---|---|
+| 📊 Analitik / *Analytics* | Margin Performance · Intake Analisis · Stok · Stok vs Margin |
+| 💰 Harga & Perencanaan / *Pricing & Planning* | Aturan Harga · Simulasi · Perencanaan |
+| 🛡️ Pengawasan & Kontrol / *Monitoring & Control* | Alarm · Rekonsiliasi · Kualitas Data |
+| 🗂️ Master Data | Master Vendor · Grade & Harga |
+| 📥 Input Data / *Data Entry* | Input Harian · Unggah Data |
+| ⚙️ Administrasi / *Administration* | Database · Pengguna — **hanya admin**, grup ini
+tidak dirender untuk peran lain |
+
+Cara kerjanya:
+- baris grup **bukan halaman**: diklik = buka/tutup, ditandai chevron `▶` yang
+  berputar dan `aria-expanded` (pembaca layar tahu statusnya);
+- **semua grup terbuka pada pemakaian pertama**, jadi tidak ada menu yang
+  "hilang"; buka/tutup yang dipilih pengguna diingat di
+  `localStorage` (`ri.menu.grup`);
+- pindah halaman — termasuk lewat tombol di Margin Performance — otomatis
+  **membuka grup** tempat halaman itu berada;
+- halaman aktif tetap ditandai garis merah `#FF1313` + latar `#F8F8F8`, ditambah
+  `aria-current="page"` (tidak bergantung warna saja);
+- badge jumlah Alarm tetap menempel di halaman Alarm.
+
+Nama grup ikut dwibahasa ID/EN seperti halaman lain. Urutan halaman di dalam
+grup mengikuti struktur yang diminta pemilik.
+
+Diuji lewat render server (`react-dom/server`): 6 grup tampil dengan urutan dan
+nama di atas; peran **staf** tidak melihat grup Administrasi maupun Database/
+Pengguna; keadaan "tertutup" dari `localStorage` benar-benar menyembunyikan
+anak grup (`aria-expanded="false"`); versi EN keluar sebagai *Analytics,
+Pricing & Planning, Monitoring & Control, Master Data, Data Entry,
+Administration*.
 
 ---
 
@@ -663,7 +700,7 @@ cd ../frontend && npm run build                       # bersih
 # 2. naikkan versi di 6 berkas (isi dua variabel, sisanya otomatis)
 cd ..
 LAMA=$(tr -d '\r\n' < VERSI.txt)     # versi yang masih terpakai
-BARU=0.9.3                            # <- tulis versi baru di sini
+BARU=0.9.4                            # <- tulis versi baru di sini
 for f in VERSI.txt backend/app/versi.py frontend/src/versi.ts \
          docs/CARA_MENJALANKAN.md diagnosa.bat hentikan-api.bat; do
   sed -i "s/$LAMA/$BARU/g" "$f"

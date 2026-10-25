@@ -37,8 +37,8 @@ echo.
 echo ============================================================
 echo  SELESAI. Bila kedua port sudah BEBAS:
 echo    1. Jalankan start-web.bat DARI FOLDER APLIKASI YANG BARU
-echo       (folder yang ada VERSI.txt berisi 0.9.3).
-echo    2. Tunggu tulisan "API siap: kode 0.9.3".
+echo       (folder yang ada VERSI.txt berisi 0.9.4).
+echo    2. Tunggu tulisan "API siap: kode 0.9.4".
 echo    3. Buka http://localhost:5173 dan tekan Ctrl+F5.
 echo ============================================================
 echo.

@@ -6,7 +6,16 @@ import { ReactNode, createContext, useContext, useState } from "react";
 export type Bahasa = "id" | "en";
 
 const KAMUS: Record<string, string> = {
-  // ---- menu samping
+  // ---- menu samping: nama grup (tingkat 1)
+  "Analitik": "Analytics",
+  "Harga & Perencanaan": "Pricing & Planning",
+  "Pengawasan & Kontrol": "Monitoring & Control",
+  "Input Data": "Data Entry",
+  "Administrasi": "Administration",
+  "Menu utama": "Main menu",
+  "Tutup grup": "Collapse group",
+  "Buka grup": "Expand group",
+  // ---- menu samping: halaman (tingkat 2)
   "Margin Performance": "Margin Performance",
   "Analisis": "Analytics",
   "Intake Analisis": "Intake Analytics",

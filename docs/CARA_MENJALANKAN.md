@@ -44,6 +44,24 @@ python -m app.cli rekomendasi --tanggal 31/08/2026
 python -m app.cli rencana 2027           # perencanaan tahun depan (pengganti sheet Y27)
 ```
 
+## 3b. Menu samping sekarang berbentuk pohon (grup)
+
+Menu kiri dikelompokkan supaya tidak perlu membaca 16 baris sekaligus:
+
+- 📊 **Analitik** — Margin Performance, Intake Analisis, Stok, Stok vs Margin
+- 💰 **Harga & Perencanaan** — Aturan Harga, Simulasi, Perencanaan
+- 🛡️ **Pengawasan & Kontrol** — Alarm, Rekonsiliasi, Kualitas Data
+- 🗂️ **Master Data** — Master Vendor, Grade & Harga
+- 📥 **Input Data** — Input Harian, Unggah Data
+- ⚙️ **Administrasi** — Database, Pengguna (hanya terlihat oleh admin)
+
+Klik **baris grup** untuk membuka/menutup isinya (tanda `▶` berputar). Pada
+pemakaian pertama semua grup terbuka, dan pilihan buka/tutup Anda diingat di
+browser. Kalau sebuah halaman dibuka dari tempat lain (mis. tombol di Margin
+Performance), grupnya otomatis terbuka sehingga menu tidak terlihat kosong.
+Di layar Bahasa Inggris nama grupnya: *Analytics, Pricing & Planning,
+Monitoring & Control, Master Data, Data Entry, Administration*.
+
 ## 4. Mengimpor data (tiket, stok, pembelian, dll.)
 
 Cara termudah: tab **Unggah Data** di aplikasi web — tarik & lepas file .xlsx
@@ -276,7 +294,7 @@ Bacanya:
 
 | Yang tertulis | Artinya | Tindakan |
 |---|---|---|
-| `mode login : lokal (username-sandi)` dan API menjawab `0.9.3` + `lokal` | sudah benar | login dengan akun Anda (Ctrl+F5 dulu) |
+| `mode login : lokal (username-sandi)` dan API menjawab `0.9.4` + `lokal` | sudah benar | login dengan akun Anda (Ctrl+F5 dulu) |
 | API menjawab `mode: nonaktif` | `AUTH_DISABLED=true` masih ada di `.env` | hapus baris itu, lalu jalankan `start-web.bat` lagi |
 | API tidak menjawab / `404` di `/api/auth/mode` | prosesnya **kode lama** | tutup jendela API lama, jalankan `start-web.bat` lagi |
 | bagian [2] tidak ada akun, atau sandi lupa | akun belum dibuat / sandi salah | `python -m app.cli reset-sandi admin` (dari folder `backend`) |
@@ -302,11 +320,11 @@ Perbaikan:
    melaporkan apakah **port 8000 dan 5173 sudah BEBAS**. Kalau ada yang gagal
    ditutup, skrip mengatakannya (tidak diam-diam).
 2. Jalankan **`start-web.bat`** dari folder aplikasi yang benar — folder yang
-   `VERSI.txt`-nya berisi `0.9.3`. Tunggu tulisan **`API siap: kode 0.9.3`**.
+   `VERSI.txt`-nya berisi `0.9.4`. Tunggu tulisan **`API siap: kode 0.9.4`**.
 3. Buka `http://localhost:5173`, tekan **Ctrl+F5**.
 
 Cek cepat kapan saja: `http://localhost:8000/api/health` — nilai `versi` dan
-`kode` harus `0.9.3`, dan `folder` harus menunjuk folder aplikasi Anda.
+`kode` harus `0.9.4`, dan `folder` harus menunjuk folder aplikasi Anda.
 
 ## Cara tercepat membereskan: `perbaiki.bat`
 
@@ -363,7 +381,7 @@ berkas ini dari folder lama ke folder baru **sebelum** menjalankan
 - `backend\.env` — setelan login (opsional; bila tidak ada, dibuat otomatis)
 
 Cara memastikan folder baru benar-benar versi terbaru: lihat **`VERSI.txt`** di
-akar folder (versi terbaru saat dokumen ini ditulis: **0.9.3**), atau buka
+akar folder (versi terbaru saat dokumen ini ditulis: **0.9.4**), atau buka
 `http://localhost:8000/api/health` dan periksa `"versi"` serta `"kode"`.
 
 ## Login berhasil tetapi kembali ke form login lagi
