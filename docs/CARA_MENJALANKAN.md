@@ -65,7 +65,7 @@ peringatan (vendor tak dikenal, Dry tidak cocok, wilayah kosong, dst.).
 python -m pytest
 ```
 
-Harus tertulis `168 passed`. Pengujian mencakup semua kasus uji emas:
+Harus tertulis `172 passed`. Pengujian mencakup semua kasus uji emas:
 harian 3 Jan 2026, bulan Jan/Feb 2026, Jan 2023, Mar 2020 (kurs berubah
 tengah bulan), Apr 2022 (koreksi salah ketik Excel), Days/rasio stok,
 dan perencanaan Jan 2027.
@@ -205,6 +205,32 @@ sedang berlaku, buka `http://localhost:8000/api/auth/mode` atau
 
 Catatan: `backend/.env` tidak ikut Git (berisi rahasia). Contoh lengkapnya ada
 di `backend/.env.example`.
+
+### Kalau masih tidak bisa masuk: jalankan `diagnosa.bat`
+
+Klik dua kali **`diagnosa.bat`** di folder aplikasi. Skrip itu mencetak:
+
+1. versi kode yang ada di folder (`git log`) — memastikan `git pull` berhasil;
+2. setelan `.env`, **mode login yang benar-benar dipakai**, jumlah akun dan
+   status aktifnya;
+3. jawaban API yang **sedang berjalan** di port 8000 (versi + mode login).
+
+Bacanya:
+
+| Yang tertulis | Artinya | Tindakan |
+|---|---|---|
+| `mode login : lokal (username-sandi)` dan API menjawab `0.6.1` + `lokal` | sudah benar | login `admin` / `admin123` (Ctrl+F5 dulu) |
+| API menjawab `mode: access` | proses API masih memakai setelan Access | tutup jendela `OP Margin - API`, jalankan `start-web.bat` lagi |
+| API tidak menjawab / `404` di `/api/auth/mode` | prosesnya **kode lama** | tutup jendela API lama, jalankan `start-web.bat` lagi |
+| bagian [2] tidak ada akun, atau sandi lupa | akun belum dibuat / sandi salah | `python -m app.cli reset-sandi admin` (dari folder `backend`) |
+
+Mulai versi ini aplikasi juga **menyembuhkan diri**: bila `AUTH_MODE` tidak
+ditulis di `.env` sedangkan setelan Cloudflare Access ada, dan `APP_ENV` bukan
+produksi, aplikasi otomatis memakai **login lokal** (bukan Access) dan membuat
+`SECRET_KEY` sementara — jadi tidak ada lagi halaman yang terjebak di pesan
+"Belum login ... Cloudflare Access". Skrip `start-web.bat` juga memaksa
+`AUTH_MODE=lokal` untuk jendela API-nya, karena skrip itu memang untuk
+komputer sendiri.
 
 ## Deploy ke internet (Fase 5)
 Panduan lengkap ada di folder `deploy/`: mulai dari `deploy/install-windows.md`

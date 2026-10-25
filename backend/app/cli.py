@@ -8,6 +8,8 @@ Contoh pemakaian (dari folder backend):
   python -m app.cli rekomendasi
   python -m app.cli rencana 2027
   python -m app.cli atur-login-lokal
+  python -m app.cli diagnosa
+  python -m app.cli reset-sandi admin
 """
 from __future__ import annotations
 
@@ -51,6 +53,15 @@ def main() -> None:
                    help="Setel .env ke login lokal (username+sandi) "
                         "untuk pemakaian di komputer sendiri")
 
+    sub.add_parser("diagnosa",
+                   help="Periksa setelan login, database, dan akun pengguna")
+
+    p = sub.add_parser("reset-sandi",
+                       help="Setel ulang sandi seorang pengguna")
+    p.add_argument("username")
+    p.add_argument("--sandi", default=None,
+                   help="Sandi baru; bila kosong dibuat acak")
+
     p = sub.add_parser("import-template", help="Impor template + data awal (.xlsx)")
     p.add_argument("file")
     p.add_argument("--pengunggah", default="?")
@@ -86,6 +97,10 @@ def main() -> None:
               "sandi awal 'admin123'.")
         print("Jalankan ulang API (tutup jendela 'OP Margin - API', lalu "
               "start-web.bat) agar setelan ini terpakai.")
+        return
+
+    if args.perintah == "diagnosa":
+        _cetak_diagnosa()
         return
 
     engine = buat_engine()
@@ -148,6 +163,9 @@ def main() -> None:
                     print(f"  Harga aktual terakhir ({h.tanggal_harga_aktual.strftime('%d/%m/%Y')}): "
                           f"{fmt_id(h.harga_beli_aktual_terakhir_usc)} US¢/kg")
 
+        elif args.perintah == "reset-sandi":
+            _reset_sandi(args.username, args.sandi)
+
         elif args.perintah == "rencana":
             hasil = hitung_rencana(session, args.tahun_target)
             print(f"\nPerencanaan OP Margin {args.tahun_target} (US¢/kg)")
@@ -158,6 +176,107 @@ def main() -> None:
                 print(f"{NAMA_BULAN[r.bulan]:<6}{fmt_id(r.rata_rata_dasar):>10}"
                       f"{fmt_id(r.penyesuaian_manual, 2):>13}{fmt_id(r.effort, 2):>9}"
                       f"{fmt_id(r.net_margin):>12}  {r.tahun_dipakai}{tanda}")
+
+
+
+# ----------------------------------------------------------------------------
+# Alat diagnosa & reset sandi
+# ----------------------------------------------------------------------------
+def _cetak_diagnosa() -> None:
+    """Ringkas semua hal yang menentukan "bisa login atau tidak".
+
+    Dipakai ketika muncul "Belum login ... Cloudflare Access" atau sandi
+    ditolak: hasilnya bisa langsung dibaca tanpa membuka kode.
+    """
+    import os
+
+    from .auth import KonfigurasiAuth, info_mode
+    from .setup_env import JALUR_ENV_BAKU, _nilai
+
+    print("=" * 62)
+    print(" DIAGNOSA LOGIN OP MARGIN")
+    print("=" * 62)
+
+    # ---- berkas .env
+    if JALUR_ENV_BAKU.exists():
+        baris = JALUR_ENV_BAKU.read_text(encoding="utf-8").splitlines()
+        print(f".env            : ada ({JALUR_ENV_BAKU})")
+        for kunci in ("APP_ENV", "AUTH_MODE", "AUTH_DISABLED",
+                      "CF_ACCESS_AUD", "DATABASE_URL"):
+            nilai = _nilai(baris, kunci)
+            if kunci == "CF_ACCESS_AUD" and nilai:
+                nilai = "(terisi - setelan Cloudflare Access)"
+            print(f"  {kunci:<14}: {nilai if nilai is not None else '(tidak ada)'}")
+        secret = _nilai(baris, "SECRET_KEY") or ""
+        print(f"  {'SECRET_KEY':<14}: "
+              + (f"ada ({len(secret)} karakter)" if secret
+                 else "(tidak ada - dibuat otomatis saat API start)"))
+    else:
+        print(f".env            : TIDAK ADA ({JALUR_ENV_BAKU})")
+        print("  -> jalankan: python -m app.cli atur-login-lokal")
+
+    # ---- mode yang benar-benar dipakai proses baru
+    cfg = KonfigurasiAuth()
+    info = info_mode(cfg)
+    print(f"mode login      : {info['mode']} ({info['cara']})"
+          + ("  [otomatis]" if info.get("mode_otomatis") else ""))
+    print(f"APP_ENV         : {cfg.app_env}")
+
+    # ---- database + akun
+    try:
+        engine = buat_engine()
+        Session = buat_session_factory(engine)
+        from .models import Pengguna
+        with Session() as session:
+            daftar = list(session.scalars(select(Pengguna)))
+            print(f"jumlah pengguna : {len(daftar)}")
+            for u in daftar:
+                print(f"  - {u.username:<12} peran={u.peran:<8} "
+                      f"aktif={'ya' if u.aktif else 'TIDAK'}")
+            if not daftar and info["mode"] == "lokal":
+                print("  -> belum ada akun. Jalankan ulang API: akun 'admin' "
+                      "dengan sandi ADMIN_SANDI_AWAL (bawaan admin123) "
+                      "dibuat otomatis.")
+    except Exception as e:  # database rusak / belum dibuat
+        print(f"database        : GAGAL dibaca ({e})")
+        print("  -> jalankan: python -m app.cli init-db")
+
+    print("-" * 62)
+    if info["mode"] == "access":
+        print("SIMPULAN: aplikasi memakai Cloudflare Access. Mode ini TIDAK")
+        print("bisa dipakai di localhost. Perbaiki dengan:")
+        print("  python -m app.cli atur-login-lokal")
+    elif info["mode"] == "lokal":
+        print("SIMPULAN: login lokal (username + sandi) — cocok untuk localhost.")
+        print("Bila sandi lupa:  python -m app.cli reset-sandi admin")
+    else:
+        print("SIMPULAN: login nonaktif; aplikasi terbuka tanpa masuk.")
+    print("Setelah mengubah setelan: tutup jendela 'OP Margin - API',")
+    print("jalankan start-web.bat lagi, lalu Ctrl+F5 di browser.")
+
+
+def _reset_sandi(username: str, sandi: str | None) -> None:
+    import secrets as _secrets
+
+    from .auth_lokal import hash_sandi
+    from .models import Pengguna
+
+    engine = buat_engine()
+    Session = buat_session_factory(engine)
+    with Session() as session:
+        p = session.get(Pengguna, username.strip().lower())
+        if p is None:
+            print(f"GAGAL: pengguna '{username}' tidak ada. Yang terdaftar:")
+            for u in session.scalars(select(Pengguna)):
+                print("  -", u.username)
+            return
+        baru = sandi or _secrets.token_urlsafe(9)
+        p.hash_sandi = hash_sandi(baru)
+        p.aktif = True
+        session.commit()
+        print(f"Sandi '{p.username}' sudah disetel ulang dan akun diaktifkan.")
+        print(f"  sandi baru : {baru}")
+        print("Segera ganti setelah masuk (menu kanan atas > Ganti sandi).")
 
 
 if __name__ == "__main__":

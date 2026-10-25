@@ -146,7 +146,11 @@ export default function App() {
   if (saya.error) {
     const detail = pesanGalat(saya.error);
     const cara = caraLogin.data?.cara;
-    if (cara === "cloudflare-access") {
+    // API versi lama belum punya /api/auth/mode -> caraLogin.error, tetapi
+    // penolakannya menyebut Cloudflare Access. Tetap tampilkan panduan,
+    // jangan form username+sandi yang tidak akan pernah berhasil.
+    const sebutAccess = /cloudflare access/i.test(detail);
+    if (cara === "cloudflare-access" || (cara === undefined && sebutAccess)) {
       return <LayarAccess detail={detail} produksi={caraLogin.data?.produksi} />;
     }
     if (cara === "tanpa-login") {

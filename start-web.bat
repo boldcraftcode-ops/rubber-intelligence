@@ -174,6 +174,11 @@ rem  5. Jalankan API + web di jendela terpisah
 rem ------------------------------------------------------------
 echo.
 echo Menjalankan API di jendela "OP Margin - API" (dengan auto-reload).
+rem  AUTH_MODE=lokal dipaksa untuk jendela ini: skrip ini selalu dipakai di
+rem  komputer sendiri, tempat Cloudflare Access tidak mungkin bekerja.
+rem  Variabel lingkungan menang atas isi backend\.env (load_dotenv tidak
+rem  menimpa), jadi login lokal tetap berlaku walau .env masih setelan Access.
+set "AUTH_MODE=lokal"
 start "OP Margin - API" /D "%~dp0backend" cmd /k ".venv\Scripts\python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload"
 echo Menjalankan tampilan web di jendela "OP Margin - Web".
 start "OP Margin - Web" /D "%~dp0frontend" cmd /k "npm run dev"

@@ -38,12 +38,48 @@ JALUR_BEBAS = ("/api/health", "/api/sehat", "/api/auth/mode",
 
 class KonfigurasiAuth:
     def __init__(self) -> None:
+        import secrets
+        import sys
+
         self.app_env = os.environ.get("APP_ENV", "development").strip().lower()
         self.auth_disabled = os.environ.get("AUTH_DISABLED", "").strip().lower() == "true"
         # Mode login: "lokal" (form username+sandi, data di tabel pengguna)
         # atau "access" (Cloudflare Access).
-        self.mode = os.environ.get("AUTH_MODE", "access").strip().lower()
+        #
+        # PENTING: bila AUTH_MODE tidak ditulis di .env, mode ditentukan dari
+        # lingkungan. Di produksi wajib Access. Di luar produksi dipakai LOKAL,
+        # karena Access tidak mungkin bekerja di localhost — inilah yang
+        # sebelumnya membuat aplikasi di komputer sendiri menampilkan
+        # "Belum login ... Cloudflare Access" tanpa jalan keluar.
+        mode_mentah = os.environ.get("AUTH_MODE", "").strip().lower()
+        if mode_mentah:
+            self.mode = mode_mentah
+            self.mode_otomatis = False
+        elif self.produksi:
+            self.mode = "access"
+            self.mode_otomatis = False
+        else:
+            self.mode = "lokal"
+            self.mode_otomatis = True
+            if os.environ.get("CF_ACCESS_AUD", "").strip():
+                print("CATATAN: AUTH_MODE tidak diisi di backend/.env, sedangkan "
+                      "setelan Cloudflare Access ada. Karena APP_ENV bukan "
+                      "produksi (localhost), aplikasi memakai LOGIN LOKAL "
+                      "(username+sandi). Access hanya bekerja lewat domain "
+                      "Cloudflare.")
         self.secret = os.environ.get("SECRET_KEY", "").strip()
+        # Login lokal menandatangani sesi dengan SECRET_KEY. Kunci kosong
+        # membuat proses login gagal (500), jadi di luar produksi kunci acak
+        # dibuat otomatis — sesi akan berakhir saat API dijalankan ulang.
+        self.secret_otomatis = False
+        if len(self.secret) < 32 and not self.produksi:
+            self.secret = secrets.token_hex(32)
+            self.secret_otomatis = True
+            sys.stderr.write(
+                "CATATAN: SECRET_KEY belum diisi (minimal 32 karakter). "
+                "Kunci sementara dibuat otomatis agar login bisa dipakai; "
+                "tulis SECRET_KEY di backend/.env agar sesi tidak berakhir "
+                "saat API dijalankan ulang.\n")
         self.team_domain = os.environ.get("CF_ACCESS_TEAM_DOMAIN", "").strip()
         self.aud = os.environ.get("CF_ACCESS_AUD", "").strip()
         self.certs_url = os.environ.get("CF_ACCESS_CERTS_URL", "").strip() or (
@@ -99,7 +135,8 @@ def info_mode(cfg: "KonfigurasiAuth") -> dict:
         mode, cara = "nonaktif", "tanpa-login"
     return {"mode": mode, "cara": cara,
             "perlu_login": mode != "nonaktif",
-            "produksi": cfg.produksi}
+            "produksi": cfg.produksi,
+            "mode_otomatis": getattr(cfg, "mode_otomatis", False)}
 
 
 class VerifikatorAccess:

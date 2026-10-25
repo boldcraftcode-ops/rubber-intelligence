@@ -83,8 +83,9 @@ def test_mode_tanpa_auth(monkeypatch):
     monkeypatch.setenv("AUTH_DISABLED", "true")
     r = _klien().get("/api/auth/mode")
     assert r.status_code == 200
-    assert r.json() == {"mode": "nonaktif", "cara": "tanpa-login",
-                        "perlu_login": False, "produksi": False}
+    isi = r.json()
+    assert isi["mode"] == "nonaktif" and isi["cara"] == "tanpa-login"
+    assert isi["perlu_login"] is False and isi["produksi"] is False
 
 
 def test_health_melaporkan_cara_login(mode_access):
@@ -166,3 +167,51 @@ def test_atur_login_lokal_mematikan_auth_disabled(tmp_path):
     baris = env.read_text().splitlines()
     assert _nilai(baris, "AUTH_DISABLED") is None
     assert _nilai(baris, "AUTH_MODE") == "lokal"
+
+
+# -------------------------------------- mode otomatis saat AUTH_MODE kosong
+def test_akses_di_luar_produksi_otomatis_jadi_lokal(monkeypatch):
+    """Kasus nyata: .env lama berisi setelan Access TANPA AUTH_MODE.
+
+    Di luar produksi (localhost) aplikasi tidak boleh terjebak di mode Access
+    yang mustahil dipakai — mode otomatis jadi lokal.
+    """
+    monkeypatch.setenv("APP_ENV", "development")
+    monkeypatch.delenv("AUTH_MODE", raising=False)
+    monkeypatch.delenv("AUTH_DISABLED", raising=False)
+    monkeypatch.setenv("CF_ACCESS_AUD", AUD)
+    monkeypatch.setenv("SECRET_KEY", "k" * 40)
+    isi = _klien().get("/api/auth/mode").json()
+    assert isi["cara"] == "username-sandi"
+    assert isi["mode_otomatis"] is True
+
+
+def test_produksi_tanpa_auth_mode_tetap_access(monkeypatch):
+    """Produksi tidak boleh ikut-ikutan jadi lokal (gagal-tertutup)."""
+    from app.auth import KonfigurasiAuth
+    monkeypatch.setenv("APP_ENV", "produksi")
+    monkeypatch.delenv("AUTH_MODE", raising=False)
+    monkeypatch.delenv("AUTH_DISABLED", raising=False)
+    monkeypatch.setenv("CF_ACCESS_AUD", AUD)
+    monkeypatch.setenv("CF_ACCESS_TEAM_DOMAIN", "contoh.cloudflareaccess.com")
+    assert KonfigurasiAuth().mode == "access"
+
+
+def test_login_lokal_tetap_bisa_tanpa_secret_key(mode_lokal, monkeypatch):
+    """SECRET_KEY kosong dulu membuat login gagal 500; sekarang kunci
+    sementara dibuat otomatis sehingga login tetap bisa dipakai."""
+    monkeypatch.delenv("SECRET_KEY", raising=False)
+    k = _klien()
+    r = k.post("/api/auth/login", json={"username": "admin",
+                                        "sandi": "admin123"})
+    assert r.status_code == 200, r.text
+    assert k.get("/api/auth/saya").json()["username"] == "admin"
+
+
+def test_diagnosa_dan_tanya_api_bisa_dijalankan():
+    """Alat bantu pengguna tidak boleh error saat dijalankan."""
+    from app import tanya_api
+    from app.cli import _cetak_diagnosa
+
+    _cetak_diagnosa()          # hanya mencetak; tidak boleh melempar
+    assert callable(tanya_api.main)

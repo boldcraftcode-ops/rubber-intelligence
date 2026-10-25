@@ -132,7 +132,20 @@ export default function Login({ onSukses }: { onSukses: () => void }) {
                autoComplete="current-password" placeholder="••••••••"
                onChange={(e) => setSandi(e.target.value)} />
 
-        {galat && (
+        {galat && /cloudflare access/i.test(galat) ? (
+          <div className="mt-4 rounded-md bg-amber-500/10 border border-amber-400/30
+                          px-3 py-2 text-[12px] text-amber-200 leading-relaxed">
+            <b>Proses API yang berjalan memakai login Cloudflare Access.</b>
+            <br />
+            Access tidak bisa dipakai di localhost, jadi form ini tidak akan
+            pernah berhasil. Tutup jendela <code>OP Margin - API</code>, lalu
+            jalankan ulang <code>start-web.bat</code> (skrip menawarkan
+            perbaikannya), atau dari folder <code>backend</code> jalankan:
+            <br />
+            <code className="mt-1 inline-block">.venv\Scripts\python -m app.cli atur-login-lokal</code>
+            <p className="mt-1 text-amber-300/70">Pesan server: {galat}</p>
+          </div>
+        ) : galat && (
           <p className="mt-4 rounded-md bg-red-500/10 border border-red-400/30
                         px-3 py-2 text-sm text-red-300">{galat}</p>
         )}
