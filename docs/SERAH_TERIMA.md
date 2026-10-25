@@ -9,7 +9,7 @@ Kalau Anda hanya punya 15 menit, baca bagian **1 (Status)**, **3 (Cara
 menjalankan)**, dan **7 (Aturan yang tidak boleh dilanggar)**. Selebihnya bisa
 dibaca saat mengerjakan tugas pertama.
 
-Terakhir diperbarui: **2026-10-26**, versi kode **0.9.8**.
+Terakhir diperbarui: **2026-10-26**, versi kode **0.9.9**.
 
 ---
 
@@ -36,11 +36,11 @@ ini setiap hari untuk memutuskan **harga beli maksimum** yang masih aman.
 
 | Hal | Nilai |
 |---|---|
-| Versi kode | **0.9.8** (`VERSI.txt`, `backend/app/versi.py`, `frontend/src/versi.ts`) |
+| Versi kode | **0.9.9** (`VERSI.txt`, `backend/app/versi.py`, `frontend/src/versi.ts`) |
 | Branch kerja | `arena/18670644-rubber-intelligence` |
 | Pull request | **#1 masih terbuka** — https://github.com/boldcraftcode-ops/rubber-intelligence/pull/1 |
 | Branch `main` | belum memuat pekerjaan v0.7.x–v0.8.x |
-| Unit test | **357 lulus** (`cd backend && .venv/bin/python -m pytest -q`) |
+| Unit test | **376 lulus** (`cd backend && .venv/bin/python -m pytest -q`) |
 | Build frontend | bersih, ±3,3 detik (`cd frontend && npm run build`) |
 | Database | SQLite `backend/opmargin.db` (tidak masuk Git) |
 
@@ -73,6 +73,8 @@ Berkas `.bat` lain yang ada dan fungsinya:
 | `perbarui-kode.bat` | untuk folder hasil unduhan ZIP (bukan `git clone`) |
 | `diagnosa.bat` | memeriksa versi folder, proses di port, mode login |
 | `start.bat` | skrip uji fase 1: siapkan venv + database, jalankan tes, cetak contoh hasil di terminal (tidak menyalakan web) |
+| `ambil-bahan-offline.bat` | **di PC berinternet**: unduh wheel Python + bangun tampilan web ke `bahan-offline\` untuk PC tanpa internet |
+| `start-offline.bat` | **di PC tanpa internet**: pasang dari `bahan-offline\`, lalu jalankan satu alamat `http://localhost:8000` (tanpa Node.js) |
 
 ### 3b. Untuk pengembang (Linux / sandbox / CI)
 
@@ -102,7 +104,7 @@ Login awal: **`admin` / `admin123`** (dari `ADMIN_SANDI_AWAL` di
 
 ```bash
 cd backend
-.venv/bin/python -m pytest -q                                  # 357 tes
+.venv/bin/python -m pytest -q                                  # 376 tes
 .venv/bin/python -m app.cli diagnosa                            # laporan kesehatan
 .venv/bin/python -m app.cli reset-sandi admin                   # lupa sandi
 .venv/bin/python -m app.cli atur-login-lokal                    # pastikan mode login benar
@@ -154,7 +156,7 @@ rubber-intelligence/
 │   │       ├── kualitas.py     deteksi data terlambat/aneh
 │   │       └── alarm.py        evaluasi alarm + audit
 │   ├── semantic/metrics.yaml   definisi metrik (rujukan, dibaca fase API)
-│   ├── tests/                  357 tes, termasuk kasus emas Excel lama
+│   ├── tests/                  376 tes, termasuk kasus emas Excel lama
 │   ├── unggahan/               berkas Excel yang diunggah lewat web
 │   └── .env.example            contoh setelan (JANGAN commit .env asli)
 └── frontend/
@@ -658,6 +660,54 @@ dipertahankan untuk mengunduh mismatch sampai kedaluwarsa.
 Health `/api/health` kini juga menyebut `unggah-pratinjau` dan
 `unggah-mismatch-xlsx`, sehingga backend versi lama bisa dikenali.
 
+### Pemasangan di PC tanpa internet (v0.9.9)
+
+**Masalah.** Aplikasi hanya butuh internet sekali (saat memasang pustaka),
+tetapi `start-web.bat` selalu memanggil `pip install` dan `npm run dev` —
+keduanya gagal di PC pabrik yang tidak tersambung internet. Pengguna juga
+tidak punya daftar bahan yang harus dibawa.
+
+**Dua skrip, dua PC.**
+1. `ambil-bahan-offline.bat` (PC berinternet) — mengunduh semua pustaka
+   Python sebagai *wheel* ke `bahan-offline\wheelhouse`
+   (`pip download --only-binary=:all: --platform win_amd64 --python-version
+   <versi>`), memasang + membangun tampilan web (`npm install`, `npm run
+   build`) lalu menyalin hasilnya ke `bahan-offline\dist`, dan menulis
+   `bahan-offline\BACA-SAYA.txt` (petunjuk + versi wheel + alamat
+   python.org). Versi Python boleh dipaksa lewat argumen pertama
+   (`ambil-bahan-offline.bat 3.11`) supaya wheel cocok dengan PC tujuan.
+2. `start-offline.bat` (PC tanpa internet) — memeriksa/menyiapkan enam hal
+   berurutan: `backend\.venv`, pustaka (`pip install --no-index --find-links
+   bahan-offline\wheelhouse -r requirements.txt`), `backend\.env`
+   (`app.cli atur-login-lokal`), database + data awal (`init-db`,
+   `import-template`), tampilan web (`bahan-offline\dist` → `frontend\dist`),
+   lalu menjalankan API.
+
+**Satu alamat, tanpa Node.** Skrip menyalakan uvicorn dengan
+`SAJIKAN_WEB=true` dan `SAJIKAN_WEB_FOLDER=<folder aplikasi>\frontend\dist`,
+sehingga API sekaligus menyajikan tampilan web di
+`http://localhost:8000`. Vite/port 5173 tidak dipakai sama sekali, dan
+`--reload` dimatikan (tidak butuh Node maupun `watchfiles`).
+
+**Penanda berkas** (pola yang sama dengan `tanpa-login.txt`):
+- `jaringan-lan.txt` → host `0.0.0.0`, bisa dibuka dari komputer lain;
+- `tanpa-login.txt` → `AUTH_DISABLED=true` sementara.
+
+Kedua skrip tetap mengikuti aturan `.bat` proyek: **ASCII, CRLF, tanpa blok
+`( ... )` berlapis, tanpa `for /f`**, membaca versi dari `VERSI.txt`, dan
+menutup proses lama di port 8000 sebelum menyalakan API (lewat
+`call :bersihkan_port`, sama seperti `start-web.bat`). Berkas baru
+`backend/tests/test_skrip_offline.py` menjaga semua aturan itu sekaligus
+memastikan `--no-index`/`--find-links`/`SAJIKAN_WEB` tidak hilang saat ada
+perubahan lain.
+
+Catatan penting untuk pengguna: wheel terikat versi Python dan platform
+(`win_amd64`), jadi versi Python di PC tujuan harus sama; kalau berbeda,
+bahan dibuat ulang. `frontend/dist` tidak masuk Git (`.gitignore`), sehingga
+harus ikut dibawa lewat folder `bahan-offline`. Memperbarui aplikasi di PC
+luring = ulangi Tahap 1 di PC berinternet, lalu salin kode + `bahan-offline`
+lagi (jangan `git pull` di PC luring).
+
 ---
 
 ## 6b. Deploy lewat Cloudflare Tunnel (masih hidup, penting)
@@ -790,7 +840,7 @@ Semua ini lahir dari kegagalan nyata, bukan kehati-hatian berlebihan.
    kode salah. Perbaikannya: `hentikan-api.bat` lalu `start-web.bat`.
 6. **Selalu jalankan `npm run build` (bukan hanya `vite build`)** — skrip npm
    memakai `tsc -b`, jadi error tipe ikut tertangkap.
-7. **357 tes harus tetap lulus.** Tes "kasus emas"
+7. **376 tes harus tetap lulus.** Tes "kasus emas"
    (`tests/test_data_awal.py`, `tests/test_bridge_doc.py`) mencocokkan hasil
    dengan Excel lama sampai beberapa desimal. Kalau tes emas gagal, hampir pasti rumus
    yang diubah, bukan tesnya.
@@ -882,13 +932,13 @@ pernah membuat label dan ikon tertukar; ganti blok utuhnya.
 ### Rilis versi baru (prosedur yang sudah terbukti)
 ```bash
 # 1. pastikan bersih
-cd backend && .venv/bin/python -m pytest -q          # 357 passed
+cd backend && .venv/bin/python -m pytest -q          # 376 passed
 cd ../frontend && npm run build                       # bersih
 
 # 2. naikkan versi di 6 berkas (isi dua variabel, sisanya otomatis)
 cd ..
 LAMA=$(tr -d '\r\n' < VERSI.txt)     # versi yang masih terpakai
-BARU=0.9.8                            # <- tulis versi baru di sini
+BARU=0.9.9                            # <- tulis versi baru di sini
 for f in VERSI.txt backend/app/versi.py frontend/src/versi.ts \
          docs/CARA_MENJALANKAN.md diagnosa.bat hentikan-api.bat; do
   sed -i "s/$LAMA/$BARU/g" "$f"

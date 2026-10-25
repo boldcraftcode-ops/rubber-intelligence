@@ -23,3 +23,6 @@ Thumbs.db
 
 # Penanda sementara: mematikan form login (JANGAN ikut di-commit)
 tanpa-login.txt
+
+# Bahan pemasangan luring (wheel + dist) yang dibuat ambil-bahan-offline.bat
+bahan-offline/

@@ -163,7 +163,85 @@ Pratinjau berlaku **60 menit**. Kalau kedaluwarsa, cukup unggah ulang filenya
 (tidak ada data yang perlu dibereskan). Mengonfirmasi pratinjau yang sama dua
 kali ditolak — data tidak akan tergandakan.
 
-Alternatif lewat terminal (langsung impor, tanpa pratinjau):
+## 3g. Memasang di PC tanpa internet (luring)
+
+Aplikasi **tidak perlu internet saat dipakai** (tidak ada CDN, font luar, atau
+telemetri). Internet hanya dibutuhkan sekali untuk mengunduh pustaka. Karena
+itu pemasangan di PC luring dilakukan dua tahap dengan dua skrip.
+
+### Tahap 1 — di PC yang ADA internet (sekali saja)
+
+1. Pasang **Python 3.11 (64-bit)** dan **Node.js LTS** di PC ini.
+2. Klik dua kali **`ambil-bahan-offline.bat`**. Skrip ini:
+   - mengunduh semua pustaka Python sebagai berkas *wheel* ke
+     `bahan-offline\wheelhouse` untuk Windows 64-bit dan versi Python yang
+     dipakai PC itu (boleh dipaksa: `ambil-bahan-offline.bat 3.11`);
+   - memasang pustaka tampilan lalu membangunnya (`npm install`,
+     `npm run build`), hasilnya disalin ke `bahan-offline\dist`;
+   - menulis `bahan-offline\BACA-SAYA.txt` dan menampilkan ukuran folder.
+3. Unduh juga installer **Python 3.11 “Windows installer (64-bit)”** dari
+   python.org — yang dibawa berkas `.exe` ini, **bukan** *web installer*.
+4. ZIP seluruh folder aplikasi (termasuk `bahan-offline`), lalu salin ke PC
+   tujuan lewat USB atau jaringan lokal.
+
+### Tahap 2 — di PC TANPA internet
+
+1. Pasang Python dari berkas `.exe` tadi; centang **“Add python.exe to PATH”**.
+   Versinya harus **sama** dengan yang dipakai saat membuat wheel.
+2. Klik dua kali **`start-offline.bat`**. Skrip ini menyiapkan sendiri: ruang
+   kerja Python, pustaka dari `bahan-offline\wheelhouse` (`pip install
+   --no-index`), `backend\.env`, database + data awal, lalu menyalin
+   `bahan-offline\dist` ke `frontend\dist`.
+3. API dijalankan dengan `SAJIKAN_WEB=true`, jadi **satu alamat saja**:
+   `http://localhost:8000` — tanpa Node.js, tanpa port 5173.
+4. **Node.js tidak perlu dipasang** di PC ini.
+
+### Yang perlu diketahui
+
+| Hal | Cara |
+|---|---|
+| Bisa dibuka dari komputer lain di jaringan | Buat berkas kosong bernama `jaringan-lan.txt` di folder aplikasi, lalu jalankan ulang. Alamatnya `http://ALAMAT-IP-PC:8000`; izinkan port 8000 di Windows Firewall. |
+| Login dimatikan sementara | Buat berkas `tanpa-login.txt` (sama seperti mode biasa); hapus untuk mengaktifkan lagi. |
+| Memperbarui aplikasi | Ulangi Tahap 1 di PC berinternet, lalu salin lagi kode terbaru **beserta** `bahan-offline`. Jangan pakai `git pull` / `perbarui-kode.bat` di PC luring. |
+| Data & cadangan | Sama seperti biasa: `backend\opmargin.db` (SQLite) + folder `unggahan\`. Tidak berubah karena mode luring. |
+| Mengganti versi Python | Wheel terikat versi Python. Bila PC luring memakai versi lain, buat ulang bahan dengan `ambil-bahan-offline.bat 3.12` (misalnya), lalu salin lagi. |
+
+### Kalau ada yang gagal
+
+| Pesan | Artinya | Perbaikan |
+|---|---|---|
+| `folder bahan-offline\wheelhouse tidak ada` | Folder bahan belum ikut tersalin | Salin seluruh folder aplikasi termasuk `bahan-offline` |
+| `GAGAL memasang pustaka dari bahan-offline\wheelhouse` | Versi Python beda dengan wheel | Buat ulang bahan dengan versi Python yang sama |
+| `GAGAL: tampilan web belum ada` | `bahan-offline\dist` tidak ada | Jalankan `ambil-bahan-offline.bat` di PC berinternet |
+| `PERINGATAN: API belum menjawab` | Port 8000 dipakai program lain, atau API error | Baca jendela “OP Margin - API”; lihat juga `diagnosa.bat` |
+| `PERINGATAN: API menjawab, tetapi versinya bukan ...` | Proses lain menjawab di port 8000 | Tutup program itu, jalankan `start-offline.bat` lagi |
+
+### Bila ingin melakukannya manual (tanpa skrip)
+
+```powershell
+# di PC berinternet
+cd backend
+python -m venv .venv
+.venv\Scripts\pip install -r requirements.txt
+.venv\Scripts\pip download -r requirements.txt -d ..\bahan-offline\wheelhouse --only-binary=:all: --platform win_amd64 --python-version 3.11
+cd ..\frontend
+npm install
+npm run build
+
+# di PC tanpa internet (setelah Python dan wheel disalin)
+cd backend
+python -m venv .venv
+.venv\Scripts\pip install --no-index --find-links ..\bahan-offline\wheelhouse -r requirements.txt
+.venv\Scripts\python -m app.cli init-db
+.venv\Scripts\python -m app.cli import-template "..\sample_data\Template_dan_Data_Awal_OP_Margin_v3.xlsx"
+set SAJIKAN_WEB=true
+.venv\Scripts\python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
+```
+
+## 4. Mengimpor data (tiket, stok, pembelian, dll.)
+
+Selain lewat tab **Unggah Data**, impor bisa dijalankan dari terminal
+(langsung masuk database, tanpa pratinjau):
 
 ```powershell
 python -m app.cli import-tiket "C:\folder\Master Data 2026.xlsx" --pengunggah nama_anda
@@ -223,7 +301,7 @@ kode akan membuat tonase historis kehilangan pemiliknya di laporan.
 python -m pytest
 ```
 
-Harus tertulis `357 passed`. Pengujian mencakup semua kasus uji emas:
+Harus tertulis `376 passed`. Pengujian mencakup semua kasus uji emas:
 harian 3 Jan 2026, bulan Jan/Feb 2026, Jan 2023, Mar 2020 (kurs berubah
 tengah bulan), Apr 2022 (koreksi salah ketik Excel), Days/rasio stok,
 dan perencanaan Jan 2027.
@@ -390,7 +468,7 @@ Bacanya:
 
 | Yang tertulis | Artinya | Tindakan |
 |---|---|---|
-| `mode login : lokal (username-sandi)` dan API menjawab `0.9.8` + `lokal` | sudah benar | login dengan akun Anda (Ctrl+F5 dulu) |
+| `mode login : lokal (username-sandi)` dan API menjawab `0.9.9` + `lokal` | sudah benar | login dengan akun Anda (Ctrl+F5 dulu) |
 | API menjawab `mode: nonaktif` | `AUTH_DISABLED=true` masih ada di `.env` | hapus baris itu, lalu jalankan `start-web.bat` lagi |
 | API tidak menjawab / `404` di `/api/auth/mode` | prosesnya **kode lama** | tutup jendela API lama, jalankan `start-web.bat` lagi |
 | bagian [2] tidak ada akun, atau sandi lupa | akun belum dibuat / sandi salah | `python -m app.cli reset-sandi admin` (dari folder `backend`) |
@@ -416,11 +494,11 @@ Perbaikan:
    melaporkan apakah **port 8000 dan 5173 sudah BEBAS**. Kalau ada yang gagal
    ditutup, skrip mengatakannya (tidak diam-diam).
 2. Jalankan **`start-web.bat`** dari folder aplikasi yang benar — folder yang
-   `VERSI.txt`-nya berisi `0.9.8`. Tunggu tulisan **`API siap: kode 0.9.8`**.
+   `VERSI.txt`-nya berisi `0.9.9`. Tunggu tulisan **`API siap: kode 0.9.9`**.
 3. Buka `http://localhost:5173`, tekan **Ctrl+F5**.
 
 Cek cepat kapan saja: `http://localhost:8000/api/health` — nilai `versi` dan
-`kode` harus `0.9.8`, dan `folder` harus menunjuk folder aplikasi Anda.
+`kode` harus `0.9.9`, dan `folder` harus menunjuk folder aplikasi Anda.
 
 ## Cara tercepat membereskan: `perbaiki.bat`
 
@@ -477,7 +555,7 @@ berkas ini dari folder lama ke folder baru **sebelum** menjalankan
 - `backend\.env` — setelan login (opsional; bila tidak ada, dibuat otomatis)
 
 Cara memastikan folder baru benar-benar versi terbaru: lihat **`VERSI.txt`** di
-akar folder (versi terbaru saat dokumen ini ditulis: **0.9.8**), atau buka
+akar folder (versi terbaru saat dokumen ini ditulis: **0.9.9**), atau buka
 `http://localhost:8000/api/health` dan periksa `"versi"` serta `"kode"`.
 
 ## Login berhasil tetapi kembali ke form login lagi
