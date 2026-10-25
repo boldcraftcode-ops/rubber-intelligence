@@ -6,7 +6,8 @@ import {
 } from "recharts";
 import {
   Kartu, NAMA_BULAN, Panel5W1H, PilihRentangBulan, akhirBulan,
-  ambilJson, fmtAngka, hitungJumlahBulan, kelasInput, kelasTombolAnalisa, kelasTombolKecil,
+  ambilJson, fmtAngka, fmtTanggal, hitungJumlahBulan, kelasInput,
+  kelasTombolAnalisa, kelasTombolKecil,
 } from "../bersama";
 
 /* Palet seri grafik bulanan. Navy & merah lebih dulu (identitas), lalu warna
@@ -727,22 +728,172 @@ function KartuGrade() {
   );
 }
 
-/* ---------- reject% ---------- */
-function KartuReject() {
+/* ---------- daftar intake terakhir ---------- */
+/* Umur data dalam kata: 0 = hari ini, 1 = kemarin, sisanya "N hari lalu". */
+const umurDalamKata = (hari: number) =>
+  hari <= 0 ? "hari ini" : hari === 1 ? "kemarin" : `${hari} hari lalu`;
+
+export function KartuIntakeTerakhir() {
+  const [limit, setLimit] = useState(20);
+  const url = `/api/kartu/intake-terakhir?limit=${limit}`;
+  const q = useQuery({ queryKey: ["intake-terakhir", url], queryFn: () => ambilJson(url) });
+  const t = q.data?.terakhir;
+
+  return (
+    <Kartu idMetrik="penerimaan" judul="Daftar intake terakhir"
+           urlEkspor={url}
+           keterangan={"Satu baris = satu tiket (satu kendaraan datang). Urut dari yang paling baru, supaya kelihatan kapan intake terakhir masuk."}
+           anak={
+      <>
+        {t ? (
+          <div className="mb-3 rounded-sm border border-[#E4E5E8] bg-[#F8F8F8] p-3">
+            <div className="flex flex-wrap items-baseline gap-x-6 gap-y-2">
+              <div>
+                <p className="text-xs text-[#64676C]">Intake terakhir masuk</p>
+                <p className="text-lg font-semibold text-[#1D2434]">
+                  {fmtTanggal(t.tanggal)}
+                  <span className={`ml-2 rounded-sm px-2 py-0.5 text-xs font-semibold ${
+                    t.umur_hari > 7
+                      ? "bg-[#FEF2F2] text-[#B91C1C] border border-[#FECACA]"
+                      : "bg-[#ECFDF5] text-[#166534] border border-[#A7F3D0]"}`}>
+                    {umurDalamKata(t.umur_hari)}
+                  </span>
+                </p>
+              </div>
+              <div>
+                <p className="text-xs text-[#64676C]">Tiket</p>
+                <p className="text-sm font-mono text-[#1D2434]">{t.ticket_no}</p>
+              </div>
+              <div>
+                <p className="text-xs text-[#64676C]">Vendor</p>
+                <p className="text-sm text-[#1D2434]">{t.label_vendor}</p>
+              </div>
+              <div>
+                <p className="text-xs text-[#64676C]">Grade · ton kering</p>
+                <p className="text-sm text-[#1D2434]">
+                  {t.grade ?? "–"} · {fmtAngka(t.dry_ton, 3)} t
+                </p>
+              </div>
+              <div>
+                <p className="text-xs text-[#64676C]">Sehari itu</p>
+                <p className="text-sm text-[#1D2434]">
+                  {t.jumlah_tiket_hari_itu} tiket · {fmtAngka(t.dry_ton_hari_itu, 3)} t
+                </p>
+              </div>
+            </div>
+            {t.umur_hari > 7 && (
+              <p className="mt-2 text-xs text-[#B45309]">
+                Data intake terakhir sudah {t.umur_hari} hari. Bila seharusnya sudah ada
+                tiket baru, unggah ekspor “Master Data” terbaru di menu Unggah Data.
+              </p>
+            )}
+          </div>
+        ) : (
+          <p className="mb-3 text-sm text-[#64676C]">
+            Belum ada tiket intake sama sekali. Unggah ekspor “Master Data” di menu Unggah Data.
+          </p>
+        )}
+
+        <div className="mb-2 flex flex-wrap items-center gap-2 text-xs text-[#64676C]">
+          <label className="flex items-center gap-1.5">
+            Tampilkan
+            <select className={kelasInput + " max-w-24"} value={limit}
+                    onChange={(e) => setLimit(Number(e.target.value))}>
+              {[10, 20, 50, 100].map((n) => <option key={n} value={n}>{n}</option>)}
+            </select>
+            tiket terakhir
+          </label>
+          {q.data && (
+            <span>
+              · {q.data.baris.length} dari {q.data.jumlah_tiket_total} tiket
+              {q.data.tanggal_pertama ? ` (data sejak ${fmtTanggal(q.data.tanggal_pertama)})` : ""}
+            </span>
+          )}
+        </div>
+
+        <div className="max-h-96 overflow-y-auto">
+          <table className="w-full text-xs">
+            <thead className="sticky top-0 bg-white">
+              <tr className="text-left text-[#64676C] border-b">
+                <th className="py-1">Tanggal</th>
+                <th>No tiket</th>
+                <th>Vendor</th>
+                <th>Grade</th>
+                <th className="text-right">Wet ton</th>
+                <th className="text-right">Dry ton</th>
+                <th className="text-right">Reject ton</th>
+                <th>Wilayah</th>
+              </tr>
+            </thead>
+            <tbody>
+              {q.data?.baris.map((b: any) => (
+                <tr key={`${b.tanggal}-${b.ticket_no}`} className="border-b border-[#EDEFF2]">
+                  <td className="py-1 whitespace-nowrap">{fmtTanggal(b.tanggal)}</td>
+                  <td className="font-mono">{b.ticket_no}</td>
+                  <td>{b.label_vendor}</td>
+                  <td>{b.grade ?? "–"}</td>
+                  <td className="text-right font-mono">{fmtAngka(b.wet_ton, 3)}</td>
+                  <td className="text-right font-mono">{fmtAngka(b.dry_ton, 3)}</td>
+                  <td className="text-right font-mono">{fmtAngka(b.reject_ton, 3)}</td>
+                  <td>{[b.kabupaten, b.provinsi].filter(Boolean).join(", ") || "–"}</td>
+                </tr>
+              ))}
+              {q.data?.baris.length === 0 && (
+                <tr><td colSpan={8} className="py-2 text-[#64676C]">Belum ada tiket intake.</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </>
+    } />
+  );
+}
+
+/* ---------- reject% (tabel dibatasi 12 bulan terakhir) ---------- */
+export function KartuReject() {
   const [tahun, setTahun] = useState<number | "">("");
-  const url = `/api/kartu/reject${tahun ? `?tahun=${tahun}` : ""}`;
+  const [jmlBulan, setJmlBulan] = useState(12);   // 0 = semua bulan
+  const params = new URLSearchParams();
+  if (tahun) params.set("tahun", String(tahun));
+  params.set("bulan", String(jmlBulan));
+  const url = `/api/kartu/reject?${params.toString()}`;
   const q = useQuery({ queryKey: ["reject", url], queryFn: () => ambilJson(url) });
+
+  const kp = q.data?.kpi?.kpi_periode;
+  const labelPeriode = jmlBulan === 0 ? "seluruh periode"
+    : `${jmlBulan} bulan terakhir yang berdata`;
 
   return (
     <Kartu idMetrik="reject" judul="KPI Reject %" urlEkspor={url}
+           keterangan={`Reject ÷ wet per bulan, ditampilkan ${labelPeriode}.`}
            anak={
       <>
-        <PilihPeriode tahun={tahun} setTahun={setTahun} />
-        {q.data?.kpi.reject_pct !== null && q.data?.kpi && (
+        <div className="flex flex-wrap items-end gap-2">
+          <PilihPeriode tahun={tahun} setTahun={setTahun} />
+          <label className="mb-3 flex items-center gap-1.5 text-xs text-[#64676C]">
+            Tampilkan
+            <select className={kelasInput + " max-w-44"}
+                    value={jmlBulan} onChange={(e) => setJmlBulan(Number(e.target.value))}>
+              {[[6, "6 bulan terakhir"], [12, "12 bulan terakhir"],
+                [24, "24 bulan terakhir"], [0, "Semua bulan"]].map(([v, t]) => (
+                <option key={v} value={v}>{t}</option>
+              ))}
+            </select>
+          </label>
+        </div>
+        {kp && kp.reject_pct !== null && (
           <p className="mb-2 text-sm">
-            Keseluruhan: <b>{fmtAngka(q.data.kpi.reject_pct, 2)}%</b>{" "}
-            ({fmtAngka(q.data.kpi.reject_kg / 1000, 1)} ton reject dari{" "}
-            {fmtAngka(q.data.kpi.wet_kg / 1000, 1)} ton wet) · tiket nol: {q.data.kpi.tiket_nol}
+            {jmlBulan === 0 ? "Seluruh periode" : `Rata-rata ${labelPeriode}`}:{" "}
+            <b>{fmtAngka(kp.reject_pct, 2)}%</b>{" "}
+            ({fmtAngka(kp.reject_kg / 1000, 2)} ton reject dari{" "}
+            {fmtAngka(kp.wet_kg / 1000, 1)} ton wet) · tiket nol: {q.data.kpi.tiket_nol}
+          </p>
+        )}
+        {q.data?.terpotong && (
+          <p className="mb-2 text-xs text-[#64676C]">
+            Menampilkan {q.data.jumlah_bulan_tampil} bulan terakhir dari{" "}
+            {q.data.jumlah_bulan_total} bulan yang ada data
+            {tahun ? ` (tahun ${tahun})` : ""}. Pilih “Semua bulan” untuk melihat semuanya.
           </p>
         )}
         <table className="w-full text-xs">
@@ -992,6 +1143,7 @@ export default function Analisis() {
                    url={`/api/analisis/analisa${paramsA.size ? "?" + paramsA.toString() : ""}`}
                    tutup={() => setBukaAnalisa(false)} />
       )}
+      <div className="lg:col-span-2"><KartuIntakeTerakhir /></div>
       <div className="lg:col-span-2"><KartuPenerimaan /></div>
       <KartuTonase />
       <KartuKonsentrasi />

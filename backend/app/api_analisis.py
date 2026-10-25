@@ -1510,8 +1510,19 @@ def pasang_router(app, ambil_session):
 
     # ------------------------------------------------------------ kartu: reject%
     @router.get("/kartu/reject")
-    def kartu_reject(tahun: int | None = None, format: str | None = None,
-                     session: Session = dep):
+    def kartu_reject(tahun: int | None = None, bulan: int = 12,
+                     format: str | None = None, session: Session = dep):
+        """Reject% per bulan, dibatasi `bulan` bulan terakhir yang berdata.
+
+        Bawaannya 12 bulan (permintaan pemilik): kartu KPI tidak lagi
+        menumpahkan seluruh riwayat 2020-2026 sehingga angkanya terbaca.
+        `bulan=0` mengembalikan seluruh bulan.
+        Angka KPI (reject%) dihitung dari bulan yang benar-benar ditampilkan,
+        supaya ringkasan di atas tabel tidak bertentangan dengan tabelnya.
+        """
+        if bulan is not None and (bulan < 0 or bulan > 120):
+            raise HTTPException(422, "`bulan` harus antara 0 dan 120 "
+                                     "(0 = semua bulan).")
         q = select(TiketBaris).where(TiketBaris.tiket_nol == False)  # noqa: E712
         awal, akhir = _rentang(tahun, None)
         if awal:
@@ -1521,20 +1532,137 @@ def pasang_router(app, ambil_session):
             k = (t.ticket_date.year, t.ticket_date.month)
             per_bulan[k]["wet"] += t.wet_kg or 0
             per_bulan[k]["reject"] += t.reject_kg or 0
-        baris = [{
+        semua_baris = [{
             "tahun": thn, "bulan": bln,
             "wet_ton": round(float(v["wet"]) / 1000, 3),
             "reject_ton": round(float(v["reject"]) / 1000, 3),
             "reject_pct": round(float(v["reject"]) / float(v["wet"]) * 100, 2)
             if v["wet"] else None,
+            "_wet": v["wet"], "_reject": v["reject"],
         } for (thn, bln), v in sorted(per_bulan.items())]
-        hasil = {"baris": baris, "kpi": kpi_reject(session)}
+
+        total_bulan = len(semua_baris)
+        baris = semua_baris if bulan == 0 else semua_baris[-bulan:]
+        wet = sum((b["_wet"] for b in baris), Decimal(0))
+        reject = sum((b["_reject"] for b in baris), Decimal(0))
+        for b in baris:
+            b.pop("_wet")
+            b.pop("_reject")
+
+        kpi = kpi_reject(session)
+        kpi["kpi_periode"] = {
+            "wet_kg": float(wet), "reject_kg": float(reject),
+            "reject_pct": round(float(reject) / float(wet) * 100, 2) if wet else None,
+            "jumlah_bulan": len(baris),
+            "bulan_pertama": (f"{baris[0]['tahun']}-{baris[0]['bulan']:02d}"
+                              if baris else None),
+            "bulan_terakhir": (f"{baris[-1]['tahun']}-{baris[-1]['bulan']:02d}"
+                               if baris else None),
+        }
+        hasil = {
+            "baris": baris, "kpi": kpi,
+            "bulan_ditampilkan": bulan,
+            "jumlah_bulan_tampil": len(baris),
+            "jumlah_bulan_total": total_bulan,
+            "terpotong": len(baris) < total_bulan,
+        }
         if format == "xlsx":
             return respon_xlsx("reject.xlsx",
                                ["Tahun", "Bulan", "Wet ton", "Reject ton", "Reject %"],
                                [[b["tahun"], b["bulan"], b["wet_ton"], b["reject_ton"],
                                  b["reject_pct"]] for b in baris])
         return hasil
+
+    # ------------------------------------------------------------ kartu: daftar intake
+    @router.get("/kartu/intake-terakhir")
+    def kartu_intake_terakhir(limit: int = 20, format: str | None = None,
+                              session: Session = dep):
+        """Daftar tiket intake terbaru — supaya pengguna tahu kapan intake
+        terakhir masuk dan apa isinya.
+
+        Satu baris = satu tiket (bukan satu baris tiket): beberapa baris
+        (line_seq) dengan nomor tiket yang sama digabung, karena satu tiket
+        adalah satu kendaraan yang datang.
+        """
+        if limit < 1 or limit > 200:
+            raise HTTPException(422, "`limit` harus antara 1 dan 200.")
+        tiket: dict[tuple, dict] = {}
+        for t in session.scalars(select(TiketBaris).where(
+                TiketBaris.tiket_nol == False).order_by(  # noqa: E712
+                TiketBaris.ticket_date.desc(), TiketBaris.ticket_no.desc())):
+            k = (t.ticket_date, t.ticket_no)
+            v = tiket.get(k)
+            if v is None:
+                v = tiket[k] = {
+                    "tanggal": t.ticket_date.isoformat(),
+                    "ticket_no": t.ticket_no,
+                    "kode_vendor": t.kode_vendor,
+                    "nama_vendor": t.nama_vendor_asli,
+                    "item_code": set(),
+                    "provinsi": t.provinsi, "kabupaten": t.kabupaten,
+                    "wet_kg": Decimal(0), "dry_kg": Decimal(0),
+                    "reject_kg": Decimal(0), "jumlah_baris": 0,
+                }
+            if t.item_code:
+                v["item_code"].add(t.item_code)
+            v["wet_kg"] += t.wet_kg or 0
+            v["dry_kg"] += t.dry_kg or 0
+            v["reject_kg"] += t.reject_kg or 0
+            v["jumlah_baris"] += 1
+
+        urut = sorted(tiket.values(),
+                      key=lambda v: (v["tanggal"], v["ticket_no"]), reverse=True)
+        nama_vendor: dict[str, str] = {}
+        kode_vendor = {v["kode_vendor"] for v in urut}
+        if kode_vendor:
+            for vd in session.scalars(select(Vendor).where(
+                    Vendor.kode.in_(kode_vendor))):
+                nama_vendor[vd.kode] = vd.nama_baku
+
+        semua = [{
+            "tanggal": v["tanggal"], "ticket_no": v["ticket_no"],
+            "kode_vendor": v["kode_vendor"],
+            "label_vendor": (f"{v['kode_vendor']} — {nama_vendor[v['kode_vendor']]}"
+                             if nama_vendor.get(v["kode_vendor"])
+                             else (v["nama_vendor"] or v["kode_vendor"])),
+            "grade": ", ".join(sorted(v["item_code"])) or None,
+            "wet_ton": round(float(v["wet_kg"]) / 1000, 3),
+            "dry_ton": round(float(v["dry_kg"]) / 1000, 3),
+            "reject_ton": round(float(v["reject_kg"]) / 1000, 3),
+            "jumlah_baris": v["jumlah_baris"],
+            "provinsi": v["provinsi"], "kabupaten": v["kabupaten"],
+        } for v in urut]
+
+        terakhir = semua[0] if semua else None
+        hari_ini = dt.date.today()
+        ringkas = None
+        if terakhir:
+            tgl = dt.date.fromisoformat(terakhir["tanggal"])
+            tiket_hari_itu = [b for b in semua if b["tanggal"] == terakhir["tanggal"]]
+            ringkas = {
+                "tanggal": terakhir["tanggal"],
+                "umur_hari": (hari_ini - tgl).days,
+                "ticket_no": terakhir["ticket_no"],
+                "label_vendor": terakhir["label_vendor"],
+                "grade": terakhir["grade"],
+                "dry_ton": terakhir["dry_ton"],
+                "jumlah_tiket_hari_itu": len(tiket_hari_itu),
+                "dry_ton_hari_itu": round(sum(b["dry_ton"] for b in tiket_hari_itu), 3),
+            }
+        baris = semua[:limit]
+
+        if format == "xlsx":
+            return respon_xlsx(
+                "intake_terakhir.xlsx",
+                ["Tanggal", "No tiket", "Kode vendor", "Vendor", "Grade",
+                 "Wet ton", "Dry ton", "Reject ton", "Provinsi", "Kabupaten"],
+                [[b["tanggal"], b["ticket_no"], b["kode_vendor"], b["label_vendor"],
+                  b["grade"], b["wet_ton"], b["dry_ton"], b["reject_ton"],
+                  b["provinsi"], b["kabupaten"]] for b in baris])
+
+        return {"terakhir": ringkas, "baris": baris, "limit": limit,
+                "jumlah_tiket_total": len(semua),
+                "tanggal_pertama": semua[-1]["tanggal"] if semua else None}
 
     # ------------------------------------------------------------ kartu: margin harian/bulanan
     @router.get("/kartu/margin-harian")
