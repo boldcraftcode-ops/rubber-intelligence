@@ -65,7 +65,7 @@ peringatan (vendor tak dikenal, Dry tidak cocok, wilayah kosong, dst.).
 python -m pytest
 ```
 
-Harus tertulis `170 passed`. Pengujian mencakup semua kasus uji emas:
+Harus tertulis `171 passed`. Pengujian mencakup semua kasus uji emas:
 harian 3 Jan 2026, bulan Jan/Feb 2026, Jan 2023, Mar 2020 (kurs berubah
 tengah bulan), Apr 2022 (koreksi salah ketik Excel), Days/rasio stok,
 dan perencanaan Jan 2027.
@@ -241,6 +241,22 @@ Bila `SECRET_KEY` belum diisi, di luar produksi aplikasi membuat kunci
 sementara otomatis supaya login tetap bisa dipakai (sesi berakhir saat API
 dijalankan ulang). `start-web.bat` membuang `AUTH_DISABLED` untuk jendela
 API-nya, sehingga login selalu aktif saat dijalankan dari skrip itu.
+
+## Cara tercepat membereskan: `perbaiki.bat`
+
+Klik dua kali **`perbaiki.bat`** (satu berkas, tidak butuh Git). Skrip itu:
+
+1. menutup semua proses aplikasi lama (port 8000 & 5173);
+2. mengunduh kode terbaru ke folder baru `..\rubber-intelligence-baru`;
+3. menyalin database lama (`backend\opmargin.db`) ke folder baru — data aman;
+4. menyiapkan Python + pustaka di folder baru;
+5. **menyetel ulang sandi admin dan mencetak sandi barunya** di layar;
+6. menjalankan `start-web.bat` dari folder baru.
+
+Folder lama tidak dihapus dan tidak diubah. Setelah selesai, buka
+`http://localhost:5173`, Ctrl+F5, lalu masuk dengan **admin** dan sandi yang
+tercetak di langkah 5. `.env` sengaja **tidak** disalin, supaya tidak ada sisa
+setelan lama yang mengganggu.
 
 ## Kalau folder Anda hasil UNDUHAN ZIP (bukan `git clone`)
 

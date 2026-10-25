@@ -255,13 +255,20 @@ def _reset_sandi(username: str, sandi: str | None) -> None:
     engine = buat_engine()
     Session = buat_session_factory(engine)
     with Session() as session:
-        p = session.get(Pengguna, username.strip().lower())
-        if p is None:
-            print(f"GAGAL: pengguna '{username}' tidak ada. Yang terdaftar:")
-            for u in session.scalars(select(Pengguna)):
-                print("  -", u.username)
-            return
+        uname = username.strip().lower()
         baru = sandi or _secrets.token_urlsafe(9)
+        p = session.get(Pengguna, uname)
+        if p is None:
+            # Akun belum ada (database baru / admin terhapus): buat sekalian,
+            # supaya pemakai selalu mendapat sandi yang pasti bisa dipakai.
+            p = Pengguna(username=uname, nama=uname.capitalize(),
+                         hash_sandi=hash_sandi(baru), peran="admin")
+            session.add(p)
+            session.commit()
+            print(f"Akun '{uname}' belum ada -> dibuat sebagai admin.")
+            print(f"  sandi baru : {baru}")
+            print("Segera ganti setelah masuk (menu kanan atas > Ganti sandi).")
+            return
         p.hash_sandi = hash_sandi(baru)
         p.aktif = True
         session.commit()

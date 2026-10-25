@@ -163,3 +163,33 @@ def test_versi_tiga_sumber_harus_sama():
     assert cocok, "frontend/src/versi.ts harus berisi VERSI_UI"
     assert cocok.group(1) == VERSI, (
         f"versi UI ({cocok.group(1)}) != versi backend ({VERSI})")
+
+
+def test_reset_sandi_membuat_akun_bila_belum_ada(tmp_path, monkeypatch, capsys):
+    """perbaiki.bat mengandalkan perintah ini untuk SELALU mencetak sandi.
+
+    Pada database baru belum ada akun admin, jadi perintah ini harus membuatnya
+    (bukan hanya mengeluh), supaya pemakai mendapat sandi yang pasti berlaku.
+    """
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import sessionmaker
+
+    from app.auth_lokal import cek_sandi
+    from app.cli import _reset_sandi
+    from app.models import Base, Pengguna
+
+    db = tmp_path / "baru.db"
+    eng = create_engine(f"sqlite:///{db}", future=True)
+    Base.metadata.create_all(eng)
+    monkeypatch.setenv("DATABASE_URL", f"sqlite:///{db}")
+
+    _reset_sandi("admin", "sandi-uji-123")
+    keluaran = capsys.readouterr().out
+    assert "sandi baru : sandi-uji-123" in keluaran
+    assert "dibuat sebagai admin" in keluaran
+
+    Session = sessionmaker(bind=eng, future=True)
+    with Session() as s:
+        p = s.get(Pengguna, "admin")
+        assert p is not None and p.peran == "admin" and p.aktif
+        assert cek_sandi("sandi-uji-123", p.hash_sandi)
