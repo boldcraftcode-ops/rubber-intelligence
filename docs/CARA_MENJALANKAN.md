@@ -62,6 +62,28 @@ Performance), grupnya otomatis terbuka sehingga menu tidak terlihat kosong.
 Di layar Bahasa Inggris nama grupnya: *Analytics, Pricing & Planning,
 Monitoring & Control, Master Data, Data Entry, Administration*.
 
+## 3c. Membaca menu Stok vs Margin
+
+Isi halaman ini **informasi, bukan aturan**: setiap titik = satu bulan.
+
+1. **Mendatar** = rasio stok ÷ safety. `1,0` = stok tepat di batas aman,
+   `0,5` = tinggal separuh batas aman.
+2. **Menegak** = OP Margin bulan itu (US¢/kg). Makin ke atas, makin bagus.
+3. Lihat **bentuk awannya**, bukan satu titik. Miring naik = bulan berstok
+   tebal cenderung bermargin lebih baik; menyebar tanpa arah = tidak ada
+   hubungan.
+
+Garis putus-putus tegak = batas 50% dan 80% safety; garis putus-putus mendatar
+= margin rata-rata periode; garis tren = arah umum. **Pilih tahun** di bagian
+atas untuk memeriksa apakah hubungannya sama seperti gabungan semua tahun —
+pada data contoh, 2024–2025 kuat (0,88 dan 0,77) tetapi 2023 dan 2026 nyaris
+tidak ada (0,07 dan 0,11), sehingga angka gabungan 0,42 **tidak boleh dipakai
+sebagai aturan**. Halaman akan menuliskan peringatan itu sendiri.
+
+Tabel di bawah grafik menjawab tiga hal dengan angka: margin rata-rata per
+kelompok stok (tipis/sedang/tebal), jumlah bulan di tiap kelompok, dan korelasi
+per tahun. **Ekspor Excel** menghasilkan dua sheet: Data bulanan dan Ringkasan.
+
 ## 4. Mengimpor data (tiket, stok, pembelian, dll.)
 
 Cara termudah: tab **Unggah Data** di aplikasi web — tarik & lepas file .xlsx
@@ -294,7 +316,7 @@ Bacanya:
 
 | Yang tertulis | Artinya | Tindakan |
 |---|---|---|
-| `mode login : lokal (username-sandi)` dan API menjawab `0.9.4` + `lokal` | sudah benar | login dengan akun Anda (Ctrl+F5 dulu) |
+| `mode login : lokal (username-sandi)` dan API menjawab `0.9.5` + `lokal` | sudah benar | login dengan akun Anda (Ctrl+F5 dulu) |
 | API menjawab `mode: nonaktif` | `AUTH_DISABLED=true` masih ada di `.env` | hapus baris itu, lalu jalankan `start-web.bat` lagi |
 | API tidak menjawab / `404` di `/api/auth/mode` | prosesnya **kode lama** | tutup jendela API lama, jalankan `start-web.bat` lagi |
 | bagian [2] tidak ada akun, atau sandi lupa | akun belum dibuat / sandi salah | `python -m app.cli reset-sandi admin` (dari folder `backend`) |
@@ -320,11 +342,11 @@ Perbaikan:
    melaporkan apakah **port 8000 dan 5173 sudah BEBAS**. Kalau ada yang gagal
    ditutup, skrip mengatakannya (tidak diam-diam).
 2. Jalankan **`start-web.bat`** dari folder aplikasi yang benar — folder yang
-   `VERSI.txt`-nya berisi `0.9.4`. Tunggu tulisan **`API siap: kode 0.9.4`**.
+   `VERSI.txt`-nya berisi `0.9.5`. Tunggu tulisan **`API siap: kode 0.9.5`**.
 3. Buka `http://localhost:5173`, tekan **Ctrl+F5**.
 
 Cek cepat kapan saja: `http://localhost:8000/api/health` — nilai `versi` dan
-`kode` harus `0.9.4`, dan `folder` harus menunjuk folder aplikasi Anda.
+`kode` harus `0.9.5`, dan `folder` harus menunjuk folder aplikasi Anda.
 
 ## Cara tercepat membereskan: `perbaiki.bat`
 
@@ -381,7 +403,7 @@ berkas ini dari folder lama ke folder baru **sebelum** menjalankan
 - `backend\.env` — setelan login (opsional; bila tidak ada, dibuat otomatis)
 
 Cara memastikan folder baru benar-benar versi terbaru: lihat **`VERSI.txt`** di
-akar folder (versi terbaru saat dokumen ini ditulis: **0.9.4**), atau buka
+akar folder (versi terbaru saat dokumen ini ditulis: **0.9.5**), atau buka
 `http://localhost:8000/api/health` dan periksa `"versi"` serta `"kode"`.
 
 ## Login berhasil tetapi kembali ke form login lagi
