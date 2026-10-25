@@ -215,3 +215,24 @@ def test_diagnosa_dan_tanya_api_bisa_dijalankan():
 
     _cetak_diagnosa()          # hanya mencetak; tidak boleh melempar
     assert callable(tanya_api.main)
+
+
+# ------------------------------------------------- identitas versi kode
+def test_health_memuat_identitas_versi(monkeypatch):
+    """Versi kode dilaporkan supaya folder lama mudah dikenali."""
+    from app.versi import VERSI, versi_folder
+
+    monkeypatch.setenv("APP_ENV", "development")
+    monkeypatch.setenv("AUTH_DISABLED", "true")
+    isi = _klien().get("/api/health").json()
+    assert isi["versi"] == VERSI
+    assert isi["kode"] == versi_folder()
+
+
+def test_versi_txt_ada_di_akar_repo():
+    """VERSI.txt dipakai diagnosa.bat untuk folder hasil unduhan ZIP."""
+    from app.versi import AKAR, VERSI, versi_folder
+
+    berkas = AKAR / "VERSI.txt"
+    assert berkas.exists(), "VERSI.txt harus ada di akar repo"
+    assert versi_folder().startswith(VERSI)

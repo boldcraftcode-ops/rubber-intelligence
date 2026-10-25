@@ -27,6 +27,15 @@ set "PUNDUH=powershell"
 echo ============================================================
 echo  OP Margin - menyiapkan dan menjalankan aplikasi
 echo  Folder: %~dp0
+if exist "VERSI.txt" goto :cetak_versi
+echo  Versi kode: (VERSI.txt tidak ada - kemungkinan kode lama)
+goto :lewat_versi
+
+:cetak_versi
+set /p VERSI_KODE=<"VERSI.txt"
+echo  Versi kode: %VERSI_KODE%
+
+:lewat_versi
 echo ============================================================
 echo.
 

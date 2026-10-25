@@ -30,6 +30,7 @@ from sqlalchemy import select
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session
 
+from . import versi
 from .auth import JALUR_BEBAS, KonfigurasiAuth, VerifikatorAccess
 from .core.alarm import evaluasi_alarm
 from .core.lookup import kurs_pada
@@ -97,7 +98,7 @@ def buat_app(engine: Engine | None = None) -> FastAPI:
     SessionLocal = buat_session_factory(engine)
 
     # Di produksi, halaman dokumentasi otomatis dimatikan.
-    app = FastAPI(title="OP Margin API", version="0.6.1",
+    app = FastAPI(title="OP Margin API", version=versi.VERSI,
                   docs_url=None if cfg_auth.produksi else "/docs",
                   redoc_url=None,
                   openapi_url=None if cfg_auth.produksi else "/openapi.json")
@@ -235,14 +236,17 @@ def buat_app(engine: Engine | None = None) -> FastAPI:
         TANPA data sensitif.
         """
         from .auth import info_mode
-        return {"status": "ok", "app": "op-margin", "versi": "0.6.1",
+        return {"status": "ok", "app": "op-margin", "versi": versi.VERSI,
                 "login": info_mode(cfg_auth),
                 "waktu": dt.datetime.utcnow().isoformat(timespec="seconds") + "Z",
                 "fitur": [
                     "ringkasan", "telusur", "margin-elemen", "5w1h",
                     "margin-bridge", "days-of-cover", "jelaskan",
                     "margin-bulanan-periode", "ekspor-xlsx",
-                ]}
+                ],
+                # versi kode ikut dilaporkan supaya mudah membandingkan
+                # folder yang dijalankan dengan kode terbaru di repo
+                "kode": versi.versi_folder()}
 
     # ------------------------------------------------------------ SICOM
     @app.get("/api/sicom")

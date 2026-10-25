@@ -65,7 +65,7 @@ peringatan (vendor tak dikenal, Dry tidak cocok, wilayah kosong, dst.).
 python -m pytest
 ```
 
-Harus tertulis `172 passed`. Pengujian mencakup semua kasus uji emas:
+Harus tertulis `174 passed`. Pengujian mencakup semua kasus uji emas:
 harian 3 Jan 2026, bulan Jan/Feb 2026, Jan 2023, Mar 2020 (kurs berubah
 tengah bulan), Apr 2022 (koreksi salah ketik Excel), Days/rasio stok,
 dan perencanaan Jan 2027.
@@ -231,6 +231,48 @@ produksi, aplikasi otomatis memakai **login lokal** (bukan Access) dan membuat
 "Belum login ... Cloudflare Access". Skrip `start-web.bat` juga memaksa
 `AUTH_MODE=lokal` untuk jendela API-nya, karena skrip itu memang untuk
 komputer sendiri.
+
+## Kalau folder Anda hasil UNDUHAN ZIP (bukan `git clone`)
+
+Tanda-tandanya: di dalam folder **tidak ada** folder `.git`, path-nya seperti
+`Downloads\rubber-intelligence-arena-...\`, dan `diagnosa.bat` melaporkan
+*"Folder ini BUKAN hasil git clone"*.
+
+Penting: **unduhan ZIP tidak ikut diperbarui.** Mengunduh satu-dua berkas dari
+GitHub tidak memperbarui sisanya — akibatnya muncul campuran berkas baru dan
+lama seperti pesan *`invalid choice: 'diagnosa'`* atau *`No module named
+app.tanya_api`*. Perbaikan login yang terbaru pun tidak ikut terpakai.
+
+Cara membereskan (pilih salah satu):
+
+1. **Otomatis** — klik dua kali **`perbarui-kode.bat`**. Skrip itu mengunduh
+   kode terbaru dari branch resmi, mengekstraknya ke folder baru di sebelah
+   folder lama (`..\rubber-intelligence-terbaru`), lalu membuka foldernya.
+   Folder lama tidak dihapus. Setelah itu jalankan `start-web.bat` di folder
+   baru.
+2. **Manual** — unduh alamat ini di browser, lalu ekstrak:
+
+   ```
+   https://github.com/boldcraftcode-ops/rubber-intelligence/archive/refs/heads/arena/18670644-rubber-intelligence.zip
+   ```
+3. **Paling rapi (butuh Git)** — di folder tujuan:
+
+   ```powershell
+   git clone -b arena/18670644-rubber-intelligence https://github.com/boldcraftcode-ops/rubber-intelligence.git
+   ```
+
+   Setelah itu pembaruan berikutnya cukup `git pull`.
+
+**Data lama tidak hilang.** Bila ingin memakai data yang sudah ada, salin dua
+berkas ini dari folder lama ke folder baru **sebelum** menjalankan
+`start-web.bat`:
+
+- `backend\opmargin.db` — database (data SICOM, pembelian, stok, target)
+- `backend\.env` — setelan login (opsional; bila tidak ada, dibuat otomatis)
+
+Cara memastikan folder baru benar-benar versi terbaru: lihat **`VERSI.txt`** di
+akar folder (versi terbaru saat dokumen ini ditulis: **0.6.2**), atau buka
+`http://localhost:8000/api/health` dan periksa `"versi"` serta `"kode"`.
 
 ## Deploy ke internet (Fase 5)
 Panduan lengkap ada di folder `deploy/`: mulai dari `deploy/install-windows.md`
