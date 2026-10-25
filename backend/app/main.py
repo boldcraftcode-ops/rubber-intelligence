@@ -200,9 +200,20 @@ def buat_app(engine: Engine | None = None) -> FastAPI:
 
     @app.get("/api/health")
     def health():
-        """Pemeriksaan hidup untuk monitoring. TANPA data sensitif."""
-        return {"status": "ok", "app": "op-margin", "versi": "0.5.0",
-                "waktu": dt.datetime.utcnow().isoformat(timespec="seconds") + "Z"}
+        """Pemeriksaan hidup + daftar fitur yang dikenal proses ini.
+
+        Berguna untuk mendiagnosis "backend masih versi lama": bila fitur
+        tidak ada di daftar, berarti proses yang berjalan adalah kode lama
+        (mis. jendela API lama belum ditutup sehingga port 8000 dipakai ulang).
+        TANPA data sensitif.
+        """
+        return {"status": "ok", "app": "op-margin", "versi": "0.6.0",
+                "waktu": dt.datetime.utcnow().isoformat(timespec="seconds") + "Z",
+                "fitur": [
+                    "ringkasan", "telusur", "margin-elemen", "5w1h",
+                    "margin-bridge", "days-of-cover", "jelaskan",
+                    "margin-bulanan-periode", "ekspor-xlsx",
+                ]}
 
     # ------------------------------------------------------------ SICOM
     @app.get("/api/sicom")

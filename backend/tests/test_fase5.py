@@ -101,7 +101,10 @@ def test_health_terbuka_tanpa_login(lingkungan_access):
     assert r.status_code == 200
     isi = r.json()
     assert isi["status"] == "ok"
-    assert set(isi) <= {"status", "app", "versi", "waktu"}  # tak ada data bisnis
+    # "fitur" = daftar nama endpoint (bukan data bisnis); dipakai untuk
+    # memastikan proses API yang berjalan memang versi terbaru.
+    assert set(isi) <= {"status", "app", "versi", "waktu", "fitur"}
+    assert all(isinstance(x, str) and "/" not in x for x in isi.get("fitur", []))
 
 
 # ----------------------------------------------------------------------------

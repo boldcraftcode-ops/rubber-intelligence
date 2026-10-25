@@ -4,7 +4,7 @@ import {
   Bar, BarChart, CartesianGrid, Cell, ComposedChart, LabelList, Legend, Line,
   LineChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from "recharts";
-import { Kartu, NAMA_BULAN, Panel5W1H, ambilJson, fmtAngka, fmtTanggal, kelasTombolAnalisa, kelasTombolKecil, urlApi } from "../bersama";
+import { Kartu, NAMA_BULAN, Panel5W1H, ambilJson, fmtAngka, fmtTanggal, kelasTombolAnalisa, kelasTombolKecil, pesanGalat, urlApi } from "../bersama";
 import { useBahasa } from "../i18n";
 
 const WARNA = ["#60a5fa", "#fbbf24", "#34d399", "#f87171", "#c084fc",
@@ -811,7 +811,7 @@ function PanelMarginBridge({ url, tutup, awal, akhir, ubah }: {
         {q.isLoading && <p className="mt-4 text-sm text-slate-400">{t("Memuat…")}</p>}
         {q.error && (
           <p className="mt-4 rounded-md bg-red-500/10 border border-red-400/30 px-3 py-2 text-sm text-red-300">
-            {(q.error as Error).message}
+            {pesanGalat(q.error)}
           </p>
         )}
 
@@ -1106,7 +1106,7 @@ function PanelDaysOfCover({ url, tutup, awal, akhir, ubah }: {
         {q.isLoading && <p className="mt-4 text-sm text-slate-400">{t("Memuat…")}</p>}
         {q.error && (
           <p className="mt-4 rounded-md bg-red-500/10 border border-red-400/30 px-3 py-2 text-sm text-red-300">
-            {(q.error as Error).message}
+            {pesanGalat(q.error)}
           </p>
         )}
 

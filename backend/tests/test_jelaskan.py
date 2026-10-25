@@ -160,3 +160,29 @@ def test_periode_salah_422(klien):
     assert klien.get("/api/jelaskan/margin_bulanan?dari=2026-13").status_code == 422
     assert klien.get("/api/jelaskan/margin_bulanan?dari=2026-06&sampai=2026-01"
                      ).status_code == 422
+
+
+# ------------------------------------------- diagnosis "backend versi lama"
+def test_health_menyebut_fitur_baru(klien):
+    """Dipakai start-web.bat & pengguna untuk memastikan proses API terbaru."""
+    d = klien.get("/api/health").json()
+    assert d["status"] == "ok"
+    fitur = d["fitur"]
+    for nama in ("margin-bridge", "days-of-cover", "jelaskan", "5w1h"):
+        assert nama in fitur, f"fitur '{nama}' harus terdaftar di /api/health"
+    assert d["versi"]
+
+
+def test_endpoint_baru_tidak_404_di_kode_ini(klien):
+    """Kalau ini gagal, berarti proses yang berjalan memang kode lama."""
+    for url in ("/api/margin-bridge", "/api/days-of-cover",
+                "/api/kartu/margin-bulanan", "/api/jelaskan/margin_bulanan",
+                "/api/ringkasan-elemen/analisa"):
+        assert klien.get(url).status_code == 200, url
+
+
+def test_rute_tidak_dikenal_memberi_pesan_not_found(klien):
+    """Bentuk galat yang dipakai frontend untuk pesan 'backend versi lama'."""
+    r = klien.get("/api/fitur-yang-belum-ada")
+    assert r.status_code == 404
+    assert r.json()["detail"] == "Not Found"

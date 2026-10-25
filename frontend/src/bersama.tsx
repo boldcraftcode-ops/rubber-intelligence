@@ -34,14 +34,41 @@ export async function ambilJson(url: string) {
   if (r.status === 401) {
     let detail = "Belum login. Muat ulang halaman untuk masuk lewat Cloudflare Access.";
     try { detail = (await r.json()).detail ?? detail; } catch { /* abaikan */ }
-    throw new Error(detail);
+    throw galatApi(detail, 401);
   }
   if (!r.ok) {
     let detail = "Gagal memuat data.";
     try { detail = (await r.json()).detail ?? detail; } catch { /* abaikan */ }
-    throw new Error(detail);
+    throw galatApi(detail, r.status);
   }
   return r.json();
+}
+
+/* ---------- galat API + pesan ramah ----------
+   Kasus yang sering membingungkan: endpoint baru (Margin Bridge, Days of
+   Cover, Jelaskan ke saya) menjawab 404 "Not Found" karena proses API yang
+   berjalan masih KODE LAMA (jendela API lama belum ditutup). Pesannya
+   diterjemahkan supaya tidak tampak seperti aplikasi rusak. */
+export interface GalatApi extends Error { status: number; }
+
+export const galatApi = (pesan: string, status: number): GalatApi => {
+  const e = new Error(pesan) as GalatApi;
+  e.status = status;
+  return e;
+};
+
+export function pesanGalat(e: unknown): string {
+  const err = e as GalatApi | undefined;
+  const teks = err?.message ?? "Gagal memuat data.";
+  if (err?.status === 404 && /^not found$/i.test(teks.trim())) {
+    return ("Fitur ini tidak dikenali oleh API yang sedang berjalan — biasanya "
+      + "karena jendela \"OP Margin - API\" dari sesi sebelumnya masih hidup "
+      + "(memakai kode lama). Tutup jendela API lama, lalu jalankan "
+      + "start-web.bat lagi, dan muat ulang halaman ini (Ctrl+F5).");
+  }
+  if (err?.status === 404) return teks;
+  if (err?.status === 422) return `Permintaan tidak valid: ${teks}`;
+  return teks;
 }
 
 export async function kirimJson(url: string, body: unknown) {
@@ -116,7 +143,7 @@ function ModalJelaskan({ idMetrik, judul, qs, tutup }: {
         {q.isLoading && <p className="mt-4 text-sm text-slate-400">{t("Menyusun penjelasan…")}</p>}
         {q.error && (
           <p className="mt-4 rounded-md bg-red-500/10 border border-red-400/30 px-3 py-2 text-sm text-red-300">
-            {(q.error as Error).message}
+            {pesanGalat(q.error)}
           </p>
         )}
 
@@ -291,7 +318,7 @@ export function Panel5W1H({ url, judul, tutup }: {
         {q.isLoading && <p className="mt-4 text-sm text-slate-400">Menganalisa data…</p>}
         {q.error && (
           <p className="mt-4 rounded-md bg-red-500/10 border border-red-400/30 px-3 py-2 text-sm text-red-300">
-            {(q.error as Error).message}
+            {pesanGalat(q.error)}
           </p>
         )}
         {q.data?.ringkas && (

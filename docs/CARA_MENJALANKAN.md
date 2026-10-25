@@ -65,7 +65,7 @@ peringatan (vendor tak dikenal, Dry tidak cocok, wilayah kosong, dst.).
 python -m pytest
 ```
 
-Harus tertulis `153 passed`. Pengujian mencakup semua kasus uji emas:
+Harus tertulis `156 passed`. Pengujian mencakup semua kasus uji emas:
 harian 3 Jan 2026, bulan Jan/Feb 2026, Jan 2023, Mar 2020 (kurs berubah
 tengah bulan), Apr 2022 (koreksi salah ketik Excel), Days/rasio stok,
 dan perencanaan Jan 2027.
@@ -121,6 +121,38 @@ Lalu buka `http://localhost:5173`. Sejak Fase 3 aplikasi punya lima tab:
 - setiap simpanan dicatat (siapa & kapan) dan langsung memperbarui
   perhitungan OP Margin. Menyimpan tanggal yang sama menimpa nilai lama
   dengan pemberitahuan, tidak menggandakan.
+
+## Kalau ada tombol analisa yang bilang "Fitur ini tidak dikenali"
+
+Gejalanya: misalnya **Margin Bridge** atau **Days of Cover** tidak mau terbuka
+(muncul pesan error / "Not Found"), padahal **5W1H** jalan normal.
+
+Artinya bukan data Anda yang salah — yang berjalan di port 8000 masih **proses
+API dari sesi sebelumnya**, yaitu kode lama yang belum punya fitur baru. 5W1H
+sudah ada di kode lama, karena itu ia tetap jalan; Margin Bridge dan Days of
+Cover belum, karena itu ia 404.
+
+Cara memastikan (buka di browser):
+
+```
+http://localhost:8000/api/health
+```
+
+Di situ ada daftar `fitur`. Kalau daftar itu **tidak** memuat
+`margin-bridge`, `days-of-cover`, dan `jelaskan`, berarti API-nya versi lama.
+
+Cara memperbaiki:
+
+1. Tutup jendela hitam berjudul **"OP Margin - API"** (atau tekan `Ctrl+C` di
+   jendela itu).
+2. Jalankan `start-web.bat` lagi. Skrip ini sekarang memeriksa port 8000 dan
+   5173 lebih dulu, menawarkan menutup proses lama, menjalankan API dengan
+   `--reload`, lalu memverifikasi daftar `fitur` — kalau masih versi lama,
+   akan muncul peringatan **API VERSI LAMA**.
+3. Di browser, muat ulang dengan **Ctrl+F5** (agar berkas lama tidak dipakai).
+
+Kalau `start-web.bat` melaporkan port 8000 dipakai program lain, tutup program
+itu dulu atau jalankan ulang skrip dan pilih opsi menutup prosesnya.
 
 ## Deploy ke internet (Fase 5)
 Panduan lengkap ada di folder `deploy/`: mulai dari `deploy/install-windows.md`
