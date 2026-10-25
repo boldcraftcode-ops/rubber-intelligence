@@ -1,8 +1,8 @@
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
-  Bar, BarChart, CartesianGrid, Cell, ComposedChart, Legend, Line, LineChart,
-  ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis,
+  Bar, BarChart, CartesianGrid, Cell, ComposedChart, LabelList, Legend, Line,
+  LineChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from "recharts";
 import { Kartu, NAMA_BULAN, Panel5W1H, ambilJson, fmtAngka, fmtTanggal, kelasTombolAnalisa, kelasTombolKecil, urlApi } from "../bersama";
 import { useBahasa } from "../i18n";
@@ -532,7 +532,10 @@ function PanelMarginBridge({ url, tutup, awal, akhir, ubah }: {
                  dasar: Math.min(0, kum), nilai: Math.abs(kum),
                  delta: kum, total: true });
   }
-  const warna = (x: any) => (x.total ? "#8b5cf6" : x.delta >= 0 ? "#34d399" : "#f87171");
+  // Penurunan dibuat MERAH TEGAS (bukan merah muda) supaya langsung terbaca.
+  const MERAH = "#dc2626";
+  const warna = (x: any) => (x.total ? "#8b5cf6" : x.delta >= 0 ? "#22c55e" : MERAH);
+  const garis = (x: any) => (x.total ? "#6d28d9" : x.delta >= 0 ? "#15803d" : "#7f1d1d");
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
@@ -598,11 +601,82 @@ function PanelMarginBridge({ url, tutup, awal, akhir, ubah }: {
                                   fill: "#94a3b8", fontSize: 11 }} />
                   <Tooltip content={<TipBridge />} />
                   <Bar dataKey="dasar" stackId="a" fill="transparent" isAnimationActive={false} />
-                  <Bar dataKey="nilai" stackId="a" isAnimationActive={false}>
-                    {titik.map((x, i) => <Cell key={i} fill={warna(x)} />)}
+                  <Bar dataKey="nilai" stackId="a" isAnimationActive={false}
+                       stroke="#0b0a26" strokeWidth={0.5}>
+                    {titik.map((x, i) => (
+                      <Cell key={i} fill={warna(x)} stroke={garis(x)} strokeWidth={1.5} />
+                    ))}
+                    <LabelList dataKey="nilai" content={(p: any) => {
+                      const d = p?.payload;
+                      if (!d) return null;
+                      const naik = (d.delta ?? 0) >= 0;
+                      const teks = `${naik ? "+" : "−"}${fmtAngka(Math.abs(d.delta ?? 0), 2)}`;
+                      const y = naik ? p.y - 6 : p.y + p.height + 12;
+                      return (
+                        <text x={p.x + p.width / 2} y={y} textAnchor="middle"
+                              fontSize={10} fontWeight={700}
+                              fill={d.total ? "#c4b5fd" : naik ? "#4ade80" : "#fca5a5"}>
+                          {teks}
+                        </text>
+                      );
+                    }} />
                   </Bar>
                 </BarChart>
               </ResponsiveContainer>
+            </div>
+
+            <div className="mt-3 rounded-lg border border-violet-500/20 bg-white/5 p-3">
+              <div className="flex flex-wrap items-center gap-2 mb-1.5">
+                <span className="text-sm font-semibold text-slate-200">
+                  {t("Kenapa naik, kenapa turun")}
+                </span>
+                {d.kesimpulan && (
+                  <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${
+                    d.kesimpulan.includes("pasar")
+                      ? "bg-sky-500/15 text-sky-300"
+                      : d.kesimpulan.includes("keputusan")
+                        ? "bg-amber-500/15 text-amber-300"
+                        : "bg-emerald-500/15 text-emerald-300"}`}>
+                    {d.kesimpulan}
+                  </span>
+                )}
+              </div>
+              <ul className="grid gap-1">
+                {(d.analisa ?? []).map((a: string, i: number) => (
+                  <li key={i} className="text-xs text-slate-300 leading-relaxed flex gap-1.5">
+                    <span className="text-violet-400 shrink-0">▸</span><span>{a}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            <div className="mt-3 grid gap-2 sm:grid-cols-2 text-xs">
+              {d.langkah.map((l: any) => {
+                const negatif = l.nilai < 0;
+                return (
+                  <div key={`j-${l.kode}`}
+                       className={`rounded-lg border p-3 ${negatif
+                         ? "border-red-500/50 bg-red-500/10"
+                         : "border-emerald-500/40 bg-emerald-500/10"}`}>
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-semibold text-slate-100">
+                        {negatif ? "▼ " : "▲ "}{l.label}
+                      </span>
+                      <span className={`font-mono font-bold ${negatif
+                        ? "text-red-300" : "text-emerald-300"}`}>
+                        {l.nilai >= 0 ? "+" : "−"}{fmtAngka(Math.abs(l.nilai), 2)}
+                      </span>
+                    </div>
+                    <p className="mt-1 text-[11px] leading-relaxed text-slate-300">
+                      {l.penjelasan}
+                    </p>
+                    <div className="mt-1 text-[10px] text-slate-500">
+                      {l.jenis === "eksternal" ? t("pasar — di luar kendali")
+                        : t("keputusan pembelian")}
+                    </div>
+                  </div>
+                );
+              })}
             </div>
 
             <div className="mt-3 grid gap-3 sm:grid-cols-2 text-xs">
@@ -683,8 +757,9 @@ function PanelMarginBridge({ url, tutup, awal, akhir, ubah }: {
                   </thead>
                   <tbody>
                     {(d.per_bulan ?? []).map((b: any) => (
-                      <tr key={b.bulan} className="border-b border-white/5">
-                        <td className="py-1 pr-2 text-slate-300">{b.bulan}</td>
+                      <Fragment key={b.bulan}>
+                      <tr className="border-b-0">
+                        <td className="pt-1.5 pr-2 text-slate-300">{b.bulan}</td>
                         <td className={`text-right px-1 font-mono ${
                           b.kontribusi_sicom >= 0 ? "text-emerald-300" : "text-rose-300"}`}>
                           {b.delta_sicom >= 0 ? "+" : ""}{fmtAngka(b.delta_sicom, 2)}
@@ -707,6 +782,12 @@ function PanelMarginBridge({ url, tutup, awal, akhir, ubah }: {
                           </span>
                         </td>
                       </tr>
+                      <tr className="border-b border-white/5">
+                        <td colSpan={6} className="pb-1.5 pl-2 text-[10px] leading-relaxed text-slate-500">
+                          ↳ {b.penjelasan}
+                        </td>
+                      </tr>
+                      </Fragment>
                     ))}
                   </tbody>
                 </table>

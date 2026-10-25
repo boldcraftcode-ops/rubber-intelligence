@@ -220,3 +220,53 @@ def test_metrik_kartu_baru_tersedia(klien):
     for kunci in ("margin_bridge", "days_of_cover"):
         assert kunci in kartu
         assert kartu[kunci]["cara_dihitung"].strip()
+
+
+# -------------------------------------------------- narasi "kenapa naik/turun"
+def test_bridge_ada_penjelasan_tiap_komponen(klien):
+    d = _bridge(klien, "2025-01", "2025-12")
+    for l in d["langkah"]:
+        assert l["penjelasan"].strip()
+        assert l["menekan"] is (l["nilai"] < 0)
+        assert l["arah"] in ("naik", "turun", "datar")
+    # SICOM turun 18,39 -> penjelasan menyebut angka & kata "menekan"
+    sicom = next(l for l in d["langkah"] if l["kode"] == "sicom")
+    assert "menekan" in sicom["penjelasan"]
+    assert "18.39" in sicom["penjelasan"] or "18,39" in sicom["penjelasan"]
+    # OP Price turun -> penjelasan menyebut "menolong" + pass-through 66%
+    op = next(l for l in d["langkah"] if l["kode"] == "op_price")
+    assert "menolong" in op["penjelasan"]
+    assert "66%" in op["penjelasan"]
+
+
+def test_bridge_analisa_kesimpulan(klien):
+    d = _bridge(klien, "2025-01", "2025-12")
+    assert len(d["analisa"]) >= 4
+    teks = " ".join(d["analisa"])
+    assert "turun 6.23" in teks or "turun 6,23" in teks
+    assert "Penekan terbesar" in teks and "Penolong terbesar" in teks
+    assert "66%" in teks and "34%" in teks
+    assert "Penurunan bulanan terbesar: Apr-25" in teks
+    assert d["kesimpulan"] == "Tekanan terutama dari pasar (SICOM)"
+
+
+def test_bridge_penjelasan_per_bulan(klien):
+    d = _bridge(klien, "2025-01", "2025-12")
+    for b in d["per_bulan"]:
+        assert b["penjelasan"].startswith(b["bulan"])
+        assert "dipicu" in b["penjelasan"]
+    per = {b["bulan"]: b for b in d["per_bulan"]}
+    assert "naik" in per["Feb-25"]["penjelasan"]
+    assert "turun 8.28" in per["Apr-25"]["penjelasan"]
+    # Oktober: harga beli naik -> penjelasan menyebut berlawanan arah
+    assert "berlawanan arah" in per["Okt-25"]["penjelasan"]
+
+
+def test_bridge_analisa_saat_margin_naik(klien):
+    """Periode yang marginnya naik harus punya kesimpulan & narasi yang benar."""
+    d = _bridge(klien, "2024-01", "2024-12")
+    assert d["delta_margin"] > 0
+    assert d["kesimpulan"].startswith("Margin membaik")
+    assert any("naik" in a for a in d["analisa"])
+    # walau margin naik, penekan tetap dilaporkan
+    assert any("Penekan terbesar" in a for a in d["analisa"])

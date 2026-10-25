@@ -87,6 +87,13 @@ const KAMUS: Record<string, string> = {
   "Analisa grafik": "Chart analysis",
   // ---- margin bridge
   // ---- margin bridge (ΔM = ΔSICOM − ΔOP Price)
+  "Kenapa naik, kenapa turun": "Why it rose, why it fell",
+  "pasar — di luar kendali": "market — outside our control",
+  "keputusan pembelian": "purchasing decision",
+  "Tekanan terutama dari pasar (SICOM)": "Pressure mainly from the market (SICOM)",
+  "Tekanan terutama dari keputusan harga beli": "Pressure mainly from purchase-price decisions",
+  "Margin membaik": "Margin improved",
+  "Margin stabil": "Margin stable",
   "Periode awal": "Opening period",
   "Periode akhir": "Closing period",
   "Bawaan: mengikuti filter kartu grafik.": "Default: follows the chart card's filter.",

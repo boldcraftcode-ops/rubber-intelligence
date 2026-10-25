@@ -137,6 +137,11 @@ kartu:
       dan efek kurs; kedua efek berjumlah sama dengan -delta OP Price.
       Periode: pilihan periode awal dan periode akhir (bulan), bawaannya
       mengikuti filter kartu sehingga sama dengan bulan/tahun di grafik.
+      Setiap komponen diberi narasi kenapa menekan/menolong (beserta angkanya),
+      dan setiap bulan dalam rentang diberi penjelasan penyebab. Ringkasan
+      "kenapa naik, kenapa turun" menyebut penekan/penolong terbesar, porsi
+      pass-through, bulan penurunan/kenaikan terbesar, dan berapa bulan yang
+      ditentukan keputusan vs pasar.
   days_of_cover:
     judul: Days of Cover - analisa grafik RM Stock, Intake vs Pricing
     cara_dihitung: >

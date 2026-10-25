@@ -299,6 +299,87 @@ def pasang_router(app, ambil_session):
             return "keputusan"
         return "keputusan" if abs(d_op) > abs(d_sicom) else "pasar"
 
+    def _narasi_langkah(langkah: list[dict], passthrough: dict | None) -> None:
+        """Isi 'penjelasan' tiap komponen bridge (kenapa menekan/menolong)."""
+        for l in langkah:
+            nilai = l["nilai"]
+            mentah = l["perubahan_mentah"]
+            if l["kode"] == "sicom":
+                if mentah < 0:
+                    l["penjelasan"] = (
+                        f"SICOM turun {abs(mentah):.2f} US¢/kg — harga acuan pasar "
+                        f"melemah, menekan margin {abs(nilai):.2f} US¢/kg. Ini di luar "
+                        f"kendali pembelian.")
+                    l["arah"] = "turun"
+                elif mentah > 0:
+                    l["penjelasan"] = (
+                        f"SICOM naik {mentah:.2f} US¢/kg — pasar menguat, menolong "
+                        f"margin +{nilai:.2f} US¢/kg.")
+                    l["arah"] = "naik"
+                else:
+                    l["penjelasan"] = "SICOM praktis tidak berubah."
+                    l["arah"] = "datar"
+            else:  # op_price
+                if mentah < 0:
+                    l["penjelasan"] = (
+                        f"Harga beli (OP Price) turun {abs(mentah):.2f} US¢/kg — "
+                        f"pembelian lebih murah, menolong margin +{nilai:.2f} US¢/kg.")
+                    l["arah"] = "turun"
+                elif mentah > 0:
+                    l["penjelasan"] = (
+                        f"Harga beli (OP Price) naik {mentah:.2f} US¢/kg — biaya "
+                        f"pembelian lebih mahal, menekan margin {abs(nilai):.2f} US¢/kg.")
+                    l["arah"] = "naik"
+                else:
+                    l["penjelasan"] = "Harga beli (OP Price) praktis tidak berubah."
+                    l["arah"] = "datar"
+            l["menekan"] = nilai < 0
+
+        if passthrough:
+            rasio = passthrough["rasio"]
+            ds = passthrough["delta_sicom"]
+            arah = "penurunan" if ds < 0 else "kenaikan"
+            if rasio < 0:
+                teks = (f"Harga beli bergerak BERLAWANAN arah dengan SICOM "
+                        f"(pass-through {rasio * 100:.0f}%) — keputusan pembelian "
+                        f"menahan sebagian {arah} SICOM.")
+            elif rasio > 1.02:
+                teks = (f"Harga beli turun/naik lebih besar daripada SICOM "
+                        f"(pass-through {rasio * 100:.0f}%) — margin justru tertolong.")
+            else:
+                teks = (f"OP Price hanya mengikuti {rasio * 100:.0f}% dari {arah} SICOM; "
+                        f"sisa {passthrough['porsi_ditanggung_margin'] * 100:.0f}% "
+                        f"ditanggung margin.")
+            langkah[1]["penjelasan"] += " " + teks
+            langkah[1]["passthrough_teks"] = teks
+
+    def _narasi_bulan(baris: dict) -> str:
+        """Penjelasan satu bulan: kenapa margin naik/turun."""
+        d_m = baris["delta_margin"]
+        ds = baris["delta_sicom"]
+        dp = baris["delta_op_price"]
+        arah = "naik" if d_m > 0 else "turun" if d_m < 0 else "datar"
+        kepala = (f"{baris['bulan']}: margin {arah} {abs(d_m):.2f} US¢/kg"
+                  if d_m else f"{baris['bulan']}: margin datar")
+        bagian = []
+        if abs(ds) >= 0.005:
+            bagian.append(f"SICOM {'turun' if ds < 0 else 'naik'} {abs(ds):.2f}")
+        else:
+            bagian.append("SICOM nyaris tidak bergerak")
+        if abs(dp) >= 0.005:
+            bagian.append(f"OP Price {'turun' if dp < 0 else 'naik'} {abs(dp):.2f}")
+        else:
+            bagian.append("OP Price tetap")
+        isi = ", ".join(bagian)
+        pas = baris.get("passthrough")
+        if pas is not None and abs(ds) >= 0.005 and pas >= 0:
+            isi += f" (hanya {pas * 100:.0f}% mengikuti SICOM)"
+        elif pas is not None and pas < 0:
+            isi += " (harga beli berlawanan arah SICOM)"
+        ekor = ("→ dipicu keputusan pembelian." if baris["penyebab"] == "keputusan"
+                else "→ dipicu pasar.")
+        return f"{kepala} — {isi} {ekor}"
+
     @router.get("/margin-bridge")
     def margin_bridge(dari: str | None = None, sampai: str | None = None,
                       tahun: int | None = None, bulan: int | None = None,
@@ -390,7 +471,87 @@ def pasang_router(app, ambil_session):
                     "passthrough": (dp / ds) if abs(ds) > 0.005 else None,
                     "penyebab": _penyebab(ds, dp),
                 })
+                per_bulan[-1]["penjelasan"] = _narasi_bulan(per_bulan[-1])
             th, bl = nxt
+
+        _narasi_langkah(langkah, passthrough)
+
+        # ---- Analisa: kenapa margin naik/turun sepanjang periode
+        penekan = [l for l in langkah if l["nilai"] < 0]
+        penolong = [l for l in langkah if l["nilai"] > 0]
+        analisa = []
+        if abs(d_margin) < 0.005:
+            analisa.append(
+                f"Margin praktis tidak berubah ({d_margin:+.2f} US¢/kg) dari "
+                f"{a['label']} ke {b['label']}: pengaruh SICOM dan harga beli saling "
+                f"meniadakan.")
+        else:
+            arah = "turun" if d_margin < 0 else "naik"
+            analisa.append(
+                f"Margin {arah} {abs(d_margin):.2f} US¢/kg dari {a['label']} "
+                f"({a['margin']:.2f}) ke {b['label']} ({b['margin']:.2f}).")
+        if penekan:
+            utama = min(penekan, key=lambda l: l["nilai"])
+            analisa.append(
+                f"Penekan terbesar: {utama['label']} {utama['nilai']:+.2f} US¢/kg"
+                + (" — harga acuan pasar, di luar kendali." if utama["kode"] == "sicom"
+                   else " — harga beli naik, ini keputusan pembelian."))
+        if penolong:
+            utama = max(penolong, key=lambda l: l["nilai"])
+            analisa.append(
+                f"Penolong terbesar: {utama['label']} {utama['nilai']:+.2f} US¢/kg"
+                + (" — pasar menguat." if utama["kode"] == "sicom"
+                   else " — pembelian lebih murah, ini yang bisa dikendalikan."))
+        if passthrough:
+            porsi = passthrough["rasio"] * 100
+            if 0 <= porsi <= 100:
+                analisa.append(
+                    f"Harga beli hanya mengikuti {porsi:.0f}% dari pergerakan SICOM, "
+                    f"jadi {100 - porsi:.0f}% pergerakan pasar langsung menjadi "
+                    f"perubahan margin — inilah risiko yang tidak bisa dikendalikan "
+                    f"lewat negosiasi harga.")
+            elif porsi > 100:
+                analisa.append(
+                    f"Harga beli bergerak {porsi:.0f}% dari pergerakan SICOM (lebih "
+                    f"besar dari pasar) — pembelian justru memperbaiki margin.")
+            else:
+                analisa.append(
+                    f"Harga beli bergerak berlawanan arah dengan SICOM "
+                    f"({porsi:.0f}%) — pembelian menahan sebagian tekanan pasar.")
+        if len(per_bulan) >= 2:
+            turun = min(per_bulan, key=lambda r: r["delta_margin"])
+            naik = max(per_bulan, key=lambda r: r["delta_margin"])
+            if turun["delta_margin"] < 0:
+                analisa.append(
+                    f"Penurunan bulanan terbesar: {turun['bulan']} "
+                    f"({turun['delta_margin']:+.2f}) — "
+                    f"{'dipicu pasar (SICOM jatuh)' if turun['penyebab'] == 'pasar' else 'dipicu keputusan pembelian'}.")
+            if naik["delta_margin"] > 0:
+                analisa.append(
+                    f"Kenaikan bulanan terbesar: {naik['bulan']} "
+                    f"({naik['delta_margin']:+.2f}) — "
+                    f"{'ditopang pasar (SICOM naik)' if naik['penyebab'] == 'pasar' else 'hasil keputusan pembelian'}.")
+            jml_putusan = sum(1 for r in per_bulan if r["penyebab"] == "keputusan")
+            analisa.append(
+                f"Dari {len(per_bulan)} bulan, {jml_putusan} bulan pergerakan margin "
+                f"ditentukan keputusan pembelian dan {len(per_bulan) - jml_putusan} "
+                f"bulan oleh pasar.")
+        # Kesimpulan mengikuti hasil akhir dulu, baru penyebab dominannya
+        if d_margin > 0.005:
+            kontrib_neg = [l for l in langkah if l["nilai"] < 0]
+            if kontrib_neg and abs(kontrib_neg[0]["nilai"]) > abs(d_margin):
+                kesimpulan = "Margin membaik meski ada penekan"
+            else:
+                kesimpulan = "Margin membaik"
+        elif d_margin < -0.005:
+            kontrib_neg = [l for l in langkah if l["nilai"] < 0]
+            utama = min(kontrib_neg, key=lambda l: l["nilai"]) if kontrib_neg else None
+            if utama and utama["kode"] == "op_price":
+                kesimpulan = "Tekanan terutama dari keputusan harga beli"
+            else:
+                kesimpulan = "Tekanan terutama dari pasar (SICOM)"
+        else:
+            kesimpulan = "Margin stabil"
 
         hasil = {
             "periode_a": a, "periode_b": b,
@@ -402,6 +563,8 @@ def pasang_router(app, ambil_session):
             "passthrough": passthrough,
             "rincian_op_price": rincian,
             "per_bulan": per_bulan,
+            "analisa": analisa,
+            "kesimpulan": kesimpulan,
             "catatan": [
                 "SICOM = harga acuan pasar (di luar kendali); OP Price = harga beli "
                 "kita (keputusan). SICOM turun menekan margin, OP Price turun menolong.",
