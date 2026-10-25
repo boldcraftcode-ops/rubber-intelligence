@@ -80,11 +80,17 @@ def _baca_token(token: str, secret: str) -> dict:
                       options={"require": ["exp", "sub"]})
 
 
-def _pasang_cookie(response: Response, token: str, produksi: bool) -> None:
+def _pasang_cookie(response: Response, token: str, cfg) -> None:
+    """Pasang cookie sesi.
+
+    samesite/secure mengikuti setelan (lihat auth.KonfigurasiAuth):
+    bawaan "lax" + Secure di produksi. Bila tampilan web dan API berada di
+    situs berbeda, setel COOKIE_SAMESITE=none; Secure otomatis menyala.
+    """
     response.set_cookie(
         COOKIE_SESI, token, max_age=SESI_JAM * 3600, httponly=True,
-        samesite="lax",  # frontend & api satu site (subdomain sama) -> aman
-        secure=produksi, path="/")
+        samesite=cfg.cookie_samesite,
+        secure=cfg.cookie_secure, path="/")
 
 
 # ----------------------------------------------------------------------------
@@ -208,7 +214,7 @@ def pasang_router_auth(app, ambil_session, cfg):
         p.login_terakhir = dt.datetime.utcnow()
         catat_audit(session, p.username, "login", "auth", {"nama": p.nama})
         session.commit()
-        _pasang_cookie(response, _buat_token(p, cfg.secret), cfg.produksi)
+        _pasang_cookie(response, _buat_token(p, cfg.secret), cfg)
         return {"status": "ok", "username": p.username, "nama": p.nama,
                 "peran": p.peran,
                 "pesan": f"Selamat datang, {p.nama}."}

@@ -137,6 +137,57 @@ bagian A-alternatif.)
    `FRONTEND_ORIGIN=https://[ISI-NAMA-PROYEK].pages.dev` di `.env` backend,
    lalu restart service.
 
+   **Penting — cookie sesi.** Login memakai cookie `op_sesi`. Bila tampilan
+   web dan API berada di **situs berbeda** (mis. `<proyek>.pages.dev` atau
+   `<proyek>.workers.dev` di satu sisi, `api.domain-anda.com` di sisi lain),
+   browser tidak mengirim cookie `SameSite=lax` untuk permintaan lintas situs:
+   login tampak berhasil, lalu halaman kembali ke form. Karena itu tambahkan
+   di `.env` backend:
+
+   ```
+   COOKIE_SAMESITE=none
+   ```
+
+   lalu restart service. `Secure` otomatis menyala (wajib untuk `none`).
+   Bila keduanya masih satu domain — mis. `app.domain-anda.com` +
+   `api.domain-anda.com` — biarkan bawaan (`lax`), itu yang paling aman.
+   Cek hasilnya tanpa browser:
+   `http://127.0.0.1:8000/api/auth/mode` → `"cookie_samesite":"none"`.
+
+   **Alternatif yang paling sederhana dan paling tahan lama: satu-origin.**
+   API sekaligus menyajikan halaman web, jadi cukup SATU hostname tunnel
+   (`app.domain-anda.com`) — tidak perlu Cloudflare Pages, tidak perlu CORS,
+   dan cookie selalu terkirim. Langkahnya:
+   ```powershell
+   cd C:\op-margin\frontend
+   npm install
+   npm run build                     # hasilnya folder dist\
+
+   cd C:\op-margin\backend
+   notepad .env                      # tambahkan baris berikut
+   ```
+   ```
+   SAJIKAN_WEB=true
+   FRONTEND_ORIGIN=                  # boleh kosong: satu-origin tidak perlu CORS
+   ```
+   Lalu di `C:\Users\[NAMA]\ .cloudflared\config.yml` tambahkan hostname
+   untuk halaman web (boleh hostname yang sama dengan API):
+   ```yaml
+   ingress:
+     - hostname: app.[ISI-DOMAIN]
+       service: http://127.0.0.1:8000
+     - service: http_status:404
+   ```
+   ```powershell
+   cloudflared tunnel route dns op-margin app.[ISI-DOMAIN]
+   C:\nssm\nssm.exe restart OPMarginAPI
+   ```
+   Bukti berhasil (tanpa browser):
+   `https://app.[ISI-DOMAIN]/api/health` → `"web_statistik"` berisi folder
+   `dist`, dan `https://app.[ISI-DOMAIN]/` menampilkan form login.
+   Bila `web_statistik` berisi `null`, berarti `dist\` belum ada / salah
+   folder — API tetap jalan, hanya halamannya belum tersaji.
+
 9. **Login tidak lagi lewat Cloudflare Access.** Setelah frontend terbuka,
    yang muncul adalah form **username + sandi** aplikasi. Akun pertama
    `admin` dengan sandi dari `ADMIN_SANDI_AWAL` (bawaan `admin123`).

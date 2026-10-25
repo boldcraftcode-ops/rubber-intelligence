@@ -18,6 +18,7 @@ from dotenv import load_dotenv
 load_dotenv(pathlib.Path(__file__).resolve().parents[1] / ".env")
 
 import datetime as dt
+import sys
 import hashlib
 import json
 
@@ -217,7 +218,10 @@ def buat_app(engine: Engine | None = None) -> FastAPI:
                 # folder yang dijalankan dengan kode terbaru di repo
                 "kode": versi.versi_folder(),
                 "folder": proses["folder"], "pid": proses["pid"],
-                "mulai": proses["mulai"]}
+                "mulai": proses["mulai"],
+                # None = tampilan web tidak disajikan dari API (mode terpisah).
+                # Berisi folder bila mode satu-origin aktif (SAJIKAN_WEB=true).
+                "web_statistik": getattr(app.state, "web_statistik", None)}
 
     # ------------------------------------------------------------ SICOM
     @app.get("/api/sicom")
@@ -297,7 +301,40 @@ def buat_app(engine: Engine | None = None) -> FastAPI:
                     nilai_lama, data.idr_per_usd) if nilai_lama is not None
                     else "Kurs baru tersimpan, berlaku sejak tanggal itu.")}
 
+    # --- (opsional) sajikan tampilan web dari API: satu-origin ---------------
+    # Diperlukan bila aplikasi diakses lewat SATU hostname Cloudflare Tunnel
+    # (mis. app.domain-anda.com) tanpa Cloudflare Pages. Keuntungannya:
+    # tampilan web dan API satu situs, sehingga cookie sesi selalu terkirim
+    # dan tidak perlu CORS / COOKIE_SAMESITE=none.
+    _pasang_web_statistik(app, cfg_auth)
+
     return app
 
 
+def _pasang_web_statistik(app: FastAPI, cfg_auth: KonfigurasiAuth) -> None:
+    """Pasang `frontend/dist` sebagai berkas statis di akar aplikasi.
+
+    Hanya aktif bila SAJIKAN_WEB=true. Bila foldernya belum ada (belum
+    `npm run build`), aplikasi TETAP hidup dan hanya memberi peringatan —
+    API tidak boleh mati gara-gara tampilan belum di-build.
+    """
+    if os.environ.get("SAJIKAN_WEB", "").strip().lower() not in ("1", "true", "ya"):
+        return
+    from fastapi.staticfiles import StaticFiles
+
+    folder = pathlib.Path(os.environ.get("SAJIKAN_WEB_FOLDER", "").strip()
+                          or pathlib.Path(__file__).resolve().parents[2]
+                          / "frontend" / "dist")
+    if not (folder / "index.html").is_file():
+        sys.stderr.write(
+            f"PERINGATAN: SAJIKAN_WEB=true tetapi {folder} belum berisi "
+            "index.html. Jalankan 'npm run build' di folder frontend, "
+            "atau isi SAJIKAN_WEB_FOLDER. API tetap berjalan.\n")
+        return
+    app.mount("/", StaticFiles(directory=str(folder), html=True), name="web")
+    # Dicatat supaya diagnosa bisa memastikan mode satu-origin benar-benar aktif.
+    app.state.web_statistik = str(folder)
+
+
+# Instance untuk uvicorn: "app.main:app"
 app = buat_app()

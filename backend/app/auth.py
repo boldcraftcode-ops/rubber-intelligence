@@ -9,9 +9,17 @@ aplikasi (dulu dipakai untuk deploy lewat Cloudflare). Variabel CF_ACCESS_*
 di .env sekarang diabaikan dan boleh dihapus.
 
 Variabel .env yang masih dipakai:
-  APP_ENV        = development | produksi
-  SECRET_KEY     = kunci penanda tangan sesi, minimal 32 karakter
-  AUTH_DISABLED  = "true" hanya untuk pengembangan; DILARANG di produksi
+  APP_ENV           = development | produksi
+  SECRET_KEY        = kunci penanda tangan sesi, minimal 32 karakter
+  AUTH_DISABLED     = "true" hanya untuk pengembangan; DILARANG di produksi
+  COOKIE_SAMESITE   = lax (bawaan) | none | strict
+
+  COOKIE_SAMESITE perlu diubah menjadi "none" HANYA bila tampilan web dan API
+  berada di SITUS yang berbeda (mis. frontend di <proyek>.pages.dev atau
+  <proyek>.workers.dev, API di api.domain-anda.com). Browser tidak mengirim
+  cookie SameSite=lax pada permintaan lintas situs, sehingga login akan
+  berhasil lalu langsung kembali ke form. Bila keduanya masih satu domain
+  (app.domain-anda.com + api.domain-anda.com), biarkan "lax".
 """
 from __future__ import annotations
 
@@ -49,9 +57,36 @@ class KonfigurasiAuth:
                 "tulis SECRET_KEY di backend/.env agar sesi tidak berakhir "
                 "saat API dijalankan ulang.\n")
 
+        # SameSite cookie sesi. Lihat penjelasan di docstring atas.
+        self.cookie_samesite, self.cookie_samesite_diperbaiki = \
+            self._baca_samesite(os.environ.get("COOKIE_SAMESITE", "").strip().lower())
+
+    @staticmethod
+    def _baca_samesite(nilai: str) -> tuple[str, bool]:
+        """Kembalikan (nilai sah, perlu_diperbaiki).
+
+        Nilai salah tidak membuat aplikasi gagal start (pengguna tidak boleh
+        terkunci gara-gara salah tulis), tetapi dilaporkan di /api/health dan
+        di konsol, lalu jatuh ke "lax".
+        """
+        if nilai in ("lax", "none", "strict"):
+            return nilai, False
+        if nilai:
+            sys.stderr.write(
+                f"PERINGATAN: COOKIE_SAMESITE='{nilai}' tidak dikenal "
+                "(pilihan: lax, none, strict). Dipakai 'lax'.\n")
+            return "lax", True
+        return "lax", False
+
     @property
     def produksi(self) -> bool:
         return self.app_env.startswith("prod")
+
+    @property
+    def cookie_secure(self) -> bool:
+        """SameSite=none WAJIB disertai Secure, selain itu browser membuang
+        cookie-nya. Di produksi Secure sudah aktif karena HTTPS."""
+        return self.produksi or self.cookie_samesite == "none"
 
     @property
     def lokal_aktif(self) -> bool:
@@ -89,4 +124,8 @@ def info_mode(cfg: KonfigurasiAuth) -> dict:
     return {"mode": mode, "cara": cara,
             "perlu_login": mode != "nonaktif",
             "produksi": cfg.produksi,
-            "mode_otomatis": False}
+            "mode_otomatis": False,
+            # Berguna saat deploy: bila tampilan web dan API beda situs,
+            # nilai ini harus "none" agar cookie sesi ikut terkirim.
+            "cookie_samesite": cfg.cookie_samesite,
+            "cookie_samesite_salah_tulis": cfg.cookie_samesite_diperbaiki}

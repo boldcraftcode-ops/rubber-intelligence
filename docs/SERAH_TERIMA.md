@@ -9,7 +9,7 @@ Kalau Anda hanya punya 15 menit, baca bagian **1 (Status)**, **3 (Cara
 menjalankan)**, dan **7 (Aturan yang tidak boleh dilanggar)**. Selebihnya bisa
 dibaca saat mengerjakan tugas pertama.
 
-Terakhir diperbarui: **2026-10-25**, versi kode **0.7.3**.
+Terakhir diperbarui: **2026-10-25**, versi kode **0.7.4**.
 
 ---
 
@@ -36,11 +36,11 @@ ini setiap hari untuk memutuskan **harga beli maksimum** yang masih aman.
 
 | Hal | Nilai |
 |---|---|
-| Versi kode | **0.7.3** (`VERSI.txt`, `backend/app/versi.py`, `frontend/src/versi.ts`) |
+| Versi kode | **0.7.4** (`VERSI.txt`, `backend/app/versi.py`, `frontend/src/versi.ts`) |
 | Branch kerja | `arena/18670644-rubber-intelligence` |
 | Pull request | **#1 masih terbuka** — https://github.com/boldcraftcode-ops/rubber-intelligence/pull/1 |
 | Branch `main` | belum memuat pekerjaan v0.7.x |
-| Unit test | **172 lulus** (`cd backend && .venv/bin/python -m pytest -q`) |
+| Unit test | **183 lulus** (`cd backend && .venv/bin/python -m pytest -q`) |
 | Build frontend | bersih, ±3,3 detik (`cd frontend && npm run build`) |
 | Database | SQLite `backend/opmargin.db` (tidak masuk Git) |
 
@@ -102,7 +102,7 @@ Login awal: **`admin` / `admin123`** (dari `ADMIN_SANDI_AWAL` di
 
 ```bash
 cd backend
-.venv/bin/python -m pytest -q                                  # 172 tes
+.venv/bin/python -m pytest -q                                  # 183 tes
 .venv/bin/python -m app.cli diagnosa                            # laporan kesehatan
 .venv/bin/python -m app.cli reset-sandi admin                   # lupa sandi
 .venv/bin/python -m app.cli atur-login-lokal                    # pastikan mode login benar
@@ -153,7 +153,7 @@ rubber-intelligence/
 │   │       ├── kualitas.py     deteksi data terlambat/aneh
 │   │       └── alarm.py        evaluasi alarm + audit
 │   ├── semantic/metrics.yaml   definisi metrik (rujukan, dibaca fase API)
-│   ├── tests/                  172 tes, termasuk kasus emas Excel lama
+│   ├── tests/                  183 tes, termasuk kasus emas Excel lama
 │   ├── unggahan/               berkas Excel yang diunggah lewat web
 │   └── .env.example            contoh setelan (JANGAN commit .env asli)
 └── frontend/
@@ -231,6 +231,34 @@ tertutup pabrik; semua aset lokal.
 
 ---
 
+## 6b. Deploy lewat Cloudflare Tunnel (masih hidup, penting)
+
+**Yang dihapus hanya Cloudflare Access (gerbang login). Tunnel tidak.**
+Tunnel = jalur koneksi dari Cloudflare ke PC; Access = halaman login Cloudflare.
+Menghapus Access tidak memutus tunnel. Berkas `deploy/cloudflared-config.example.yml`
+dan `deploy/install-windows.md` masih utuh dan masih dipakai.
+
+Ada dua pola pemasangan:
+
+| Pola | Cara kerja | Setelan wajib |
+|---|---|---|
+| **Satu-origin** (disarankan) | API menyajikan `frontend/dist`; satu hostname tunnel melayani halaman + API | `SAJIKAN_WEB=true` di `.env`, `npm run build` |
+| Terpisah | halaman di Pages/Workers, API di `api.domain` | `VITE_API_URL` saat build, `FRONTEND_ORIGIN`, dan `COOKIE_SAMESITE=none` bila beda situs |
+
+Jebakan yang paling menipu: **cookie sesi**. `op_sesi` dipasang dengan
+`SameSite=lax`. Bila halaman web dan API berada di **situs berbeda**
+(`*.pages.dev` / `*.workers.dev` + domain lain), browser tidak mengirim cookie
+itu untuk permintaan `fetch`, sehingga login *tampak* berhasil lalu langsung
+kembali ke form — tanpa pesan galat apa pun. Perbaikannya `COOKIE_SAMESITE=none`
+(Secure otomatis menyala). Cara memastikan tanpa browser:
+
+```
+GET /api/auth/mode   -> "cookie_samesite":"none"
+GET /api/health      -> "web_statistik":"...frontend/dist"   (mode satu-origin)
+```
+
+Satu-origin menghilangkan seluruh masalah ini karena cookie selalu same-site.
+
 ## 7. Aturan yang tidak boleh dilanggar
 
 Semua ini lahir dari kegagalan nyata, bukan kehati-hatian berlebihan.
@@ -252,7 +280,7 @@ Semua ini lahir dari kegagalan nyata, bukan kehati-hatian berlebihan.
    kode salah. Perbaikannya: `hentikan-api.bat` lalu `start-web.bat`.
 6. **Selalu jalankan `npm run build` (bukan hanya `vite build`)** — skrip npm
    memakai `tsc -b`, jadi error tipe ikut tertangkap.
-7. **172 tes harus tetap lulus.** Tes "kasus emas"
+7. **183 tes harus tetap lulus.** Tes "kasus emas"
    (`tests/test_data_awal.py`, `tests/test_bridge_doc.py`) mencocokkan hasil
    dengan Excel lama sampai beberapa desimal. Kalau tes emas gagal, hampir pasti rumus
    yang diubah, bukan tesnya.
@@ -262,7 +290,10 @@ Semua ini lahir dari kegagalan nyata, bukan kehati-hatian berlebihan.
    aplikasi: tampilkan status jujur (`"DATA KURANG"`, `"belum bisa dihitung"`)
    + alasan + apa yang harus diisi. Pemilik proyek sangat tidak menyukai
    tebakan.
-10. **Jangan bekerja di branch lain.** Semua pekerjaan di
+10. **Jangan menyentuh setelan cookie tanpa alasan.** Bawaan `lax` sudah benar
+    untuk satu domain. `none` hanya untuk halaman web & API di situs berbeda,
+    dan wajib disertai `Secure` (sudah otomatis lewat `cookie_secure`).
+11. **Jangan bekerja di branch lain.** Semua pekerjaan di
     `arena/18670644-rubber-intelligence`; PR #1 dari branch itu.
 
 ---
@@ -304,14 +335,14 @@ pernah membuat label dan ikon tertukar; ganti blok utuhnya.
 ### Rilis versi baru (prosedur yang sudah terbukti)
 ```bash
 # 1. pastikan bersih
-cd backend && .venv/bin/python -m pytest -q          # 172 passed
+cd backend && .venv/bin/python -m pytest -q          # 183 passed
 cd ../frontend && npm run build                       # bersih
 
-# 2. naikkan versi di 6 berkas (contoh 0.7.3 -> 0.7.4)
+# 2. naikkan versi di 6 berkas (contoh 0.7.4 -> 0.7.5)
 cd ..
 for f in VERSI.txt backend/app/versi.py frontend/src/versi.ts \
          docs/CARA_MENJALANKAN.md diagnosa.bat hentikan-api.bat; do
-  sed -i 's/0\.7\.3/0.7.4/g' "$f"
+  sed -i 's/0\.7\.4/0.7.5/g' "$f"
 done
 #    (Windows: ganti manual nilai versi di 6 berkas itu)
 #    .bat: pastikan tetap ASCII + CRLF
@@ -344,6 +375,8 @@ tidak, pengguna akan melihat layar "beda versi" (yang memang tujuannya).
 | Tabel "Pengguna" menampilkan teks tak terlihat | kelas `bg` dan `text` bernilai warna sama | audit: cari baris dengan `bg-[#x]` dan `text-[#x]` sama |
 | Logo tidak muncul di login | aset eksternal/CDN | taruh di `frontend/public/`, rujuk path relatif |
 | Preview aplikasi kosong total | kode browser memanggil `localhost:8000` langsung | selalu pakai URL relatif `/api/...`; dev server memproksikan |
+| Login "berhasil" tapi langsung kembali ke form (deploy) | cookie `SameSite=lax` tidak dikirim lintas situs | `COOKIE_SAMESITE=none`, atau pakai satu-origin (`SAJIKAN_WEB=true`) |
+| `uvicorn: Attribute "app" not found in module "app.main"` | baris `app = buat_app()` di akhir `main.py` ikut terhapus saat menyunting | tambahkan kembali; **tes unit tidak menangkapnya** karena tes memanggil `buat_app()` |
 
 Catatan lingkungan kerja saya (mungkin berguna, mungkin tidak):
 - **Playwright tidak bisa dipakai** di sandbox ini — unduhan Chromium gagal.
@@ -430,7 +463,7 @@ Urutan pemeriksaan yang paling cepat menemukan akar masalah:
 3. **Login**: `curl http://localhost:8000/api/auth/mode` → harus
    `"cara":"username-sandi"`.
 4. **Data**: apakah mart terisi? `python -m app.cli ringkasan <tahun>`.
-5. **Rumus**: jalankan `pytest -q`. Kalau 172 lulus, kesalahan ada di UI atau
+5. **Rumus**: jalankan `pytest -q`. Kalau semua lulus, kesalahan ada di UI atau
    data, bukan perhitungan.
 6. **Frontend**: `npm run build` — error tipe muncul di sini lebih awal daripada
    di browser.
@@ -463,6 +496,5 @@ Aplikasi ini menghitung selisih harga pasar dan harga beli karet, lalu
 menjelaskan sebabnya. Angka dihitung di backend (`core/`), ditampilkan di React,
 dan tidak boleh dikarang saat data kurang. Yang paling sering merusak pengalaman
 pengguna bukan logika, melainkan **proses lama yang masih hidup** dan **versi
-yang tidak sinkron** — periksa itu lebih dulu sebelum menyentuh kode. Jaga 172
-tes tetap hijau, jaga `.bat` tetap ASCII, dan jangan kembalikan Cloudflare
+yang tidak sinkron** — periksa itu lebih dulu sebelum menyentuh kode. Jaga semua tes tetap hijau, jaga `.bat` tetap ASCII, dan jangan kembalikan Cloudflare
 Access.

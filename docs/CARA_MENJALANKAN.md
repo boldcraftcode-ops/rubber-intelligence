@@ -205,7 +205,7 @@ cd backend
 ### Bukti paling cepat: folder ini kode lama atau bukan
 
 Pesan **"Belum login ... Cloudflare Access"** sudah **tidak ada lagi** di kode
-sejak versi 0.7.3. Kalau pesan itu masih muncul, yang menjawab di port 8000
+sejak versi 0.7.4. Kalau pesan itu masih muncul, yang menjawab di port 8000
 pasti kode lama. Cara membuktikannya dari folder aplikasi:
 
 ```powershell
@@ -214,7 +214,7 @@ findstr /c:"Cloudflare Access" backend\app\main.py
 
 - **Ada hasilnya** → folder ini masih kode lama (belum diperbarui). Jalankan
   `perbarui-kode.bat`.
-- **Tidak ada hasil** → folder sudah 0.7.3; berarti ada proses lama di port
+- **Tidak ada hasil** → folder sudah 0.7.4; berarti ada proses lama di port
   8000. Jalankan `start-web.bat` (sekarang menutupnya otomatis).
 
 `diagnosa.bat` juga memeriksa hal ini dan menuliskannya di bagian [0].
@@ -232,7 +232,7 @@ Bacanya:
 
 | Yang tertulis | Artinya | Tindakan |
 |---|---|---|
-| `mode login : lokal (username-sandi)` dan API menjawab `0.7.3` + `lokal` | sudah benar | login dengan akun Anda (Ctrl+F5 dulu) |
+| `mode login : lokal (username-sandi)` dan API menjawab `0.7.4` + `lokal` | sudah benar | login dengan akun Anda (Ctrl+F5 dulu) |
 | API menjawab `mode: nonaktif` | `AUTH_DISABLED=true` masih ada di `.env` | hapus baris itu, lalu jalankan `start-web.bat` lagi |
 | API tidak menjawab / `404` di `/api/auth/mode` | prosesnya **kode lama** | tutup jendela API lama, jalankan `start-web.bat` lagi |
 | bagian [2] tidak ada akun, atau sandi lupa | akun belum dibuat / sandi salah | `python -m app.cli reset-sandi admin` (dari folder `backend`) |
@@ -258,11 +258,11 @@ Perbaikan:
    melaporkan apakah **port 8000 dan 5173 sudah BEBAS**. Kalau ada yang gagal
    ditutup, skrip mengatakannya (tidak diam-diam).
 2. Jalankan **`start-web.bat`** dari folder aplikasi yang benar — folder yang
-   `VERSI.txt`-nya berisi `0.7.3`. Tunggu tulisan **`API siap: kode 0.7.3`**.
+   `VERSI.txt`-nya berisi `0.7.4`. Tunggu tulisan **`API siap: kode 0.7.4`**.
 3. Buka `http://localhost:5173`, tekan **Ctrl+F5**.
 
 Cek cepat kapan saja: `http://localhost:8000/api/health` — nilai `versi` dan
-`kode` harus `0.7.3`, dan `folder` harus menunjuk folder aplikasi Anda.
+`kode` harus `0.7.4`, dan `folder` harus menunjuk folder aplikasi Anda.
 
 ## Cara tercepat membereskan: `perbaiki.bat`
 
@@ -319,7 +319,7 @@ berkas ini dari folder lama ke folder baru **sebelum** menjalankan
 - `backend\.env` — setelan login (opsional; bila tidak ada, dibuat otomatis)
 
 Cara memastikan folder baru benar-benar versi terbaru: lihat **`VERSI.txt`** di
-akar folder (versi terbaru saat dokumen ini ditulis: **0.7.3**), atau buka
+akar folder (versi terbaru saat dokumen ini ditulis: **0.7.4**), atau buka
 `http://localhost:8000/api/health` dan periksa `"versi"` serta `"kode"`.
 
 ## Deploy ke internet (Fase 5)
@@ -327,7 +327,23 @@ Panduan lengkap ada di folder `deploy/`: mulai dari `deploy/install-windows.md`
 (service Windows + Cloudflare Tunnel), `deploy/backup.ps1` +
 `deploy/restore.md` (backup harian & uji restore), dan
 `deploy/checklist-keamanan.md`. Login memakai username+sandi aplikasi
-(Cloudflare Access sudah dihapus).
+(Cloudflare Access sudah dihapus); **tunnel tetap dipakai** dan tidak terpengaruh
+penghapusan Access.
+
+Dua pilihan pemasangan:
+
+1. **Satu-origin (disarankan).** API sekaligus menyajikan halaman web.
+   Jalankan `npm run build` di `frontend`, lalu isi `SAJIKAN_WEB=true` di
+   `backend/.env` dan arahkan satu hostname tunnel (mis. `app.domain-anda.com`)
+   ke `127.0.0.1:8000`. Cek: `/api/health` → `"web_statistik"` berisi folder
+   `dist`, bukan `null`.
+2. **Terpisah.** Halaman di Cloudflare Pages/Workers, API di
+   `api.domain-anda.com`. Perlu `VITE_API_URL` saat build dan
+   `FRONTEND_ORIGIN` di `.env`. **Bila keduanya beda situs** (mis.
+   `*.pages.dev` + `api.domain-anda.com`), wajib `COOKIE_SAMESITE=none`,
+   kalau tidak login akan berhasil lalu kembali ke form karena browser menolak
+   mengirim cookie lintas situs. Bukti: `/api/auth/mode` →
+   `"cookie_samesite":"none"`.
 
 ## Pindah ke PostgreSQL (nanti)
 Salin `.env.example` menjadi `.env` dan isi `DATABASE_URL` dengan alamat

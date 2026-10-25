@@ -4,4 +4,4 @@
    Gunanya: bila API yang menjawab masih kode lama, aplikasi bisa MENUNJUKKAN
    hal itu dengan jelas, bukan menampilkan pesan membingungkan seperti
    "Belum login ... Cloudflare Access" dari kode lama. */
-export const VERSI_UI = "0.7.3";
+export const VERSI_UI = "0.7.4";

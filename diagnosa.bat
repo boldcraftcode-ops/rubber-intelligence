@@ -21,7 +21,7 @@ echo.
 rem ------------------------------------------------------------
 echo [0] Versi kode di folder ini
 if exist "VERSI.txt" goto :ada_versi
-echo   VERSI.txt tidak ada  ^-^>  kode di folder ini LEBIH LAMA dari 0.7.3
+echo   VERSI.txt tidak ada  ^-^>  kode di folder ini LEBIH LAMA dari 0.7.4
 goto :cek_git
 
 :ada_versi
@@ -29,13 +29,13 @@ echo   VERSI.txt :
 type "VERSI.txt"
 
 :cek_git
-rem  Penanda paling pasti: kode 0.7.3 TIDAK memuat login Cloudflare Access.
+rem  Penanda paling pasti: kode 0.7.4 TIDAK memuat login Cloudflare Access.
 if not exist "backend\app\main.py" goto :cek_git2
 findstr /c:"Cloudflare Access" "backend\app\main.py" >nul 2>nul
 if errorlevel 1 goto :cek_git2
 echo.
 echo   *** KODE LAMA: backend\app\main.py masih memuat login Cloudflare
-echo       Access. Versi 0.7.3 sudah menghapusnya, jadi folder ini BELUM
+echo       Access. Versi 0.7.4 sudah menghapusnya, jadi folder ini BELUM
 echo       diperbarui. Jalankan perbarui-kode.bat. ***
 
 :cek_git2
@@ -123,7 +123,7 @@ echo ============================================================
 echo  CARA MEMBACA HASIL
 echo ============================================================
 echo  [1]+[2] harus menyebut: mode login : lokal (username-sandi)
-echo  [3] harus memuat versi 0.7.3 dan "cara":"username-sandi"
+echo  [3] harus memuat versi 0.7.4 dan "cara":"username-sandi"
 echo.
 echo  Bila [2] menulis "KODE LAMA"  -^>  jalankan perbarui-kode.bat
 echo  Bila [3] memuat "nonaktif"   -^>  hapus AUTH_DISABLED di backend\.env,
