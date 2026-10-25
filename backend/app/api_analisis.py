@@ -114,6 +114,155 @@ def _filter_tiket(q, tahun=None, bulan=None, vendor=None, grade=None, eudr=None,
     return q
 
 
+def _bulan_berurutan(awal: tuple[int, int], akhir: tuple[int, int]) -> list[tuple[int, int]]:
+    """Daftar (tahun, bulan) dari awal sampai akhir, termasuk bulan kosong.
+
+    Bulan tanpa tiket tetap ditampilkan (nilai 0) supaya grafik tidak
+    "melompat" dan pembaca melihat bulan yang memang tidak ada penerimaan.
+    """
+    hasil: list[tuple[int, int]] = []
+    th, bl = awal
+    while (th, bl) <= akhir and len(hasil) < 120:
+        hasil.append((th, bl))
+        bl += 1
+        if bl > 12:
+            th, bl = th + 1, 1
+    return hasil
+
+
+def _label_bulan_singkat(th: int, bl: int) -> str:
+    return f"{NAMA_BULAN_SINGKAT[bl]}-{str(th)[2:]}"
+
+
+def _penerimaan_per_bulan(potongan: list[tuple], dimensi: str,
+                          dari: dt.date | None, sampai: dt.date | None,
+                          top: int, format: str | None,
+                          session: Session) -> dict:
+    """Bentuk jawaban `per=bulan`: bulan x dimensi.
+
+    Dipakai saat filter periode mencakup lebih dari satu bulan, supaya
+    pembaca melihat pergerakan tiap vendor/wilayah dari bulan ke bulan —
+    bukan hanya total sepanjang periode.
+
+    Semua angka kg kering. `top` dimensi terbesar dipertahankan; sisanya
+    digabung menjadi satu baris "Lainnya" agar grafik tetap terbaca.
+    """
+    # ---- daftar bulan
+    # Sumbu bulan MENGIKUTI periode filter (bukan data), supaya mengganti filter
+    # lain (mis. hanya EUDR) tidak menggeser sumbu dan membandingkan bulan jadi
+    # menyesatkan. Bulan tanpa tiket tampil sebagai 0.
+    # Pengecualian: bila rentangnya sangat panjang (> 24 bulan) tetapi datanya
+    # hanya menempati sebagian, dipotong ke rentang bulan berdata agar grafik
+    # tidak dipenuhi puluhan kolom kosong.
+    berdata = sorted({b for _k, b, _kg, _e, _t in potongan if b})
+    if dari and sampai and (dari.year, dari.month) <= (sampai.year, sampai.month):
+        bulan = _bulan_berurutan((dari.year, dari.month), (sampai.year, sampai.month))
+        if len(bulan) > 24 and berdata:
+            bulan = [b for b in bulan if berdata[0] <= b <= berdata[-1]]
+    elif berdata:
+        bulan = _bulan_berurutan(berdata[0], berdata[-1])
+    else:
+        bulan = []
+    indeks = {b: i for i, b in enumerate(bulan)}
+    label_bulan = [_label_bulan_singkat(th, bl) for th, bl in bulan]
+
+    # ---- agregasi per (dimensi, bulan), dipisah biasa/EUDR
+    isi: dict[str, dict] = defaultdict(
+        lambda: {"biasa": [0.0] * len(bulan), "eudr": [0.0] * len(bulan),
+                 "tiket": set()})
+    for kunci, bln, kg, e, no_tiket in potongan:
+        i = indeks.get(bln)
+        if i is None:
+            continue
+        isi[kunci]["eudr" if e else "biasa"][i] += kg
+        isi[kunci]["tiket"].add(no_tiket)
+
+    def total(baris: dict) -> float:
+        return sum(baris["biasa"]) + sum(baris["eudr"])
+
+    total_kg = sum(total(a) for a in isi.values())
+    urut = sorted(isi.items(), key=lambda kv: -total(kv[1]))
+
+    nama_vendor = {v.kode: v.nama_baku for v in session.scalars(select(Vendor))} \
+        if dimensi == "vendor" else {}
+
+    def label_dari(kunci: str) -> str:
+        return f"{kunci} — {nama_vendor[kunci]}" if kunci in nama_vendor else kunci
+
+    def kg_bulan(a: dict) -> list[float]:
+        return [round(x + y, 1) for x, y in zip(a["biasa"], a["eudr"])]
+
+    baris_keluar: list[dict] = []
+    for kunci, a in urut[:top]:
+        baris_keluar.append({
+            "kunci": kunci, "label": label_dari(kunci),
+            "kg_per_bulan": kg_bulan(a),
+            "kg_biasa_per_bulan": [round(x, 1) for x in a["biasa"]],
+            "kg_eudr_per_bulan": [round(x, 1) for x in a["eudr"]],
+            "kg_total": round(total(a), 1),
+            "porsi": round(total(a) / total_kg, 4) if total_kg else None,
+            "jumlah_tiket": len(a["tiket"]),
+        })
+
+    # sisa dimensi digabung supaya jumlah baris di grafik tetap wajar
+    if len(urut) > top:
+        sisa = urut[top:]
+        gab = {"biasa": [0.0] * len(bulan), "eudr": [0.0] * len(bulan),
+               "tiket": set()}
+        for _k, a in sisa:
+            for i in range(len(bulan)):
+                gab["biasa"][i] += a["biasa"][i]
+                gab["eudr"][i] += a["eudr"][i]
+            gab["tiket"] |= a["tiket"]
+        baris_keluar.append({
+            "kunci": "__lainnya__",
+            "label": f"Lainnya ({len(sisa)} {dimensi})",
+            "kg_per_bulan": kg_bulan(gab),
+            "kg_biasa_per_bulan": [round(x, 1) for x in gab["biasa"]],
+            "kg_eudr_per_bulan": [round(x, 1) for x in gab["eudr"]],
+            "kg_total": round(total(gab), 1),
+            "porsi": round(total(gab) / total_kg, 4) if total_kg else None,
+            "jumlah_tiket": len(gab["tiket"]),
+            "gabungan": True,
+        })
+
+    total_per_bulan = [round(sum(b["kg_per_bulan"][i] for b in baris_keluar), 1)
+                       for i in range(len(bulan))]
+
+    drill = None
+    if dimensi in URUTAN_WILAYAH[:-1]:
+        drill = URUTAN_WILAYAH[URUTAN_WILAYAH.index(dimensi) + 1]
+
+    hasil = {
+        "dimensi": dimensi, "per": "bulan", "top": top,
+        "drill_berikutnya": drill,
+        "bulan": [{"ym": f"{th}-{bl:02d}", "label": lb}
+                  for (th, bl), lb in zip(bulan, label_bulan)],
+        "jumlah_bulan": len(bulan),
+        "baris": baris_keluar,
+        "total_per_bulan": total_per_bulan,
+        "total_kg": round(total_kg, 1),
+        # dipertahankan agar ringkasan di layar bisa memakai satu bentuk
+        "total_kg_biasa": round(sum(sum(a["biasa"]) for a in isi.values()), 1),
+        "total_kg_eudr": round(sum(sum(a["eudr"]) for a in isi.values()), 1),
+        "total_tiket": len({t for k, _b, _kg, _e, t in potongan}),
+        "jumlah_dimensi": len(urut),
+        "sumber": "tiket_baris (Dry kg, tanpa tiket nol); EUDR = grade ber-flag "
+                  "EUDR / kode TTSR",
+    }
+    if format == "xlsx":
+        judul = [dimensi] + label_bulan + ["Total kg", "Porsi"]
+        isi_xlsx = []
+        for b in baris_keluar:
+            isi_xlsx.append([b["label"]] + b["kg_per_bulan"] + [b["kg_total"],
+                                                                b["porsi"]])
+        isi_xlsx.append(["TOTAL"] + total_per_bulan
+                        + [round(sum(total_per_bulan), 1), None])
+        return respon_xlsx(f"penerimaan_per_{dimensi}_per_bulan.xlsx",
+                           judul, isi_xlsx)
+    return hasil
+
+
 def _agregat_bridge(baris) -> dict | None:
     """Agregasi satu periode memakai rumus persis mart bulanan, plus pasangan
     (E, K) untuk dekomposisi bridge:
@@ -997,10 +1146,17 @@ def pasang_router(app, ambil_session):
                          eudr: bool | None = None, vendor: str | None = None,
                          provinsi: str | None = None, kabupaten: str | None = None,
                          kecamatan: str | None = None, desa: str | None = None,
+                         per: str = "dimensi", top: int = 8,
                          format: str | None = None, session: Session = dep):
         """Penerimaan karet (kg kering) per dimensi, dipisah grade biasa vs
         EUDR (kode TTSR). eudr=true -> hanya tiket EUDR (mis. untuk melihat
-        vendor mana yang memasok karet EUDR); eudr=false -> hanya biasa."""
+        vendor mana yang memasok karet EUDR); eudr=false -> hanya biasa.
+
+        `per=bulan` -> rincian per bulan untuk dimensi terpilih (dipakai bila
+        periode filter lebih dari satu bulan): bulan x dimensi, dengan `top`
+        dimensi terbesar dan sisanya digabung menjadi "Lainnya". Tanpa
+        `per=bulan`, bentuk jawabannya tetap seperti semula (satu baris per
+        dimensi untuk seluruh periode)."""
         if dimensi not in DIMENSI_TONASE:
             raise HTTPException(422, f"Dimensi '{dimensi}' tidak dikenal. "
                                      f"Pilihan: {', '.join(DIMENSI_TONASE)}.")
@@ -1018,18 +1174,34 @@ def pasang_router(app, ambil_session):
         def tiket_eudr(item: str | None) -> bool:
             return (item in kode_eudr) or ("TTSR" in (item or "").upper())
 
+        if per not in ("dimensi", "bulan"):
+            raise HTTPException(422, "Parameter per hanya boleh \"dimensi\" "
+                                     "atau \"bulan\".")
+        if not 1 <= top <= 40:
+            raise HTTPException(422, "Parameter top harus antara 1 dan 40.")
+
         kolom = {"vendor": "kode_vendor", "grade": "item_code"}.get(dimensi, dimensi)
-        agreg: dict[str, dict] = defaultdict(
-            lambda: {"biasa": 0.0, "eudr": 0.0, "tiket": set()})
+        # Satu lintasan data: dipakai untuk kedua bentuk keluaran.
+        potongan: list[tuple[str, tuple[int, int] | None, float, bool, str]] = []
         for t in session.scalars(q):
             e = tiket_eudr(t.item_code)
             if eudr is True and not e:
                 continue
             if eudr is False and e:
                 continue
-            kunci = getattr(t, kolom) or "(kosong)"
-            agreg[kunci]["eudr" if e else "biasa"] += float(t.dry_kg or 0)
-            agreg[kunci]["tiket"].add(t.ticket_no)
+            bulan = (t.ticket_date.year, t.ticket_date.month) if t.ticket_date else None
+            potongan.append((getattr(t, kolom) or "(kosong)", bulan,
+                             float(t.dry_kg or 0), e, t.ticket_no))
+
+        if per == "bulan":
+            return _penerimaan_per_bulan(potongan, dimensi, dari, sampai,
+                                         top, format, session)
+
+        agreg: dict[str, dict] = defaultdict(
+            lambda: {"biasa": 0.0, "eudr": 0.0, "tiket": set()})
+        for kunci, _bulan, kg, e, no_tiket in potongan:
+            agreg[kunci]["eudr" if e else "biasa"] += kg
+            agreg[kunci]["tiket"].add(no_tiket)
 
         nama_vendor = {v.kode: v.nama_baku for v in session.scalars(select(Vendor))} \
             if dimensi == "vendor" else {}
