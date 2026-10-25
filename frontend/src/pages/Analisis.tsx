@@ -6,7 +6,7 @@ import {
 } from "recharts";
 import {
   Kartu, NAMA_BULAN, Panel5W1H, PilihRentangBulan, akhirBulan,
-  ambilJson, fmtAngka, fmtTanggal, hitungJumlahBulan, kelasInput,
+  KepalaPanel, ambilJson, fmtAngka, fmtTanggal, hitungJumlahBulan, kelasInput,
   kelasTombolAnalisa, kelasTombolKecil, pesanGalat,
 } from "../bersama";
 
@@ -260,9 +260,9 @@ function AngkaPertumbuhan({ nilai }: { nilai: number | null | undefined }) {
   );
 }
 
-export function AnalisisTren({ dari, sampai, modeEudr, bukaAwal = true }: {
+export function AnalisisTren({ dari, sampai, modeEudr, bukaAwal = false }: {
   dari: string; sampai: string; modeEudr: "semua" | "eudr" | "biasa";
-  /** Terbuka sejak awal supaya analisisnya langsung terlihat; bisa ditutup. */
+  /** Bawaannya tertutup: tombol dibuka seperti Margin Bridge. */
   bukaAwal?: boolean;
 }) {
   const [buka, setBuka] = useState(bukaAwal);
@@ -297,21 +297,27 @@ export function AnalisisTren({ dari, sampai, modeEudr, bukaAwal = true }: {
       }))
     : [];
 
+  /* Tombol + panel disamakan dengan tombol Margin Bridge di Margin Performance:
+     tombol navy (kelasTombolAnalisa) -> panel modal dengan KepalaPanel
+     (Ekspor Excel + Tutup), klik latar untuk menutup. */
+  const labelPeriode = data && data.bulan.length > 0
+    ? `${data.bulan[0].label} → ${data.bulan[data.bulan.length - 1].label}`
+    : undefined;
+
   return (
-    <div className="mb-3 rounded-sm border border-[#E4E5E8] bg-[#F8F8F8]">
-      <button
-        className="flex w-full items-center justify-between px-3 py-2 text-left"
-        onClick={() => setBuka(!buka)}>
-        <span className="text-xs font-semibold text-[#1D2434]">
-          📈 Analisis tren &amp; musiman (time series)
-        </span>
-        <span className="text-xs text-[#64676C]">
-          {buka ? "sembunyikan ▲" : "tampilkan ▼"}
-        </span>
+    <>
+      <button className={kelasTombolAnalisa} onClick={() => setBuka(true)}>
+        📈 Analisis tren &amp; musiman
       </button>
 
       {buka && (
-        <div className="border-t border-[#E4E5E8] px-3 py-3">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+             onClick={() => setBuka(false)}>
+          <div className="max-h-[92vh] w-full max-w-4xl overflow-y-auto rounded-sm bg-white border border-[#E4E5E8] p-6 shadow-xl shadow-[#1D2434]/10"
+               onClick={(e) => e.stopPropagation()}>
+            <KepalaPanel judul={"Analisis tren & musiman — penerimaan karet"}
+                         periode={labelPeriode} url={url}
+                         tutup={() => setBuka(false)} />
           {q.isLoading && <p className="text-xs text-[#64676C]">Menghitung…</p>}
           {q.error && (
             <p className="text-xs text-[#B91C1C]">{pesanGalat(q.error)}</p>
@@ -502,9 +508,10 @@ export function AnalisisTren({ dari, sampai, modeEudr, bukaAwal = true }: {
               )}
             </>
           )}
+          </div>
         </div>
       )}
-    </div>
+    </>
   );
 }
 
@@ -629,6 +636,11 @@ function KartuPenerimaan() {
               hapus filter
             </button>
           )}
+          {/* Tombol analisa rata kanan di baris filter — bentuk yang sama
+              dengan tombol Margin Bridge / Days of Cover di Margin Performance. */}
+          <div className="ml-auto flex flex-wrap gap-2">
+            <AnalisisTren dari={dari} sampai={sampai} modeEudr={modeEudr} />
+          </div>
         </div>
 
         {/* ===== pilihan bentuk tampilan: rincian bulanan vs total periode ===== */}
@@ -674,7 +686,6 @@ function KartuPenerimaan() {
           </p>
         )}
 
-        <AnalisisTren dari={dari} sampai={sampai} modeEudr={modeEudr} />
 
         {/* ================= mode BULAN: grafik + tabel bulan x dimensi ===== */}
         {modeBulan && <RincianBulanan data={q.data} dimensi={dimensi} drill={drill} />}

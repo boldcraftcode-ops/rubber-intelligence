@@ -441,6 +441,31 @@ export const kelasTombolAnalisa =
   "rounded-sm bg-[#1D2434] px-3 py-1.5 text-xs font-semibold text-white " +
   "hover:bg-[#2A3345] transition-colors";
 
+/* ---------- kepala panel analisa (modal) ----------
+   Dipakai tombol analisa yang membuka panel di atas halaman: Margin Bridge &
+   Days of Cover (Margin Performance) dan Analisis tren & musiman (Intake
+   Analisis). Satu bentuk untuk semua supaya tombol & panelnya seragam. */
+export function KepalaPanel({ judul, periode, url, tutup }: {
+  judul: string; periode?: string; url: string; tutup: () => void;
+}) {
+  const { t } = useBahasa();
+  return (
+    <div className="flex items-start justify-between gap-3">
+      <div>
+        <h3 className="text-lg font-semibold text-[#1D2434]">{judul}</h3>
+        {periode && <p className="text-sm text-[#64676C]">{t("Periode")}: {periode}</p>}
+      </div>
+      <div className="flex gap-2 shrink-0">
+        <a className={kelasTombolKecil}
+           href={urlApi(`${url}${url.includes("?") ? "&" : "?"}format=xlsx`)}>
+          {t("Ekspor Excel")}
+        </a>
+        <button className={kelasTombolKecil} onClick={tutup}>{t("Tutup")}</button>
+      </div>
+    </div>
+  );
+}
+
 /* ---------- pemilih rentang bulan (dipakai Stok & Intake Analisis) ---------- */
 
 /* Hari terakhir dari sebuah bulan "YYYY-MM" -> "YYYY-MM-DD". */

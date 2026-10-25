@@ -9,7 +9,7 @@ Kalau Anda hanya punya 15 menit, baca bagian **1 (Status)**, **3 (Cara
 menjalankan)**, dan **7 (Aturan yang tidak boleh dilanggar)**. Selebihnya bisa
 dibaca saat mengerjakan tugas pertama.
 
-Terakhir diperbarui: **2026-10-25**, versi kode **0.9.1**.
+Terakhir diperbarui: **2026-10-25**, versi kode **0.9.2**.
 
 ---
 
@@ -36,7 +36,7 @@ ini setiap hari untuk memutuskan **harga beli maksimum** yang masih aman.
 
 | Hal | Nilai |
 |---|---|
-| Versi kode | **0.9.1** (`VERSI.txt`, `backend/app/versi.py`, `frontend/src/versi.ts`) |
+| Versi kode | **0.9.2** (`VERSI.txt`, `backend/app/versi.py`, `frontend/src/versi.ts`) |
 | Branch kerja | `arena/18670644-rubber-intelligence` |
 | Pull request | **#1 masih terbuka** — https://github.com/boldcraftcode-ops/rubber-intelligence/pull/1 |
 | Branch `main` | belum memuat pekerjaan v0.7.x–v0.8.x |
@@ -230,7 +230,7 @@ tetesan lateks merah + simpul data, dibuat manual sebagai SVG
 **Jangan memakai font/CDN/gambar eksternal.** Aplikasi harus jalan di jaringan
 tertutup pabrik; semua aset lokal.
 
-### Periode tampilan menu Stok (v0.9.1)
+### Periode tampilan menu Stok (v0.9.2)
 
 Menu **Stok** kini punya pemilih periode di bagian paling atas, dengan isi
 bawaan **1 Januari tahun berjalan s.d. bulan berjalan** (dibuka Oktober 2026 →
@@ -255,7 +255,7 @@ Pemilih periode ini dipakai bersama oleh menu Stok dan Intake Analisis
 (`PilihRentangBulan` di `frontend/src/bersama.tsx`), supaya bentuk, warna, dan
 perilakunya tidak bercabang.
 
-### Daftar intake terakhir & batas 12 bulan KPI Reject (v0.9.1)
+### Daftar intake terakhir & batas 12 bulan KPI Reject (v0.9.2)
 
 **Kartu "Daftar intake terakhir"** (paling bawah halaman Intake Analisis, setelah
 kartu margin) menjawab
@@ -285,7 +285,7 @@ seluruh riwayat 2020–2026:
   `bulan` di luar 0–120 → 422). Filter tahun tetap jalan dan dihitung setelah
   filter itu.
 
-### Master Vendor — CRUD & bulk import (v0.9.1)
+### Master Vendor — CRUD & bulk import (v0.9.2)
 
 Menu baru **Master Vendor** (sidebar, di atas Grade & Harga) merawat daftar
 vendor: daftar + cari + saring status, tambah, ubah, hapus, dan impor massal
@@ -311,14 +311,21 @@ sebagai `aktif` (dibakukan huruf kecil) supaya cocok dengan pilihan di layar.
 CORS kini mengizinkan `PUT` dan `DELETE` — tanpa itu tombol ubah/hapus gagal
 bila tampilan web dan API berada di domain berbeda (deploy tunnel).
 
-### Analisis tren & musiman + normalisasi wilayah (v0.9.1)
+### Analisis tren & musiman + normalisasi wilayah (v0.9.2)
 
-Disematkan di dalam kartu **Penerimaan karet (kg) — biasa vs EUDR**, terbuka
-sejak awal dan bisa ditutup. Sumbernya `GET /api/kartu/penerimaan/tren`
-(ikut filter periode dan mode grade kartu; ada ekspor `.xlsx`).
+Disematkan di kartu **Penerimaan karet (kg) — biasa vs EUDR** sebagai
+**tombol `📈 Analisis tren & musiman`** yang rata kanan di baris filter —
+bentuk dan perilakunya sama dengan tombol **🌉 Margin Bridge** / **📦 Days of
+Cover** di Margin Performance: tombol navy (`kelasTombolAnalisa`) → **panel
+modal** dengan kepala panel berisi periode, **Ekspor Excel**, dan **Tutup**;
+klik latar gelap untuk menutup. Panelnya baru memuat data saat tombol ditekan.
+
+Sumbernya `GET /api/kartu/penerimaan/tren` (ikut filter periode dan mode grade
+kartu; ada ekspor `.xlsx`).
 
 | Bagian | Isi |
 |---|---|
+| **Kepala panel** | judul, periode yang dianalisis, Ekspor Excel, Tutup |
 | **Grafik** | total kg per bulan + **garis MA3** (rata-rata bergerak 3 bulan) + EUDR |
 | **Tabel** | per bulan: total, biasa, EUDR, MA3, **MoM %**, **YoY %** |
 | **Dekomposisi** | tren, musiman, residu + **indeks musiman 12 bulan kalender** |
@@ -374,6 +381,10 @@ Perbaikannya (berlaku di kartu Penerimaan dan Tonase):
 > kartu kini berupa teks ter-normalisasi (`DELI SERDANG`), sedangkan `label`
 > tetap ejaan asli (`Deli Serdang`). Kode yang memakai `kunci` sebagai teks
 > tampilan perlu beralih ke `label`.
+
+Kepala panel modal (`KepalaPanel`) dipindah ke `frontend/src/bersama.tsx` dan
+dipakai ketiga tombol analisa (Margin Bridge, Days of Cover, Analisis tren &
+musiman), supaya bentuk panel tidak bercabang lagi di kemudian hari.
 
 Penyebabnya di sumber data, jadi normalisasi ini obat sementara: idealnya
 ekspor/pengetikan dari aplikasi asal ikut dibakukan, atau dipakai master
@@ -609,7 +620,7 @@ cd ../frontend && npm run build                       # bersih
 # 2. naikkan versi di 6 berkas (isi dua variabel, sisanya otomatis)
 cd ..
 LAMA=$(tr -d '\r\n' < VERSI.txt)     # versi yang masih terpakai
-BARU=0.9.1                            # <- tulis versi baru di sini
+BARU=0.9.2                            # <- tulis versi baru di sini
 for f in VERSI.txt backend/app/versi.py frontend/src/versi.ts \
          docs/CARA_MENJALANKAN.md diagnosa.bat hentikan-api.bat; do
   sed -i "s/$LAMA/$BARU/g" "$f"
