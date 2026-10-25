@@ -122,37 +122,38 @@ kartu:
     judul: Margin Bridge - analisa grafik RM Stock, Intake vs Pricing
     cara_dihitung: >
       Analisa pada kartu 'RM Stock - Intake vs Pricing' (tombol Margin Bridge).
-      Periode mengikuti filter kartu itu: bulan awal (dari) -> bulan akhir
-      (sampai) yang sedang ditampilkan di grafik; bila satu bulan dipilih,
-      dibandingkan dengan bulan sebelumnya.
-      Waterfall dari OP Margin periode A ke periode B. Komponen:
-      + delta SICOM = SICOM_B - SICOM_A;
-      - efek harga beli Rp/kg = 100 x (E_B - E_A) / K_A;
-      - efek kurs = 100 x E_B x (1/K_B - 1/K_A);
-      dengan E = SUM(Amount)/SUM(qty) (Rp/kg tertimbang) dan
-      K = SUM(Amount)/SUM(Amount/kurs) (kurs efektif tertimbang), sehingga
-      OP Price = 100 x E/K persis. SICOM, OP Price, dan margin memakai rumus
-      resmi bagian 6 (bobot tonase kering, hanya hari pembelian). Bridge
-      tertutup persis: awal + jumlah komponen = akhir (sisa hanya pembulatan
-      desimal, ditampilkan sebagai "selisih penutupan").
-      Basis bulanan: B = bulan terpilih, A = bulan sebelumnya.
-      Basis tahunan: B = tahun terpilih, A = tahun sebelumnya, dihitung hanya
-      pada bulan yang berdata di KEDUA tahun (mis. Jan-Okt vs Jan-Okt) supaya
-      perbandingan adil.
+      Dua penyebab saja: delta M = delta SICOM - delta OP Price.
+      SICOM = harga acuan pasar (di luar kendali); OP Price = harga beli kita
+      (keputusan). SICOM turun menekan margin, OP Price turun justru menolong.
+      Kontribusi SICOM = +delta SICOM; kontribusi OP Price = -delta OP Price.
+      Angka SICOM/OP Price/margin = angka resmi bulanan, jadi ujung bridge
+      selalu sama dengan ringkasan OP Margin dan tertutup persis.
+      Pass-through = delta OP Price / delta SICOM: berapa persen penurunan
+      SICOM yang diikuti harga beli; sisanya ditanggung margin.
+      Bridge per bulan menandai penyebab: 'dipicu pasar' bila pergerakan SICOM
+      dominan, 'dipicu keputusan' bila OP Price bergerak lebih besar atau
+      SICOM nyaris tidak berubah.
+      Rincian opsional: delta OP Price dipecah menjadi efek harga beli (Rp/kg)
+      dan efek kurs; kedua efek berjumlah sama dengan -delta OP Price.
+      Periode: pilihan periode awal dan periode akhir (bulan), bawaannya
+      mengikuti filter kartu sehingga sama dengan bulan/tahun di grafik.
   days_of_cover:
     judul: Days of Cover - analisa grafik RM Stock, Intake vs Pricing
     cara_dihitung: >
       Analisa pada kartu 'RM Stock - Intake vs Pricing' (tombol Days of Cover).
-      Periode mengikuti filter kartu itu (dari/sampai, sampai = akhir bulan).
-      Days of cover = stok ton / kapasitas olah (ton/hari) pada tanggal itu:
-      berapa hari olah tersisa bila laju olah tetap. Stok dan kapasitas
-      memakai nilai mart harian; kapasitas & safety mengikuti parameter yang
-      berlaku pada tanggal tersebut (parameter berversi), jadi garis safety
-      bukan ambang konstan. Grafik menampilkan days of cover harian (garis
-      ungu) dan safety stock dalam hari = safety ton / kapasitas (garis kuning
-      putus-putus). Ringkasan: angka terkini, rerata 30 data terakhir,
-      terendah/tertinggi dalam rentang, dan jumlah hari di bawah safety
-      (rasio stok < 1).
+      Pemakaian tidak ada di data, jadi dihitung dari neraca stok:
+      pemakaian = stok awal + intake - stok akhir;
+      DoC = stok akhir / (pemakaian / jumlah hari bulan itu).
+      Intake memakai kuantitas kering pembelian (mart). Susut, transfer, dan
+      penyesuaian stok ikut terhitung sebagai pemakaian - bulan dengan
+      pemakaian negatif atau tanpa intake ditandai "perlu dicek".
+      Safety dibandingkan dalam HARI: safety (hari) = safety ton / pemakaian
+      harian bulan itu. Safety dinamis = 21,5 hari x pemakaian harian
+      (angka 21,5 berasal dari safety 2.795 ton pada pemakaian 130 ton/hari).
+      DoC lebih adil daripada tonase karena menyesuaikan pemakaian; safety
+      tetap dalam ton tidak berubah walau pemakaian naik/turun.
+      Bulan pertama tidak bisa dihitung bila stok akhir bulan sebelumnya tidak
+      ada di data (mis. Januari butuh stok Desember tahun lalu).
   rekonsiliasi:
     judul: Rekonsiliasi tonase
     cara_dihitung: >

@@ -10,11 +10,11 @@ US¢/kg, basis berat kering).
 
 Status: **Fase 8** — kartu **RM Stock – Intake vs Pricing** (menu Ringkasan)
 punya tiga tombol analisa dengan periode mengikuti filter kartu:
-**5W1H**, **Margin Bridge** (jembatan OP Margin periode awal→akhir grafik:
-ΔSICOM, Δharga beli Rp/kg, Δkurs; tertutup persis), dan **Days of Cover**
-(cadangan hari olah + safety dalam hari, tren harian). Sudah ada API (FastAPI)
+**5W1H**, **Margin Bridge** (ΔM = ΔSICOM − ΔOP Price, dua penyebab: pasar vs
+keputusan, + bridge per bulan), dan **Days of Cover** (pemakaian implisit dari
+neraca stok, safety dibandingkan dalam hari). Sudah ada API (FastAPI)
 dan aplikasi web (React + Vite): ringkasan, input harian SICOM/kurs, unggah
-data, rekonsiliasi, perencanaan, alarm, pengguna, dll. **117 unit test** —
+data, rekonsiliasi, perencanaan, alarm, pengguna, dll. **119 unit test** —
 termasuk 19 kasus uji emas yang dicocokkan persis dengan perhitungan Excel lama.
 
 Struktur: `backend/` = API, rumus inti, importer, pengujian; `frontend/` =
