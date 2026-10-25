@@ -102,6 +102,35 @@ tidak ada tombol "hapus alarm". Kalau data memang belum tersedia (mis. terbitan
 SICOM belum keluar), jangan mengisi angka kira-kira; pertimbangkan mengubah
 **ambang** alarm di kartu "Pengaturan alarm (admin)".
 
+## 3e. Mengisi stok & pembelian harian (tanpa Excel)
+
+Menu **Input Harian** sekarang punya panel **"Kesegaran data hari ini"**:
+5 kartu sumber (SICOM, Kurs, Stok, Tiket, Pembelian) berisi tanggal terakhir,
+umur hari, dan tanda ⚠ bila lewat batas. Di bawahnya ada tombol tanggal yang
+belum terisi — klik untuk langsung mengisi formulirnya.
+
+**Stok harian** — satu angka per hari:
+1. pilih tanggal,
+2. pilih jenis: **Total (semua grade)** atau satu grade,
+3. isi jumlah + pilih satuan **ton** atau **kg** (disimpan dalam kg),
+4. simpan. Setelah itu langsung tampil stok, safety, rasio, dan days.
+
+**Pembelian harian** — qty kering + amount:
+1. pilih tanggal dan **tingkat**: *Total hari* / *per grade* / *per vendor* /
+   *per tiket*,
+2. isi qty kering (kg) dan amount (Rp),
+3. simpan; harga Rp/kg, US¢/kg, dan margin harian dihitung otomatis memakai
+   kurs & SICOM yang berlaku.
+
+Aturan penting:
+- **mengisi ulang tanggal yang sama = koreksi** (menimpa baris itu, nilai lama
+  dilaporkan). Jadi salah ketik tidak perlu dihapus manual.
+- **jangan mencampur** "Total hari" dengan "per grade/vendor/tiket" pada
+  tanggal yang sama — sistem akan menolak supaya tidak terhitung dua kali.
+- grade & vendor harus sudah ada di Master Grade / Master Vendor.
+- setiap simpanan tercatat (siapa, kapan) dan langsung memperbarui OP Margin,
+  Days of Cover, dan alarm.
+
 ## 4. Mengimpor data (tiket, stok, pembelian, dll.)
 
 Cara termudah: tab **Unggah Data** di aplikasi web — tarik & lepas file .xlsx
@@ -334,7 +363,7 @@ Bacanya:
 
 | Yang tertulis | Artinya | Tindakan |
 |---|---|---|
-| `mode login : lokal (username-sandi)` dan API menjawab `0.9.6` + `lokal` | sudah benar | login dengan akun Anda (Ctrl+F5 dulu) |
+| `mode login : lokal (username-sandi)` dan API menjawab `0.9.7` + `lokal` | sudah benar | login dengan akun Anda (Ctrl+F5 dulu) |
 | API menjawab `mode: nonaktif` | `AUTH_DISABLED=true` masih ada di `.env` | hapus baris itu, lalu jalankan `start-web.bat` lagi |
 | API tidak menjawab / `404` di `/api/auth/mode` | prosesnya **kode lama** | tutup jendela API lama, jalankan `start-web.bat` lagi |
 | bagian [2] tidak ada akun, atau sandi lupa | akun belum dibuat / sandi salah | `python -m app.cli reset-sandi admin` (dari folder `backend`) |
@@ -360,11 +389,11 @@ Perbaikan:
    melaporkan apakah **port 8000 dan 5173 sudah BEBAS**. Kalau ada yang gagal
    ditutup, skrip mengatakannya (tidak diam-diam).
 2. Jalankan **`start-web.bat`** dari folder aplikasi yang benar — folder yang
-   `VERSI.txt`-nya berisi `0.9.6`. Tunggu tulisan **`API siap: kode 0.9.6`**.
+   `VERSI.txt`-nya berisi `0.9.7`. Tunggu tulisan **`API siap: kode 0.9.7`**.
 3. Buka `http://localhost:5173`, tekan **Ctrl+F5**.
 
 Cek cepat kapan saja: `http://localhost:8000/api/health` — nilai `versi` dan
-`kode` harus `0.9.6`, dan `folder` harus menunjuk folder aplikasi Anda.
+`kode` harus `0.9.7`, dan `folder` harus menunjuk folder aplikasi Anda.
 
 ## Cara tercepat membereskan: `perbaiki.bat`
 
@@ -421,7 +450,7 @@ berkas ini dari folder lama ke folder baru **sebelum** menjalankan
 - `backend\.env` — setelan login (opsional; bila tidak ada, dibuat otomatis)
 
 Cara memastikan folder baru benar-benar versi terbaru: lihat **`VERSI.txt`** di
-akar folder (versi terbaru saat dokumen ini ditulis: **0.9.6**), atau buka
+akar folder (versi terbaru saat dokumen ini ditulis: **0.9.7**), atau buka
 `http://localhost:8000/api/health` dan periksa `"versi"` serta `"kode"`.
 
 ## Login berhasil tetapi kembali ke form login lagi

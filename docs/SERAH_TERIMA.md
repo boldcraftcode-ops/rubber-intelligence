@@ -9,7 +9,7 @@ Kalau Anda hanya punya 15 menit, baca bagian **1 (Status)**, **3 (Cara
 menjalankan)**, dan **7 (Aturan yang tidak boleh dilanggar)**. Selebihnya bisa
 dibaca saat mengerjakan tugas pertama.
 
-Terakhir diperbarui: **2026-10-25**, versi kode **0.9.6**.
+Terakhir diperbarui: **2026-10-25**, versi kode **0.9.7**.
 
 ---
 
@@ -36,11 +36,11 @@ ini setiap hari untuk memutuskan **harga beli maksimum** yang masih aman.
 
 | Hal | Nilai |
 |---|---|
-| Versi kode | **0.9.6** (`VERSI.txt`, `backend/app/versi.py`, `frontend/src/versi.ts`) |
+| Versi kode | **0.9.7** (`VERSI.txt`, `backend/app/versi.py`, `frontend/src/versi.ts`) |
 | Branch kerja | `arena/18670644-rubber-intelligence` |
 | Pull request | **#1 masih terbuka** — https://github.com/boldcraftcode-ops/rubber-intelligence/pull/1 |
 | Branch `main` | belum memuat pekerjaan v0.7.x–v0.8.x |
-| Unit test | **330 lulus** (`cd backend && .venv/bin/python -m pytest -q`) |
+| Unit test | **343 lulus** (`cd backend && .venv/bin/python -m pytest -q`) |
 | Build frontend | bersih, ±3,3 detik (`cd frontend && npm run build`) |
 | Database | SQLite `backend/opmargin.db` (tidak masuk Git) |
 
@@ -102,7 +102,7 @@ Login awal: **`admin` / `admin123`** (dari `ADMIN_SANDI_AWAL` di
 
 ```bash
 cd backend
-.venv/bin/python -m pytest -q                                  # 330 tes
+.venv/bin/python -m pytest -q                                  # 343 tes
 .venv/bin/python -m app.cli diagnosa                            # laporan kesehatan
 .venv/bin/python -m app.cli reset-sandi admin                   # lupa sandi
 .venv/bin/python -m app.cli atur-login-lokal                    # pastikan mode login benar
@@ -154,7 +154,7 @@ rubber-intelligence/
 │   │       ├── kualitas.py     deteksi data terlambat/aneh
 │   │       └── alarm.py        evaluasi alarm + audit
 │   ├── semantic/metrics.yaml   definisi metrik (rujukan, dibaca fase API)
-│   ├── tests/                  330 tes, termasuk kasus emas Excel lama
+│   ├── tests/                  343 tes, termasuk kasus emas Excel lama
 │   ├── unggahan/               berkas Excel yang diunggah lewat web
 │   └── .env.example            contoh setelan (JANGAN commit .env asli)
 └── frontend/
@@ -558,6 +558,53 @@ Keamanan: `halaman` wajib salah satu id menu yang benar-benar ada di
 `frontend/src/App.tsx` (dijaga tes). Di `App.tsx`, id dari API divalidasi lagi
 sebelum dipakai — id tak dikenal tidak akan membuat layar kosong.
 
+### Input Harian: stok & pembelian harian + panel kesegaran (v0.9.7)
+
+Masalah: dari 5 sumber yang dipantau di **Kualitas Data**, hanya SICOM & Kurs
+yang bisa diisi tanpa Excel. Data contoh menunjukkan akibatnya — **Stok 47 hari
+basi**, Pembelian 15 hari, Tiket 10 hari, sehingga alarm stok, Days of Cover,
+dan harga beli aktual tertinggal.
+
+**Yang ditambahkan di menu Input Harian**
+1. **Panel "Kesegaran data hari ini"** — 5 kartu sumber (SICOM, Kurs, Stok,
+   Tiket, Pembelian) berisi tanggal terakhir, umur hari, tanda ⚠, dan penanda
+   *wajib harian* / *saat berubah*. Di bawahnya: daftar tanggal (7 hari
+   terakhir) yang belum punya stok/pembelian; sekali klik mengisi tanggal itu
+   di formulir yang tepat.
+2. **Stok harian** — tanggal, jenis (Total atau per grade), jumlah, **satuan
+   bisa ton atau kg** (disimpan kg), catatan. Ada tombol *"Pakai angka ini"*
+   untuk memakai stok terakhir, dan setelah simpan langsung tampil
+   stok/safety/rasio/days. Daftar 5 stok terakhir ikut ditampilkan.
+3. **Pembelian harian** — tingkat **Total hari / per grade / per vendor / per
+   tiket**, qty kering (kg), amount (Rp). Harga Rp/kg, **US¢/kg** (kurs &
+   SICOM yang berlaku), dan **margin harian** dihitung otomatis dan
+   ditampilkan setelah simpan. Daftar 5 pembelian terakhir ikut ditampilkan.
+4. SICOM & Kurs tetap seperti sebelumnya, hanya diberi dwibahasa.
+
+**Aturan yang dijaga (semua ada tesnya)**
+- simpan ulang pada tanggal+jenis yang sama = **koreksi** (menimpa, bukan
+  menambah baris) dan nilai lama dilaporkan di pesan;
+- **"total" dan "per grade" tidak boleh dicampur** pada tanggal yang sama
+  (mart menjumlahkan semua baris stok → bisa dobel), begitu juga baris
+  pembelian **TOTAL vs rinci**;
+- grade/vendor harus ada di Master Grade/Vendor;
+- tanggal > hari ini + 1 ditolak; jumlah stok harus > 0;
+- setiap simpanan tercatat di lapisan raw (`input-manual:stok`,
+  `input-manual:pembelian`) berisi siapa & kapan, lalu **mart dibangun ulang
+  dan alarm dievaluasi** supaya angka langsung segar.
+
+**Endpoint baru**
+- `GET /api/input-harian?hari=7` — panel kesegaran (sumber, stok terakhir,
+  rincian kurs/SICOM terakhir, tanggal kosong, riwayat 5+5).
+- `POST /api/stok` — `{tanggal, item_code(""=total), stok_kg, catatan, pengisi}`.
+- `POST /api/pembelian` — `{tanggal, item_code, kode_vendor, ticket_no,
+  qty_kering_kg, amount_rp, pengisi}`; balasan memuat `harga_rp_per_kg`,
+  `harga_usc_per_kg`, `margin_usc`, dan `nilai_sebelumnya` bila menimpa.
+
+Catatan teknis: nilai Numeric ditulis sebagai `Decimal` (bukan float) karena
+mart menjumlahkan kolom Decimal — campuran float/Decimal membuat `bangun_mart`
+gagal (bug ini tertangkap tes sebelum rilis).
+
 ---
 
 ## 6b. Deploy lewat Cloudflare Tunnel (masih hidup, penting)
@@ -690,7 +737,7 @@ Semua ini lahir dari kegagalan nyata, bukan kehati-hatian berlebihan.
    kode salah. Perbaikannya: `hentikan-api.bat` lalu `start-web.bat`.
 6. **Selalu jalankan `npm run build` (bukan hanya `vite build`)** — skrip npm
    memakai `tsc -b`, jadi error tipe ikut tertangkap.
-7. **330 tes harus tetap lulus.** Tes "kasus emas"
+7. **343 tes harus tetap lulus.** Tes "kasus emas"
    (`tests/test_data_awal.py`, `tests/test_bridge_doc.py`) mencocokkan hasil
    dengan Excel lama sampai beberapa desimal. Kalau tes emas gagal, hampir pasti rumus
    yang diubah, bukan tesnya.
@@ -782,13 +829,13 @@ pernah membuat label dan ikon tertukar; ganti blok utuhnya.
 ### Rilis versi baru (prosedur yang sudah terbukti)
 ```bash
 # 1. pastikan bersih
-cd backend && .venv/bin/python -m pytest -q          # 330 passed
+cd backend && .venv/bin/python -m pytest -q          # 343 passed
 cd ../frontend && npm run build                       # bersih
 
 # 2. naikkan versi di 6 berkas (isi dua variabel, sisanya otomatis)
 cd ..
 LAMA=$(tr -d '\r\n' < VERSI.txt)     # versi yang masih terpakai
-BARU=0.9.6                            # <- tulis versi baru di sini
+BARU=0.9.7                            # <- tulis versi baru di sini
 for f in VERSI.txt backend/app/versi.py frontend/src/versi.ts \
          docs/CARA_MENJALANKAN.md diagnosa.bat hentikan-api.bat; do
   sed -i "s/$LAMA/$BARU/g" "$f"
