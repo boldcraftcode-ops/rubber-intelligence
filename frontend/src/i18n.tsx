@@ -77,6 +77,17 @@ const KAMUS: Record<string, string> = {
   "Baris pembelian & tiket pada": "Purchase & ticket rows on",
   "unggahan asal": "source upload",
   // ---- panel analisa kartu RM Stock – Intake vs Pricing
+  // ---- tombol & modal "Jelaskan ke saya"
+  "Jelaskan ke saya": "Explain it to me",
+  "Apa yang terjadi": "What happened",
+  "Kenapa begitu": "Why it happened",
+  "Apa yang perlu dilakukan": "What to do next",
+  "Menyusun penjelasan…": "Writing the explanation…",
+  "Datanya belum cukup untuk menjelaskan kartu ini.":
+    "There is not enough data to explain this card yet.",
+  "Cara membaca grafik": "How to read the chart",
+  "Lihat detail angka & rumus": "Show the numbers & formula",
+  "Cara dihitung (rujukan teknis)": "How it is calculated (technical reference)",
   // ---- grafik OP Margin bulanan vs target
   "OP Margin tiap bulan dibandingkan target bulan itu sendiri (segmen putih pada tiap batang). Satuan: sen dolar AS per kg (US¢/kg) — bukan dolar.":
     "Each month's OP Margin against that month's own target (white segment on each bar). Unit: US cents per kg (US¢/kg) — not dollars.",

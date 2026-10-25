@@ -171,6 +171,7 @@ function KartuElemen() {
     <Kartu idMetrik="elemen_op_margin" judul={t("RM Stock – Intake vs Pricing")}
            keterangan={t("Elemen pemengaruh OP Margin per bulan, disamakan dengan Excel: batang = ton (sumbu kiri), garis = US¢/kg (sumbu kanan).")}
            urlEkspor={url}
+           qsJelaskan={qs}
            anak={
       <>
         <div className="flex flex-wrap items-end gap-3 mb-3 text-xs">
@@ -456,6 +457,7 @@ function KartuGrafikMargin() {
            judul={judulKesimpulan ? t(judulKesimpulan) : t("OP Margin bulanan vs target")}
            keterangan={t("OP Margin tiap bulan dibandingkan target bulan itu sendiri (segmen putih pada tiap batang). Satuan: sen dolar AS per kg (US¢/kg) — bukan dolar.")}
            urlEkspor={`/api/kartu/margin-bulanan${qs}`}
+           qsJelaskan={qs}
            anak={
       <>
         <div className="flex flex-wrap items-end gap-3 mb-3 text-xs">
@@ -1251,6 +1253,7 @@ export default function Ringkasan() {
       <Kartu idMetrik="ringkasan" judul={`${t("Ringkasan OP Margin")} ${thn ?? ""}`}
              keterangan={t("US¢/kg, basis berat kering — meniru Excel lama. Klik angka OP Margin untuk menelusuri asal angkanya.")}
              urlEkspor={thn ? `/api/ringkasan/${thn}` : undefined}
+             qsJelaskan={thn ? `?tahun=${thn}` : ""}
              anak={
         <>
           <div className="mb-3 flex gap-1 flex-wrap">

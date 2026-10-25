@@ -149,6 +149,9 @@ def buat_app(engine: Engine | None = None) -> FastAPI:
     from .api_analisis import pasang_router
     pasang_router(app, ambil_session)
 
+    from .api_jelaskan import pasang_router as pasang_jelaskan
+    pasang_jelaskan(app, ambil_session)
+
     # Rute Fase 4 (stok, aturan, simulasi, perencanaan, alarm, audit)
     from .api_fase4 import pasang_router_fase4
     pasang_router_fase4(app, ambil_session)

@@ -58,3 +58,23 @@ dan bulan pertama tidak bisa dihitung tanpa stok akhir bulan sebelumnya.
 Catatan hubungan stok–margin (halaman analisis, fase berikutnya): korelasi
 historis ±0,43 adalah **asosiasi, bukan bukti sebab-akibat** — wajib ditulis
 demikian di layar.
+
+## Tombol "Jelaskan ke saya"
+
+Setiap kartu punya tombol **Jelaskan ke saya** (`GET /api/jelaskan/{kartu}`) yang
+menjelaskan angka dengan urutan **jawaban dulu, bukti kemudian**:
+
+| Bagian | Isi |
+|--------|-----|
+| `angka_utama` | **satu** angka saja (mis. "3 bulan berturut-turut di bawah target") |
+| `what` | kesimpulan: apa yang terjadi |
+| `so_what` | penyebab: harga acuan vs harga beli, tanpa istilah teknis |
+| `now_what` | tindakan: tahan harga beli / cari pemasok lebih murah / tinjau target |
+| `analogi` | warung beli Rp 9.000 jual Rp 10.000 = untung Rp 1.000/kg |
+| `cara_baca` | satu kalimat membaca grafik |
+| `detail` + `rumus` | **lapisan kedua**, hanya dibuka bila ditanyakan |
+
+Aturan: angka dibulatkan ("sekitar 2 sen"), tidak ada empat desimal, tanpa kata
+*variance*, *bridge*, atau *MoM*. Bila target berubah di tengah periode, narasi
+menyebutkannya beserta sumbernya (tabel target margin), supaya pertanyaan
+"kenapa target bulan itu X?" tidak menggantung.

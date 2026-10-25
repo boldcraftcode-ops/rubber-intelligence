@@ -61,7 +61,9 @@ metrics:
     satuan: USc/kg
     default_tahun: 4 tahun terakhir
 
-# Teks "Cara dihitung" untuk setiap kartu di layar (Fase 3).
+# Rujukan teknis tiap kartu. Di layar tombolnya bernama "Jelaskan ke saya":
+# narasi (jawaban dulu) dibuat oleh /api/jelaskan/{kartu}; teks cara_dihitung
+# di bawah ini menjadi LAPISAN KEDUA yang hanya dibuka bila ditanyakan.
 kartu:
   ringkasan:
     judul: Ringkasan OP Margin per tahun
