@@ -1959,6 +1959,212 @@ def pasang_router(app, ambil_session):
             return respon_xlsx("penerimaan_tren_musiman.xlsx", judul, isi)
         return hasil
 
+    # ------------------------------------- kartu penerimaan: deskriptif & komposisi
+    @router.get("/kartu/penerimaan/komposisi")
+    def kartu_penerimaan_komposisi(dimensi: str = "provinsi",
+                                   dari: str | None = None,
+                                   sampai: str | None = None,
+                                   eudr: bool | None = None,
+                                   format: str | None = None,
+                                   session: Session = dep):
+        """Analisis deskriptif & komposisi penerimaan (langsung bisa dipakai).
+
+        Tiga hal yang dijawab:
+        1. **Share per dimensi** (bawaannya provinsi): kg, porsi, kumulatif,
+           jadi kelihatan ketergantungan pada satu wilayah/vendor.
+        2. **Pareto/ABC**: kategori mana yang menyumbang 80% volume (kelas A),
+           sampai 95% (B), sisanya C.
+        3. **Share EUDR vs biasa**, total dan per bulan, untuk memantau target
+           kepatuhan EUDR dari waktu ke waktu.
+
+        `dimensi` mengikuti dimensi kartu (vendor/grade/provinsi/kabupaten/
+        kecamatan/desa). Wilayah memakai kunci ter-normalisasi (UPPER/TRIM)
+        seperti kartu Penerimaan, dan penggabungan ejaannya ikut dilaporkan.
+        """
+        if dimensi not in DIMENSI_TONASE:
+            raise HTTPException(422, f"Dimensi '{dimensi}' tidak dikenal. "
+                                     f"Pilihan: {', '.join(DIMENSI_TONASE)}.")
+        kd = _bulan_ym(dari, "dari")
+        ks = _bulan_ym(sampai, "sampai")
+        if kd and ks and kd > ks:
+            raise HTTPException(422, f"Periode terbalik: 'dari' ({dari}) lebih "
+                                     f"akhir daripada 'sampai' ({sampai}).")
+
+        kode_eudr = {g.item_code for g in session.scalars(
+            select(Grade).where(Grade.eudr == True))}  # noqa: E712
+        kolom = {"vendor": "kode_vendor", "grade": "item_code"}.get(dimensi, dimensi)
+        wilayah = dimensi in URUTAN_WILAYAH
+        peta_wilayah: dict[str, dict[str, int]] = {}
+
+        per_kunci: dict[str, dict] = defaultdict(
+            lambda: {"kg": 0.0, "eudr": 0.0, "tiket": set()})
+        per_bulan: dict[tuple[int, int], dict] = defaultdict(
+            lambda: {"total": 0.0, "eudr": 0.0})
+        total_kg = 0.0
+        total_eudr = 0.0
+        semua_tiket: set[str] = set()
+
+        for t in session.scalars(select(TiketBaris).where(
+                TiketBaris.tiket_nol == False)):  # noqa: E712
+            if not t.ticket_date or t.dry_kg is None:
+                continue
+            bulan = (t.ticket_date.year, t.ticket_date.month)
+            if kd and bulan < kd:
+                continue
+            if ks and bulan > ks:
+                continue
+            e = (t.item_code in kode_eudr) or ("TTSR" in (t.item_code or "").upper())
+            if eudr is True and not e:
+                continue
+            if eudr is False and e:
+                continue
+            kg = float(t.dry_kg)
+            mentah = getattr(t, kolom)
+            if wilayah:
+                kunci = _norm_wilayah(mentah)
+                _kumpulkan_wilayah(peta_wilayah, kunci, mentah)
+            else:
+                kunci = mentah or "(kosong)"
+            isi = per_kunci[kunci]
+            isi["kg"] += kg
+            isi["tiket"].add(t.ticket_no)
+            if e:
+                isi["eudr"] += kg
+                per_bulan[bulan]["eudr"] += kg
+                total_eudr += kg
+            per_bulan[bulan]["total"] += kg
+            total_kg += kg
+            semua_tiket.add(t.ticket_no)
+
+        nama_vendor = ({v.kode: v.nama_baku for v in session.scalars(select(Vendor))}
+                       if dimensi == "vendor" else {})
+        peta_label = ({k: _pilih_ejaan(v) for k, v in peta_wilayah.items()}
+                      if wilayah else {})
+
+        def label_dari(kunci: str) -> str:
+            if kunci in nama_vendor:
+                return f"{kunci} — {nama_vendor[kunci]}"
+            return peta_label.get(kunci, kunci)
+
+        # ---- urut menurun, porsi, kumulatif, kelas ABC (80/95)
+        urut = sorted(per_kunci.items(), key=lambda kv: -kv[1]["kg"])
+        baris: list[dict] = []
+        kumulatif = 0.0
+        for kunci, isi in urut:
+            porsi = (isi["kg"] / total_kg) if total_kg else 0.0
+            sebelum = kumulatif
+            kumulatif += porsi
+            # Kelas A = yang membuat kumulatif mencapai 80% (termasuk yang
+            # melewatinya), B sampai 95%, sisanya C. Memakai nilai SEBELUM
+            # baris ini supaya satu kategori tidak terbelah dua kelas.
+            kelas = "A" if sebelum < 0.80 else ("B" if sebelum < 0.95 else "C")
+            baris.append({
+                "kunci": kunci, "label": label_dari(kunci),
+                "kg": round(isi["kg"], 1),
+                "porsi": round(porsi, 4),
+                "porsi_pct": round(porsi * 100, 2),
+                "kumulatif_pct": round(kumulatif * 100, 2),
+                "kelas": kelas,
+                "eudr_kg": round(isi["eudr"], 1),
+                "eudr_pct": round(isi["eudr"] / isi["kg"] * 100, 2) if isi["kg"] else None,
+                "jumlah_tiket": len(isi["tiket"]),
+            })
+
+        kelas_ringkas = {}
+        for k in ("A", "B", "C"):
+            anggota = [b for b in baris if b["kelas"] == k]
+            kg_kelas = sum(b["kg"] for b in anggota)
+            kelas_ringkas[k] = {
+                "jumlah": len(anggota),
+                "kg": round(kg_kelas, 1),
+                "porsi_pct": round(kg_kelas / total_kg * 100, 2) if total_kg else 0.0,
+                "anggota": [b["label"] for b in anggota],
+            }
+
+        # ---- konsentrasi pasokan
+        hhi = sum(b["porsi"] ** 2 for b in baris) if total_kg else 0.0
+        if hhi >= 0.25:
+            label_hhi = "tinggi (pasokan terkonsentrasi pada sedikit pihak)"
+        elif hhi >= 0.15:
+            label_hhi = "sedang"
+        else:
+            label_hhi = "rendah (pasokan menyebar)"
+        top1 = baris[0] if baris else None
+        # Berapa kategori yang DIPERLUKAN untuk mencapai 80% (termasuk yang
+        # melewatinya). Kalau 2 kategori baru 75%, kategori ke-3 ikut dihitung.
+        jumlah_80 = next((i + 1 for i, b in enumerate(baris)
+                          if b["kumulatif_pct"] >= 80.0), len(baris))
+
+        # ---- EUDR vs biasa
+        bulan_urut = sorted(per_bulan)
+        eudr_per_bulan = [{
+            "ym": f"{th}-{bl:02d}",
+            "label": _label_bulan_singkat(th, bl),
+            "total_kg": round(per_bulan[(th, bl)]["total"], 1),
+            "eudr_kg": round(per_bulan[(th, bl)]["eudr"], 1),
+            "eudr_pct": (round(per_bulan[(th, bl)]["eudr"] / per_bulan[(th, bl)]["total"] * 100, 2)
+                         if per_bulan[(th, bl)]["total"] else None),
+        } for th, bl in bulan_urut]
+
+        peringatan: list[str] = []
+        if total_kg == 0:
+            peringatan.append("Tidak ada data tiket pada periode/dimensi ini.")
+        if total_kg and total_eudr == 0:
+            peringatan.append(
+                "Belum ada grade ber-flag EUDR pada periode ini (share EUDR 0%). "
+                "Periksa penandaan EUDR di menu Grade & Harga bila seharusnya ada.")
+        laporan_wilayah = _laporan_wilayah(peta_wilayah)
+        if laporan_wilayah["digabung"]:
+            peringatan.append(
+                f"{len(laporan_wilayah['digabung'])} nama wilayah digabung karena "
+                "beda huruf besar/kecil — share dihitung setelah penggabungan.")
+
+        hasil = {
+            "status": "ok",
+            "dimensi": dimensi,
+            "periode": {"dari": dari, "sampai": sampai},
+            "total_kg": round(total_kg, 1),
+            "total_ton": round(total_kg / 1000, 3),
+            "jumlah_tiket": len(semua_tiket),
+            "jumlah_kategori": len(baris),
+            "baris": baris,
+            "pareto": {
+                "ambang_a_pct": 80.0, "ambang_b_pct": 95.0,
+                "jumlah_kategori_80": jumlah_80,
+                "kelas": kelas_ringkas,
+                "catatan": (f"{jumlah_80} dari {len(baris)} {dimensi} diperlukan "
+                            "untuk mencapai 80% volume — sisanya ekor panjang."
+                            if baris else ""),
+            },
+            "konsentrasi": {
+                "hhi": round(hhi, 4),
+                "label": label_hhi,
+                "top1_label": top1["label"] if top1 else None,
+                "top1_porsi_pct": top1["porsi_pct"] if top1 else None,
+                "top3_porsi_pct": round(sum(b["porsi_pct"] for b in baris[:3]), 2),
+            },
+            "eudr": {
+                "total_kg": round(total_eudr, 1),
+                "porsi_pct": round(total_eudr / total_kg * 100, 2) if total_kg else None,
+                "biasa_kg": round(total_kg - total_eudr, 1),
+                "biasa_porsi_pct": (round((total_kg - total_eudr) / total_kg * 100, 2)
+                                    if total_kg else None),
+                "per_bulan": eudr_per_bulan,
+            },
+            "wilayah": laporan_wilayah if wilayah else None,
+            "peringatan": peringatan,
+            "sumber": "tiket_baris (Dry, tanpa tiket nol); EUDR = grade ber-flag "
+                      "EUDR / kode TTSR",
+        }
+        if format == "xlsx":
+            judul = [dimensi.capitalize(), "Kg", "Porsi %", "Kumulatif %",
+                     "Kelas ABC", "EUDR kg", "EUDR %", "Jumlah tiket"]
+            isi_xlsx = [[b["label"], b["kg"], b["porsi_pct"], b["kumulatif_pct"],
+                         b["kelas"], b["eudr_kg"], b["eudr_pct"], b["jumlah_tiket"]]
+                        for b in baris]
+            return respon_xlsx(f"komposisi_penerimaan_{dimensi}.xlsx", judul, isi_xlsx)
+        return hasil
+
     # ------------------------------------------------------------ kartu: konsentrasi vendor
     @router.get("/kartu/konsentrasi-vendor")
     def kartu_konsentrasi(top: int = 5, tahun: int | None = None,

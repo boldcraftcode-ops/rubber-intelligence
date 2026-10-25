@@ -9,7 +9,7 @@ Kalau Anda hanya punya 15 menit, baca bagian **1 (Status)**, **3 (Cara
 menjalankan)**, dan **7 (Aturan yang tidak boleh dilanggar)**. Selebihnya bisa
 dibaca saat mengerjakan tugas pertama.
 
-Terakhir diperbarui: **2026-10-25**, versi kode **0.9.2**.
+Terakhir diperbarui: **2026-10-25**, versi kode **0.9.3**.
 
 ---
 
@@ -36,11 +36,11 @@ ini setiap hari untuk memutuskan **harga beli maksimum** yang masih aman.
 
 | Hal | Nilai |
 |---|---|
-| Versi kode | **0.9.2** (`VERSI.txt`, `backend/app/versi.py`, `frontend/src/versi.ts`) |
+| Versi kode | **0.9.3** (`VERSI.txt`, `backend/app/versi.py`, `frontend/src/versi.ts`) |
 | Branch kerja | `arena/18670644-rubber-intelligence` |
 | Pull request | **#1 masih terbuka** — https://github.com/boldcraftcode-ops/rubber-intelligence/pull/1 |
 | Branch `main` | belum memuat pekerjaan v0.7.x–v0.8.x |
-| Unit test | **292 lulus** (`cd backend && .venv/bin/python -m pytest -q`) |
+| Unit test | **310 lulus** (`cd backend && .venv/bin/python -m pytest -q`) |
 | Build frontend | bersih, ±3,3 detik (`cd frontend && npm run build`) |
 | Database | SQLite `backend/opmargin.db` (tidak masuk Git) |
 
@@ -102,7 +102,7 @@ Login awal: **`admin` / `admin123`** (dari `ADMIN_SANDI_AWAL` di
 
 ```bash
 cd backend
-.venv/bin/python -m pytest -q                                  # 292 tes
+.venv/bin/python -m pytest -q                                  # 310 tes
 .venv/bin/python -m app.cli diagnosa                            # laporan kesehatan
 .venv/bin/python -m app.cli reset-sandi admin                   # lupa sandi
 .venv/bin/python -m app.cli atur-login-lokal                    # pastikan mode login benar
@@ -154,7 +154,7 @@ rubber-intelligence/
 │   │       ├── kualitas.py     deteksi data terlambat/aneh
 │   │       └── alarm.py        evaluasi alarm + audit
 │   ├── semantic/metrics.yaml   definisi metrik (rujukan, dibaca fase API)
-│   ├── tests/                  292 tes, termasuk kasus emas Excel lama
+│   ├── tests/                  310 tes, termasuk kasus emas Excel lama
 │   ├── unggahan/               berkas Excel yang diunggah lewat web
 │   └── .env.example            contoh setelan (JANGAN commit .env asli)
 └── frontend/
@@ -230,7 +230,7 @@ tetesan lateks merah + simpul data, dibuat manual sebagai SVG
 **Jangan memakai font/CDN/gambar eksternal.** Aplikasi harus jalan di jaringan
 tertutup pabrik; semua aset lokal.
 
-### Periode tampilan menu Stok (v0.9.2)
+### Periode tampilan menu Stok (v0.9.3)
 
 Menu **Stok** kini punya pemilih periode di bagian paling atas, dengan isi
 bawaan **1 Januari tahun berjalan s.d. bulan berjalan** (dibuka Oktober 2026 →
@@ -255,7 +255,7 @@ Pemilih periode ini dipakai bersama oleh menu Stok dan Intake Analisis
 (`PilihRentangBulan` di `frontend/src/bersama.tsx`), supaya bentuk, warna, dan
 perilakunya tidak bercabang.
 
-### Daftar intake terakhir & batas 12 bulan KPI Reject (v0.9.2)
+### Daftar intake terakhir & batas 12 bulan KPI Reject (v0.9.3)
 
 **Kartu "Daftar intake terakhir"** (paling bawah halaman Intake Analisis, setelah
 kartu margin) menjawab
@@ -285,7 +285,7 @@ seluruh riwayat 2020–2026:
   `bulan` di luar 0–120 → 422). Filter tahun tetap jalan dan dihitung setelah
   filter itu.
 
-### Master Vendor — CRUD & bulk import (v0.9.2)
+### Master Vendor — CRUD & bulk import (v0.9.3)
 
 Menu baru **Master Vendor** (sidebar, di atas Grade & Harga) merawat daftar
 vendor: daftar + cari + saring status, tambah, ubah, hapus, dan impor massal
@@ -311,7 +311,7 @@ sebagai `aktif` (dibakukan huruf kecil) supaya cocok dengan pilihan di layar.
 CORS kini mengizinkan `PUT` dan `DELETE` — tanpa itu tombol ubah/hapus gagal
 bila tampilan web dan API berada di domain berbeda (deploy tunnel).
 
-### Analisis tren & musiman + normalisasi wilayah (v0.9.2)
+### Analisis tren & musiman + normalisasi wilayah (v0.9.3)
 
 Disematkan di kartu **Penerimaan karet (kg) — biasa vs EUDR** sebagai
 **tombol `📈 Analisis tren & musiman`** yang rata kanan di baris filter —
@@ -389,6 +389,49 @@ musiman), supaya bentuk panel tidak bercabang lagi di kemudian hari.
 Penyebabnya di sumber data, jadi normalisasi ini obat sementara: idealnya
 ekspor/pengetikan dari aplikasi asal ikut dibakukan, atau dipakai master
 wilayah. Hal itu belum dikerjakan.
+
+### Analisis deskriptif & komposisi (v0.9.3)
+
+Tombol kedua di kartu **Penerimaan karet (kg) — biasa vs EUDR** —
+**📊 Analisis deskriptif & komposisi** — dengan pola yang sama seperti
+**📈 Analisis tren & musiman** dan **🌉 Margin Bridge**: tombol navy → panel
+modal + kepala panel (periode, Ekspor Excel, Tutup). Sumber:
+`GET /api/kartu/penerimaan/komposisi` (ikut filter periode & mode grade kartu;
+ada ekspor `.xlsx`).
+
+Panelnya menjawab tiga hal yang bisa langsung dipakai:
+
+| Bagian | Isi |
+|---|---|
+| **KPI** | total kg/ton, wilayah terbesar + porsinya, jumlah kategori untuk mencapai 80%, share EUDR |
+| **Ketergantungan pasokan** | porsi terbesar, tiga terbesar, **HHI** (0 = menyebar, 1 = satu pihak) beserta artinya |
+| **Tabel share** | kg, porsi %, kumulatif %, **kelas ABC**, EUDR % per kategori, jumlah tiket |
+| **Grafik** | porsi (%) per kategori, batang horizontal |
+| **EUDR vs biasa** | share total, grafik share per bulan, tabel per bulan + **perubahan** (▲/▼ poin) |
+
+**Dimensi komposisi bisa diganti di dalam panel** (provinsi / vendor / grade /
+kabupaten) tanpa mengubah dimensi kartu — jadi ketergantungan bisa dilihat per
+wilayah maupun per pemasok. Bawaannya mengikuti dimensi kartu saat tombol
+ditekan.
+
+**Aturan Pareto/ABC yang dipakai:**
+- urut menurun menurut volume, porsi dihitung dari total periode terpilih;
+- **Kelas A** = kategori yang membuat kumulatif **mencapai 80%** (kategori
+  yang melewati ambang tetap ikut A, tidak terbelah), **B** sampai 95%,
+  **C** sisanya (ekor panjang);
+- *"N dari M kategori diperlukan untuk mencapai 80%"* menghitung kategori yang
+  membuat kumulatif mencapai 80% — jadi 50% + 25% + 25% menghasilkan N = 3,
+  bukan 2.
+
+**HHI** (Herfindahl–Hirschman) = jumlah kuadrat porsi: ≥0,25 tinggi
+(pasokan bergantung pada sedikit pihak), 0,15–0,25 sedang, <0,15 menyebar.
+
+Catatan pembacaan: contoh pada data sekarang — Sumatera Utara **50,2%**,
+Riau 25,1%, Aceh 24,7%, HHI **0,376** (tinggi); share EUDR **13,19%** dengan
+rentang per bulan 12,6–13,3% (Okt-26 39,7% karena bulan itu baru 3 tiket,
+jangan dibandingkan langsung). Angka Sumatera Utara berbeda dari contoh di
+permintaan (575.792 kg) karena sekarang ejaan `Sumatera Utara` dan
+`SUMATERA UTARA` sudah digabung.
 
 ---
 
@@ -522,7 +565,7 @@ Semua ini lahir dari kegagalan nyata, bukan kehati-hatian berlebihan.
    kode salah. Perbaikannya: `hentikan-api.bat` lalu `start-web.bat`.
 6. **Selalu jalankan `npm run build` (bukan hanya `vite build`)** — skrip npm
    memakai `tsc -b`, jadi error tipe ikut tertangkap.
-7. **292 tes harus tetap lulus.** Tes "kasus emas"
+7. **310 tes harus tetap lulus.** Tes "kasus emas"
    (`tests/test_data_awal.py`, `tests/test_bridge_doc.py`) mencocokkan hasil
    dengan Excel lama sampai beberapa desimal. Kalau tes emas gagal, hampir pasti rumus
    yang diubah, bukan tesnya.
@@ -614,13 +657,13 @@ pernah membuat label dan ikon tertukar; ganti blok utuhnya.
 ### Rilis versi baru (prosedur yang sudah terbukti)
 ```bash
 # 1. pastikan bersih
-cd backend && .venv/bin/python -m pytest -q          # 292 passed
+cd backend && .venv/bin/python -m pytest -q          # 310 passed
 cd ../frontend && npm run build                       # bersih
 
 # 2. naikkan versi di 6 berkas (isi dua variabel, sisanya otomatis)
 cd ..
 LAMA=$(tr -d '\r\n' < VERSI.txt)     # versi yang masih terpakai
-BARU=0.9.2                            # <- tulis versi baru di sini
+BARU=0.9.3                            # <- tulis versi baru di sini
 for f in VERSI.txt backend/app/versi.py frontend/src/versi.ts \
          docs/CARA_MENJALANKAN.md diagnosa.bat hentikan-api.bat; do
   sed -i "s/$LAMA/$BARU/g" "$f"

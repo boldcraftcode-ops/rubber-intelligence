@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   Bar, BarChart, CartesianGrid, Legend, Line, LineChart, ResponsiveContainer,
@@ -515,6 +515,275 @@ export function AnalisisTren({ dari, sampai, modeEudr, bukaAwal = false }: {
   );
 }
 
+/* ---------- analisis deskriptif & komposisi (share, Pareto/ABC, EUDR) ---------- */
+
+const WARNA_KELAS: Record<string, string> = {
+  A: "bg-[#1D2434] text-white",
+  B: "bg-[#FF1313] text-white",
+  C: "bg-[#F1F2F4] text-[#1D2434]",
+};
+
+export function AnalisisKomposisi({ dari, sampai, modeEudr, dimensi,
+                                    bukaAwal = false }: {
+  dari: string; sampai: string; modeEudr: "semua" | "eudr" | "biasa";
+  dimensi: string;
+  /** Bawaannya tertutup: tombol dibuka seperti Margin Bridge. */
+  bukaAwal?: boolean;
+}) {
+  const [buka, setBuka] = useState(bukaAwal);
+  const [dim, setDim] = useState(dimensi);
+  /* dimensi kartu ikut berubah saat drill-down; samakan selama panel tertutup */
+  useEffect(() => { setDim(dimensi); }, [dimensi]);
+
+  const params = new URLSearchParams({ dimensi: dim });
+  if (dari) params.set("dari", dari);
+  if (sampai) params.set("sampai", sampai);
+  if (modeEudr !== "semua") params.set("eudr", String(modeEudr === "eudr"));
+  const url = `/api/kartu/penerimaan/komposisi?${params.toString()}`;
+  const q = useQuery({
+    queryKey: ["komposisi-penerimaan", url],
+    queryFn: () => ambilJson(url),
+    enabled: buka,
+  });
+
+  const d = q.data;
+  const baris: any[] = d?.baris ?? [];
+  const eudrBulan: any[] = d?.eudr?.per_bulan ?? [];
+  const grafikEudr = eudrBulan.map((m: any) => ({
+    nama: m.label,
+    "Share EUDR (%)": m.eudr_pct,
+  }));
+  const grafikPorsi = baris.slice(0, 12).map((b: any) => ({
+    nama: b.label.length > 22 ? b.label.slice(0, 22) + "…" : b.label,
+    "Porsi (%)": b.porsi_pct,
+  }));
+
+  return (
+    <>
+      <button className={kelasTombolAnalisa} onClick={() => setBuka(true)}>
+        📊 Analisis deskriptif &amp; komposisi
+      </button>
+
+      {buka && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+             onClick={() => setBuka(false)}>
+          <div className="max-h-[92vh] w-full max-w-4xl overflow-y-auto rounded-sm bg-white border border-[#E4E5E8] p-6 shadow-xl shadow-[#1D2434]/10"
+               onClick={(e) => e.stopPropagation()}>
+            <KepalaPanel judul={"Analisis deskriptif & komposisi — penerimaan karet"}
+                         periode={d && baris.length
+                           ? `${fmtAngka(d.total_ton, 1)} ton · ${d.jumlah_tiket} tiket`
+                           : undefined}
+                         url={url} tutup={() => setBuka(false)} />
+
+            {/* dimensi komposisi (bisa berbeda dari dimensi kartu) */}
+            <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
+              <span className="text-[#64676C]">Komposisi menurut:</span>
+              <div className="inline-flex overflow-hidden rounded-sm border border-[#D5D7DB]">
+                {["provinsi", "vendor", "grade", "kabupaten"].map((dk) => (
+                  <button key={dk}
+                    className={`px-2.5 py-1 font-medium ${dim === dk
+                      ? "bg-[#1D2434] text-white" : "bg-white text-[#1D2434] hover:bg-[#E8E9EC]"}`}
+                    onClick={() => setDim(dk)}>
+                    {dk}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {q.isLoading && <p className="mt-3 text-xs text-[#64676C]">Menghitung…</p>}
+            {q.error && <p className="mt-3 text-xs text-[#B91C1C]">{pesanGalat(q.error)}</p>}
+
+            {d && (
+              <>
+                {d.peringatan?.length > 0 && (
+                  <div className="mt-3 rounded-sm border border-[#FDE68A] bg-[#FFFBEB] px-3 py-2">
+                    <ul className="list-disc pl-4 text-xs text-[#92400E]">
+                      {d.peringatan.map((t: string, i: number) => (
+                        <li key={i} className="mb-0.5">{t}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {baris.length === 0 ? (
+                  <p className="mt-3 text-sm text-[#64676C]">
+                    Tidak ada data pada periode ini.
+                  </p>
+                ) : (
+                  <>
+                    {/* ---- KPI ringkas ---- */}
+                    <div className="mt-3 grid grid-cols-2 sm:grid-cols-4 gap-2">
+                      {[
+                        ["Total", fmtAngka(d.total_kg, 0) + " kg",
+                          fmtAngka(d.total_ton, 1) + " ton"],
+                        ["Wilayah terbesar", d.konsentrasi.top1_label ?? "–",
+                          `${fmtAngka(d.konsentrasi.top1_porsi_pct, 1)}% dari total`],
+                        ["Mencapai 80%", `${d.pareto.jumlah_kategori_80} dari ${d.jumlah_kategori}`,
+                          "kategori (Pareto)"],
+                        ["Share EUDR", d.eudr.porsi_pct === null ? "–"
+                          : fmtAngka(d.eudr.porsi_pct, 2) + "%",
+                          `${fmtAngka(d.eudr.total_kg, 0)} kg dari total`],
+                      ].map(([judul, nilai, bawah]) => (
+                        <div key={judul as string}
+                             className="rounded-sm border border-[#E4E5E8] bg-[#F8F8F8] p-2.5">
+                          <p className="text-[11px] text-[#64676C]">{judul}</p>
+                          <p className="text-sm font-semibold text-[#1D2434]">{nilai}</p>
+                          <p className="text-[11px] text-[#64676C]">{bawah}</p>
+                        </div>
+                      ))}
+                    </div>
+
+                    <p className="mt-2 rounded-sm border border-[#E4E5E8] bg-white px-3 py-2 text-xs text-[#64676C]">
+                      <b className="text-[#1D2434]">Ketergantungan pasokan:</b>{" "}
+                      {d.konsentrasi.top1_label} menyumbang{" "}
+                      {fmtAngka(d.konsentrasi.top1_porsi_pct, 1)}%; tiga terbesar{" "}
+                      {fmtAngka(d.konsentrasi.top3_porsi_pct, 1)}%. Indeks
+                      konsentrasi (HHI) {fmtAngka(d.konsentrasi.hhi, 3)} —{" "}
+                      {d.konsentrasi.label}.
+                    </p>
+
+                    {/* ---- grafik porsi ---- */}
+                    {grafikPorsi.length > 1 && (
+                      <div style={{ height: Math.max(160, grafikPorsi.length * 28 + 40) }}
+                           className="mt-3">
+                        <ResponsiveContainer>
+                          <BarChart data={grafikPorsi} layout="vertical"
+                                    margin={{ top: 5, right: 20, bottom: 5, left: 10 }}>
+                            <CartesianGrid strokeDasharray="3 3" />
+                            <XAxis type="number" fontSize={10} unit="%"
+                                   tickFormatter={(v) => fmtAngka(v as number, 0)} />
+                            <YAxis type="category" dataKey="nama" width={150} fontSize={10} />
+                            <Tooltip formatter={(v: any) => [fmtAngka(v as number, 2) + "%", "Porsi"]} />
+                            <Bar dataKey="Porsi (%)" fill="#1D2434" />
+                          </BarChart>
+                        </ResponsiveContainer>
+                      </div>
+                    )}
+
+                    {/* ---- tabel share + Pareto/ABC ---- */}
+                    <div className="mt-3 max-h-72 overflow-y-auto">
+                      <table className="w-full text-xs">
+                        <thead className="sticky top-0 bg-white">
+                          <tr className="text-left text-[#64676C] border-b">
+                            <th className="py-1">{dim}</th>
+                            <th className="text-right">Kg</th>
+                            <th className="text-right">Porsi</th>
+                            <th className="text-right">Kumulatif</th>
+                            <th className="text-center">Kelas</th>
+                            <th className="text-right">EUDR %</th>
+                            <th className="text-right">Tiket</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {baris.map((b: any) => (
+                            <tr key={b.kunci} className="border-b border-[#EDEFF2]">
+                              <td className="py-1">{b.label}</td>
+                              <td className="text-right font-mono">{fmtAngka(b.kg, 0)}</td>
+                              <td className="text-right font-mono">{fmtAngka(b.porsi_pct, 2)}%</td>
+                              <td className="text-right font-mono">{fmtAngka(b.kumulatif_pct, 2)}%</td>
+                              <td className="text-center">
+                                <span className={`rounded-sm px-1.5 py-0.5 text-[10px] font-semibold ${WARNA_KELAS[b.kelas]}`}>
+                                  {b.kelas}
+                                </span>
+                              </td>
+                              <td className="text-right font-mono">
+                                {b.eudr_pct === null ? "–" : fmtAngka(b.eudr_pct, 2) + "%"}
+                              </td>
+                              <td className="text-right font-mono">{b.jumlah_tiket}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                    <p className="mt-1 text-[11px] text-[#64676C]">
+                      <b>Kelas A</b> = kategori yang membuat kumulatif mencapai 80%
+                      (fokus pengelolaan), <b>B</b> sampai 95%, <b>C</b> sisanya
+                      (ekor panjang). {d.pareto.catatan}
+                    </p>
+
+                    {/* ---- EUDR vs biasa ---- */}
+                    <div className="mt-4 border-t border-[#E4E5E8] pt-3">
+                      <h4 className="text-xs font-semibold text-[#1D2434]">
+                        Share EUDR vs biasa
+                      </h4>
+                      <p className="mt-1 text-xs text-[#64676C]">
+                        EUDR <b className="text-[#15803D]">{fmtAngka(d.eudr.total_kg, 0)} kg
+                        ({fmtAngka(d.eudr.porsi_pct, 2)}%)</b> · biasa{" "}
+                        {fmtAngka(d.eudr.biasa_kg, 0)} kg ({fmtAngka(d.eudr.biasa_porsi_pct, 2)}%).
+                      </p>
+                      {eudrBulan.length > 1 && (
+                        <div className="mt-2 h-48">
+                          <ResponsiveContainer>
+                            <LineChart data={grafikEudr}
+                                       margin={{ top: 5, right: 15, bottom: 5, left: 0 }}>
+                              <CartesianGrid strokeDasharray="3 3" />
+                              <XAxis dataKey="nama" fontSize={10} minTickGap={20} />
+                              <YAxis fontSize={10} unit="%" domain={[0, "auto"]} />
+                              <Tooltip formatter={(v: any) => [fmtAngka(v as number, 2) + "%", "Share EUDR"]} />
+                              <Line type="monotone" dataKey="Share EUDR (%)" stroke="#15803D"
+                                    strokeWidth={2} dot={{ r: 2 }} />
+                            </LineChart>
+                          </ResponsiveContainer>
+                        </div>
+                      )}
+                      <div className="mt-2 max-h-40 overflow-y-auto">
+                        <table className="w-full text-xs">
+                          <thead className="sticky top-0 bg-white">
+                            <tr className="text-left text-[#64676C] border-b">
+                              <th className="py-1">Bulan</th>
+                              <th className="text-right">Total kg</th>
+                              <th className="text-right">EUDR kg</th>
+                              <th className="text-right">Share EUDR</th>
+                              <th>Perubahan</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {eudrBulan.map((m: any, i: number) => {
+                              const sebelum = i > 0 ? eudrBulan[i - 1].eudr_pct : null;
+                              const delta = sebelum !== null && m.eudr_pct !== null
+                                ? m.eudr_pct - sebelum : null;
+                              return (
+                                <tr key={m.ym} className="border-b border-[#EDEFF2]">
+                                  <td className="py-1">{m.label}</td>
+                                  <td className="text-right font-mono">{fmtAngka(m.total_kg, 0)}</td>
+                                  <td className="text-right font-mono">{fmtAngka(m.eudr_kg, 0)}</td>
+                                  <td className="text-right font-mono">{fmtAngka(m.eudr_pct, 2)}%</td>
+                                  <td className={delta === null ? ""
+                                    : delta > 0.005 ? "text-[#15803D]"
+                                      : delta < -0.005 ? "text-[#DC2626]" : "text-[#64676C]"}>
+                                    {delta === null ? "–"
+                                      : `${delta > 0.005 ? "▲" : delta < -0.005 ? "▼" : "■"} ${fmtAngka(Math.abs(delta), 2)} poin`}
+                                  </td>
+                                </tr>
+                              );
+                            })}
+                          </tbody>
+                        </table>
+                      </div>
+                      <p className="mt-1 text-[11px] text-[#64676C]">
+                        Dipantau per bulan untuk melihat apakah porsi EUDR naik
+                        (target kepatuhan). Bulan dengan data tipis membuat
+                        persentasenya mudah melonjak — bandingkan dengan kolom Total kg.
+                      </p>
+                    </div>
+
+                    {d.wilayah?.digabung?.length > 0 && (
+                      <p className="mt-3 text-[11px] text-[#92400E]">
+                        Ejaan wilayah digabung (beda huruf besar/kecil):{" "}
+                        {d.wilayah.digabung.map((g: any) => g.label).join(", ")}.
+                      </p>
+                    )}
+                  </>
+                )}
+              </>
+            )}
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
+
 function KartuPenerimaan() {
   const [dimensi, setDimensi] = useState("vendor");
   const [jejak, setJejak] = useState<{ dim: string; nilai: string }[]>([]);
@@ -640,6 +909,8 @@ function KartuPenerimaan() {
               dengan tombol Margin Bridge / Days of Cover di Margin Performance. */}
           <div className="ml-auto flex flex-wrap gap-2">
             <AnalisisTren dari={dari} sampai={sampai} modeEudr={modeEudr} />
+            <AnalisisKomposisi dari={dari} sampai={sampai} modeEudr={modeEudr}
+                               dimensi={dimensi} />
           </div>
         </div>
 
