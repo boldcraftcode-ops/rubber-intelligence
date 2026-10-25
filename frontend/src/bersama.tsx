@@ -416,3 +416,73 @@ export function Panel5W1H({ url, judul, tutup }: {
 export const kelasTombolAnalisa =
   "rounded-sm bg-[#1D2434] px-3 py-1.5 text-xs font-semibold text-white " +
   "hover:bg-[#2A3345] transition-colors";
+
+/* ---------- pemilih rentang bulan (dipakai Stok & Intake Analisis) ---------- */
+
+/* Hari terakhir dari sebuah bulan "YYYY-MM" -> "YYYY-MM-DD". */
+export const akhirBulan = (ym: string) => {
+  const [y, m] = ym.split("-").map(Number);
+  return `${ym}-${String(new Date(y, m, 0).getDate()).padStart(2, "0")}`;
+};
+
+/* Jumlah bulan yang dicakup rentang "YYYY-MM".."YYYY-MM"
+   (0 bila kosong / tidak sah). */
+export const hitungJumlahBulan = (dari: string, sampai: string) => {
+  if (!dari || !sampai) return 0;
+  const [y1, m1] = dari.split("-").map(Number);
+  const [y2, m2] = sampai.split("-").map(Number);
+  if (!y1 || !y2) return 0;
+  const n = (y2 - y1) * 12 + (m2 - m1) + 1;
+  return n > 0 ? n : 0;
+};
+
+/* Bulan berjalan "YYYY-MM" menurut jam komputer pemakai. */
+export const bulanBerjalan = (tgl: Date = new Date()) =>
+  `${tgl.getFullYear()}-${String(tgl.getMonth() + 1).padStart(2, "0")}`;
+
+/* Awal tahun berjalan "YYYY-01". */
+export const awalTahunBerjalan = (tgl: Date = new Date()) => `${tgl.getFullYear()}-01`;
+
+/* "2026-01" + "2026-10" -> "Jan 2026 – Okt 2026" (untuk judul/keterangan). */
+export const labelRentangBulan = (dari: string, sampai: string) => {
+  const satu = (ym: string) => {
+    const [y, m] = ym.split("-").map(Number);
+    if (!y || !m) return "";
+    return `${NAMA_BULAN[m]} ${y}`;
+  };
+  const a = satu(dari), b = satu(sampai);
+  if (a && b) return a === b ? a : `${a} – ${b}`;
+  return a || b || "seluruh data";
+};
+
+/* Dua kotak bulan + tombol penghapus filter. Nilai state berupa "YYYY-MM";
+   kosong berarti tanpa batas (seluruh data). */
+export function PilihRentangBulan({ dari, sampai, setDari, setSampai,
+                                    labelKosong = "hapus filter" }: {
+  dari: string;
+  sampai: string;
+  setDari: (v: string) => void;
+  setSampai: (v: string) => void;
+  labelKosong?: string;
+}) {
+  return (
+    <div className="flex flex-wrap items-end gap-2 text-xs">
+      <div>
+        <label className="mb-1 block text-[#64676C]">Dari bulan</label>
+        <input type="month" className="rounded-sm border border-[#E4E5E8] bg-white px-2 py-1.5 text-[#1D2434]"
+               value={dari} onChange={(e) => setDari(e.target.value)} />
+      </div>
+      <div>
+        <label className="mb-1 block text-[#64676C]">Sampai bulan</label>
+        <input type="month" className="rounded-sm border border-[#E4E5E8] bg-white px-2 py-1.5 text-[#1D2434]"
+               value={sampai} onChange={(e) => setSampai(e.target.value)} />
+      </div>
+      {(dari || sampai) && (
+        <button className={kelasTombolKecil}
+                onClick={() => { setDari(""); setSampai(""); }}>
+          {labelKosong}
+        </button>
+      )}
+    </div>
+  );
+}

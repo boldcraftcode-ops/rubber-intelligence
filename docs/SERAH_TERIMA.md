@@ -9,7 +9,7 @@ Kalau Anda hanya punya 15 menit, baca bagian **1 (Status)**, **3 (Cara
 menjalankan)**, dan **7 (Aturan yang tidak boleh dilanggar)**. Selebihnya bisa
 dibaca saat mengerjakan tugas pertama.
 
-Terakhir diperbarui: **2026-10-25**, versi kode **0.7.9**.
+Terakhir diperbarui: **2026-10-25**, versi kode **0.8.0**.
 
 ---
 
@@ -36,7 +36,7 @@ ini setiap hari untuk memutuskan **harga beli maksimum** yang masih aman.
 
 | Hal | Nilai |
 |---|---|
-| Versi kode | **0.7.9** (`VERSI.txt`, `backend/app/versi.py`, `frontend/src/versi.ts`) |
+| Versi kode | **0.8.0** (`VERSI.txt`, `backend/app/versi.py`, `frontend/src/versi.ts`) |
 | Branch kerja | `arena/18670644-rubber-intelligence` |
 | Pull request | **#1 masih terbuka** — https://github.com/boldcraftcode-ops/rubber-intelligence/pull/1 |
 | Branch `main` | belum memuat pekerjaan v0.7.x |
@@ -228,6 +228,31 @@ tetesan lateks merah + simpul data, dibuat manual sebagai SVG
 
 **Jangan memakai font/CDN/gambar eksternal.** Aplikasi harus jalan di jaringan
 tertutup pabrik; semua aset lokal.
+
+### Periode tampilan menu Stok (v0.8.0)
+
+Menu **Stok** kini punya pemilih periode di bagian paling atas, dengan isi
+bawaan **1 Januari tahun berjalan s.d. bulan berjalan** (dibuka Oktober 2026 →
+Jan 2026 – Okt 2026). Tiga kartu di bawahnya mengikuti periode itu:
+
+| Kendali | Arti |
+|---|---|
+| **Dari bulan** / **Sampai bulan** | batas periode; tanggal dipotong otomatis (awal bulan → hari terakhir bulan) |
+| **tahun ini** | mengembalikan isian ke bawaan (awal tahun – bulan ini) |
+| **seluruh data** | melepas batas periode; semua tanggal yang ada ikut dihitung |
+
+Periode aktif selalu tertulis di bar atas (*"Menampilkan Jan 2026 – Okt 2026 ·
+251 hari berdata"*) dan diulang di keterangan tiap kartu, supaya angka tidak
+terbaca lepas dari rentangnya. Bila bulan awal melewati bulan akhir, aplikasi
+menolak memuat data dan menampilkan pesan, bukan grafik kosong.
+
+Kartu **Stok hari terakhir** menampilkan tanggal terakhir *di dalam periode*,
+bukan tanggal terakhir di seluruh database — jadi mengubah periode ikut
+mengubah baris ini.
+
+Pemilih periode ini dipakai bersama oleh menu Stok dan Intake Analisis
+(`PilihRentangBulan` di `frontend/src/bersama.tsx`), supaya bentuk, warna, dan
+perilakunya tidak bercabang.
 
 ---
 
@@ -456,12 +481,15 @@ pernah membuat label dan ikon tertukar; ganti blok utuhnya.
 cd backend && .venv/bin/python -m pytest -q          # 227 passed
 cd ../frontend && npm run build                       # bersih
 
-# 2. naikkan versi di 6 berkas (contoh 0.7.9 -> 0.8.0)
+# 2. naikkan versi di 6 berkas (isi dua variabel, sisanya otomatis)
 cd ..
+LAMA=$(tr -d '\r\n' < VERSI.txt)     # versi yang masih terpakai
+BARU=0.8.1                            # <- tulis versi baru di sini
 for f in VERSI.txt backend/app/versi.py frontend/src/versi.ts \
          docs/CARA_MENJALANKAN.md diagnosa.bat hentikan-api.bat; do
-  sed -i 's/0\.7\.9/0.8.0/g' "$f"
+  sed -i "s/$LAMA/$BARU/g" "$f"
 done
+echo "versi: $LAMA -> $BARU"
 #    (Windows: ganti manual nilai versi di 6 berkas itu)
 #    .bat: pastikan tetap ASCII + CRLF
 grep -nP '[^\x00-\x7F]' diagnosa.bat hentikan-api.bat

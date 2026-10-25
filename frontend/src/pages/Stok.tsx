@@ -1,22 +1,88 @@
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   CartesianGrid, Legend, Line, LineChart, ResponsiveContainer,
   Tooltip, XAxis, YAxis,
 } from "recharts";
-import { Kartu, ambilJson, fmtAngka, fmtTanggal } from "../bersama";
+import {
+  Kartu, PilihRentangBulan, akhirBulan, ambilJson,
+  awalTahunBerjalan, bulanBerjalan, fmtAngka, fmtTanggal, kelasTombolKecil,
+  labelRentangBulan,
+} from "../bersama";
+
+/* Periode bawaan menu Stok: 1 Januari tahun berjalan s.d. bulan berjalan.
+   Contoh: dibuka Oktober 2026 -> "2026-01" s.d. "2026-10". */
+const periodeBawaan = () => ({
+  dari: awalTahunBerjalan(),
+  sampai: bulanBerjalan(),
+});
 
 export default function Stok() {
-  const q = useQuery({ queryKey: ["stok"], queryFn: () => ambilJson("/api/stok") });
+  const [bawaan] = useState(periodeBawaan);
+  const [dari, setDari] = useState(bawaan.dari);
+  const [sampai, setSampai] = useState(bawaan.sampai);
+
+  /* Bulan awal setelah bulan akhir: jangan kirim permintaan yang pasti kosong. */
+  const urutanSalah = Boolean(dari && sampai && dari > sampai);
+
+  const params = new URLSearchParams();
+  if (dari) params.set("dari", `${dari}-01`);
+  if (sampai) params.set("sampai", akhirBulan(sampai));
+  const url = `/api/stok${params.toString() ? `?${params.toString()}` : ""}`;
+
+  const q = useQuery({
+    queryKey: ["stok", url],
+    queryFn: () => ambilJson(url),
+    enabled: !urutanSalah,
+  });
+
   const t = q.data?.terakhir;
   const dataGrafik = q.data?.baris.map((b: any) => ({
     tanggal: b.tanggal, stok: b.stok_ton, safety: b.safety_ton,
   }));
   const diBawah = q.data?.baris.filter((b: any) => b.status === "di bawah safety") ?? [];
+  const jumlahHari = q.data?.jumlah_hari ?? 0;
+  const rentang = labelRentangBulan(dari, sampai);
+  const tanpaBatas = !dari && !sampai;
+
+  const keteranganPeriode = tanpaBatas
+    ? "seluruh data yang tersedia"
+    : `periode ${rentang}`;
+
+  const bar = (
+    <div className="rounded-sm border border-[#E4E5E8] bg-white p-3">
+      <div className="flex flex-wrap items-end gap-3">
+        <div>
+          <p className="mb-1 text-xs font-semibold text-[#1D2434]">Periode tampilan</p>
+          <PilihRentangBulan dari={dari} sampai={sampai}
+                             setDari={setDari} setSampai={setSampai}
+                             labelKosong="seluruh data" />
+        </div>
+        <button className={kelasTombolKecil}
+                onClick={() => { setDari(bawaan.dari); setSampai(bawaan.sampai); }}>
+          tahun ini
+        </button>
+        <p className="text-xs text-[#64676C]">
+          {urutanSalah
+            ? "Bulan awal harus sebelum (atau sama dengan) bulan akhir."
+            : <>Menampilkan <b className="text-[#1D2434]">{rentang}</b>
+                {!tanpaBatas && <> · {jumlahHari.toLocaleString("id-ID")} hari berdata</>}
+              </>}
+        </p>
+      </div>
+      <p className="mt-2 text-[11px] text-[#64676C]">
+        Bawaan saat halaman dibuka: awal tahun berjalan sampai bulan ini.
+        Klik <b>seluruh data</b> untuk melihat semua tanggal tanpa batas periode.
+      </p>
+    </div>
+  );
 
   return (
     <div className="grid gap-6">
+      {bar}
+
       <Kartu idMetrik="stok" judul="Stok hari terakhir"
-             keterangan="Days = stok ÷ kapasitas olah; rasio = stok ÷ safety stock (parameter berversi tanggal berlaku)."
+             keterangan={`Keadaan stok pada tanggal terakhir dalam ${keteranganPeriode}. Days = stok ÷ kapasitas olah; rasio = stok ÷ safety stock (parameter berversi tanggal berlaku).`}
              anak={
         t ? (
           <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
@@ -35,11 +101,15 @@ export default function Stok() {
               </div>
             ))}
           </div>
-        ) : <p className="text-sm text-[#64676C]">Belum ada data stok.</p>
+        ) : (
+          <p className="text-sm text-[#64676C]">
+            {urutanSalah ? "Periode belum sah." : `Belum ada data stok pada ${keteranganPeriode}.`}
+          </p>
+        )
       } />
 
       <Kartu idMetrik="stok" judul="Grafik stok vs safety stock"
-             keterangan="Ton bahan baku per hari dibandingkan safety stock yang berlaku."
+             keterangan={`Ton bahan baku per hari dibandingkan safety stock yang berlaku — ${keteranganPeriode}.`}
              anak={
         <div className="h-80">
           <ResponsiveContainer>
@@ -60,14 +130,14 @@ export default function Stok() {
       } />
 
       <Kartu idMetrik="stok" judul="Hari dengan stok di bawah safety"
-             keterangan="Rasio stok < 100% safety stock."
+             keterangan={`Rasio stok < 100% safety stock, dihitung dalam ${keteranganPeriode}.`}
              anak={
         <>
           <p className="text-sm text-[#1D2434] mb-2">
             <b className={diBawah.length ? "text-[#DC2626]" : "text-[#15803D]"}>
               {diBawah.length}
             </b>{" "}
-            dari {q.data?.jumlah_hari ?? 0} hari berdata.
+            dari {jumlahHari} hari berdata{tanpaBatas ? "" : ` (${rentang})`}.
           </p>
           {diBawah.length > 0 && (
             <div className="max-h-60 overflow-y-auto">
