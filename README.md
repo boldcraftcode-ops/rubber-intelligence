@@ -7,6 +7,7 @@ US¢/kg, basis berat kering).
 - Cara menjalankan: `docs/CARA_MENJALANKAN.md`
 - Asumsi & pertanyaan terbuka: `docs/ASUMSI.md`
 - Definisi metrik: `docs/KAMUS_METRIK.md`
+- Tema & identitas visual (palet, logo, aturan): `docs/TEMA.md`
 
 Status: **Fase 8** — kartu **RM Stock – Intake vs Pricing** (menu Ringkasan)
 punya tiga tombol analisa dengan periode mengikuti filter kartu:

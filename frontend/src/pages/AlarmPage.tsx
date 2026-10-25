@@ -35,18 +35,18 @@ function BarisPengaturan({ p, sesudah }: { p: any; sesudah: () => void }) {
 
   return (
     <>
-      <tr className="border-b border-white/5">
+      <tr className="border-b border-[#EDEFF2]">
         <td className="py-1.5 font-medium">{NAMA_ALARM[p.kode] ?? p.kode}</td>
         <td className="text-center">
-          <input type="checkbox" className="accent-violet-500" checked={aktif}
+          <input type="checkbox" className="accent-[#FF1313]" checked={aktif}
                  onChange={(e) => setAktif(e.target.checked)} />
         </td>
         <td>
           <input className={`${kelasInput} w-24 text-right`} value={ambang}
                  placeholder="-" onChange={(e) => setAmbang(e.target.value)} />
         </td>
-        <td className="text-slate-500">{p.satuan ?? "-"}</td>
-        <td className="text-xs text-slate-400">{p.keterangan}</td>
+        <td className="text-[#64676C]">{p.satuan ?? "-"}</td>
+        <td className="text-xs text-[#64676C]">{p.keterangan}</td>
         <td>
           <button className={kelasTombolKecil} disabled={simpan.isPending}
                   onClick={() => simpan.mutate()}>simpan</button>
@@ -82,22 +82,22 @@ export default function AlarmPage() {
             {evaluasi.isPending ? "Mengevaluasi…" : "Evaluasi ulang sekarang"}
           </button>
           {q.data?.alarm.length === 0 ? (
-            <p className="rounded-md bg-emerald-500/10 border border-emerald-400/30 px-3 py-3 text-sm text-emerald-300">
+            <p className="rounded-sm bg-[#F0FDF4] border border-[#BBF7D0] px-3 py-3 text-sm text-[#15803D]">
               Tidak ada alarm. ✓
             </p>
           ) : (
             <div className="grid gap-2">
               {q.data?.alarm.map((a: any, i: number) => (
-                <div key={i} className="rounded-md border border-red-400/30 bg-red-500/10 px-3 py-2">
-                  <p className="text-sm font-semibold text-red-300">
+                <div key={i} className="rounded-sm border border-[#FECACA] bg-[#FEF2F2] px-3 py-2">
+                  <p className="text-sm font-semibold text-[#B91C1C]">
                     {NAMA_ALARM[a.kode] ?? a.kode}
                     {a.tanggal_data && (
-                      <span className="ml-2 font-normal text-red-400">
+                      <span className="ml-2 font-normal text-[#DC2626]">
                         (data {fmtTanggal(a.tanggal_data)})
                       </span>
                     )}
                   </p>
-                  <p className="text-xs text-red-400">{a.pesan}</p>
+                  <p className="text-xs text-[#DC2626]">{a.pesan}</p>
                 </div>
               ))}
             </div>
@@ -110,7 +110,7 @@ export default function AlarmPage() {
              anak={
         <table className="w-full text-sm">
           <thead>
-            <tr className="text-left text-slate-400 border-b text-xs">
+            <tr className="text-left text-[#64676C] border-b text-xs">
               <th className="py-1">Alarm</th><th>Aktif</th><th>Ambang</th>
               <th>Satuan</th><th>Keterangan</th><th></th>
             </tr>

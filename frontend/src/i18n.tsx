@@ -27,7 +27,7 @@ const KAMUS: Record<string, string> = {
   "Rubber Raw Material Big Data": "Rubber Raw Material Big Data",
   "Nama Anda (untuk catatan)": "Your name (for audit trail)",
   "nama pengisi": "your name",
-  "✦ tema: Milky Way": "✦ theme: Milky Way",
+  "✦ tema: Milky Way": "Theme: corporate",
   // ---- kartu umum
   "Cara dihitung": "How it's calculated",
   "Ekspor Excel": "Export to Excel",

@@ -83,21 +83,38 @@ export async function kirimJson(url: string, body: unknown) {
   return data;
 }
 
-/* ---------- gaya ---------- */
+/* ---------- gaya (tema korporat: navy, merah, putih) ---------- */
+export const NAVY = "#1D2434";
+export const MERAH = "#FF1313";
+export const ABU = "#64676C";
+
 export const kelasInput =
-  "w-full rounded-md border border-violet-400/30 bg-[#0b0a26]/80 px-3 py-2 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-violet-500";
-export const kelasLabel = "block text-sm font-medium text-slate-200 mb-1";
+  "w-full rounded-sm border border-[#D5D7DB] bg-white px-3 py-2 text-sm text-[#1D2434] " +
+  "placeholder-[#9AA0A6] focus:outline-none focus:border-[#FF1313] focus:ring-2 " +
+  "focus:ring-[#FF1313]/20 transition-colors";
+
+export const kelasLabel =
+  "block text-[11px] font-semibold uppercase tracking-wider text-[#64676C] mb-1.5";
+
 export const kelasTombol =
-  "rounded-md bg-violet-600 px-4 py-2 text-sm font-semibold text-white hover:bg-violet-500 disabled:opacity-50 shadow-lg shadow-violet-950/60";
+  "rounded-sm bg-[#FF1313] px-4 py-2 text-sm font-semibold text-white " +
+  "hover:bg-[#D90F0F] disabled:opacity-40 disabled:cursor-not-allowed " +
+  "transition-colors shadow-sm shadow-[#1D2434]/10";
+
 export const kelasTombolKecil =
-  "rounded-md border border-violet-400/30 bg-white/5 px-2.5 py-1 text-xs font-medium text-slate-300 hover:bg-violet-500/20";
+  "rounded-sm border border-[#D5D7DB] bg-white px-2.5 py-1 text-xs font-semibold " +
+  "text-[#1D2434] hover:border-[#FF1313] hover:text-[#FF1313] transition-colors";
+
+export const kelasTombolNav =
+  "rounded-sm border border-[#D5D7DB] bg-[#1D2434] px-2.5 py-1 text-xs font-semibold " +
+  "text-white hover:bg-[#2A3345] transition-colors";
 
 export function Pesan({ jenis, teks }: { jenis: "sukses" | "error"; teks: string }) {
   return (
-    <p className={`mt-3 rounded-md px-3 py-2 text-sm border ${
+    <p className={`mt-3 rounded-sm px-3 py-2 text-sm border ${
       jenis === "sukses"
-        ? "bg-emerald-500/10 text-emerald-300 border-emerald-400/30"
-        : "bg-red-500/10 text-red-300 border-red-400/30"}`}>
+        ? "bg-[#F0FDF4] text-[#15803D] border-[#BBF7D0]"
+        : "bg-[#FEF2F2] text-[#B91C1C] border-[#FECACA]"}`}>
       {teks}
     </p>
   );
@@ -128,21 +145,21 @@ function ModalJelaskan({ idMetrik, judul, qs, tutup }: {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
          onClick={tutup}>
-      <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-xl bg-[#1a1844] border border-violet-500/30 p-6 shadow-2xl shadow-violet-950/50"
+      <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-sm bg-white border border-[#E4E5E8] p-6 shadow-xl shadow-[#1D2434]/10"
            onClick={(e) => e.stopPropagation()}>
         <div className="flex items-start justify-between gap-3">
           <div>
-            <p className="text-xs uppercase tracking-wide text-violet-300">
+            <p className="text-xs uppercase tracking-wide text-[#FF1313]">
               {t("Jelaskan ke saya")}
             </p>
-            <h3 className="text-lg font-semibold text-slate-100">{judul}</h3>
+            <h3 className="text-lg font-semibold text-[#1D2434]">{judul}</h3>
           </div>
           <button className={kelasTombolKecil} onClick={tutup}>{t("Tutup")}</button>
         </div>
 
-        {q.isLoading && <p className="mt-4 text-sm text-slate-400">{t("Menyusun penjelasan…")}</p>}
+        {q.isLoading && <p className="mt-4 text-sm text-[#64676C]">{t("Menyusun penjelasan…")}</p>}
         {q.error && (
-          <p className="mt-4 rounded-md bg-red-500/10 border border-red-400/30 px-3 py-2 text-sm text-red-300">
+          <p className="mt-4 rounded-sm bg-[#FEF2F2] border border-[#FECACA] px-3 py-2 text-sm text-[#B91C1C]">
             {pesanGalat(q.error)}
           </p>
         )}
@@ -151,16 +168,16 @@ function ModalJelaskan({ idMetrik, judul, qs, tutup }: {
           <>
             {/* Satu angka utama — tidak lebih */}
             {d.angka_utama && (
-              <div className="mt-3 rounded-lg border border-violet-400/40 bg-violet-500/10 p-4">
-                <div className="text-3xl font-bold font-mono text-violet-200">
+              <div className="mt-3 rounded-sm border border-[#FF1313]/40 bg-[#FFF1F1] p-4">
+                <div className="text-3xl font-bold font-mono text-[#1D2434]">
                   {d.angka_utama.nilai}
                 </div>
-                <div className="text-xs text-slate-300 mt-0.5">{d.angka_utama.label}</div>
+                <div className="text-xs text-[#1D2434] mt-0.5">{d.angka_utama.label}</div>
               </div>
             )}
 
             {!d.ada_data && (
-              <p className="mt-3 rounded-md bg-amber-400/10 border border-amber-400/30 px-3 py-2 text-sm text-amber-300">
+              <p className="mt-3 rounded-sm bg-[#FFFBEB] border border-[#FDE68A] px-3 py-2 text-sm text-[#B45309]">
                 {t("Datanya belum cukup untuk menjelaskan kartu ini.")}
               </p>
             )}
@@ -168,12 +185,12 @@ function ModalJelaskan({ idMetrik, judul, qs, tutup }: {
             <div className="mt-3 grid gap-3">
               {bagian.map(([nama, ikon, isi]) => (
                 isi.length > 0 && (
-                  <section key={nama} className="rounded-lg border border-violet-500/20 bg-white/5 p-3">
-                    <h4 className="text-sm font-semibold text-violet-300 mb-1">{ikon} {nama}</h4>
+                  <section key={nama} className="rounded-sm border border-[#E4E5E8] bg-[#F8F8F8] p-3">
+                    <h4 className="text-sm font-semibold text-[#FF1313] mb-1">{ikon} {nama}</h4>
                     <ul className="grid gap-1">
                       {isi.map((kalimat, i) => (
-                        <li key={i} className="text-sm leading-relaxed text-slate-200 flex gap-1.5">
-                          <span className="text-slate-500 shrink-0">•</span><span>{kalimat}</span>
+                        <li key={i} className="text-sm leading-relaxed text-[#1D2434] flex gap-1.5">
+                          <span className="text-[#64676C] shrink-0">•</span><span>{kalimat}</span>
                         </li>
                       ))}
                     </ul>
@@ -183,17 +200,17 @@ function ModalJelaskan({ idMetrik, judul, qs, tutup }: {
             </div>
 
             {d.analogi && (
-              <p className="mt-3 rounded-md bg-sky-500/10 border border-sky-400/30 px-3 py-2 text-sm text-sky-200">
+              <p className="mt-3 rounded-sm bg-[#F0F9FF] border border-[#BAE6FD] px-3 py-2 text-sm text-[#0369A1]">
                 💡 {d.analogi}
               </p>
             )}
             {d.cara_baca && (
-              <p className="mt-2 text-xs text-slate-400">
-                <b className="text-slate-300">{t("Cara membaca grafik")}:</b> {d.cara_baca}
+              <p className="mt-2 text-xs text-[#64676C]">
+                <b className="text-[#1D2434]">{t("Cara membaca grafik")}:</b> {d.cara_baca}
               </p>
             )}
             {(d.catatan ?? []).map((c: string, i: number) => (
-              <p key={i} className="mt-1 text-xs text-slate-500">ℹ {c}</p>
+              <p key={i} className="mt-1 text-xs text-[#64676C]">ℹ {c}</p>
             ))}
 
             {/* Lapisan kedua: hanya bila ditanyakan */}
@@ -203,11 +220,11 @@ function ModalJelaskan({ idMetrik, judul, qs, tutup }: {
             {detail && (
               <div className="mt-2 grid gap-3">
                 {(d.detail ?? []).map((tabel: any, i: number) => (
-                  <div key={i} className="overflow-x-auto rounded-lg border border-violet-500/20 bg-white/5 p-3">
-                    <div className="text-xs font-semibold text-slate-200 mb-1">{tabel.judul}</div>
+                  <div key={i} className="overflow-x-auto rounded-sm border border-[#E4E5E8] bg-[#F8F8F8] p-3">
+                    <div className="text-xs font-semibold text-[#1D2434] mb-1">{tabel.judul}</div>
                     <table className="w-full text-xs">
                       <thead>
-                        <tr className="text-left text-slate-400 border-b">
+                        <tr className="text-left text-[#64676C] border-b">
                           {(tabel.kolom ?? []).map((k: string) => (
                             <th key={k} className="py-1 pr-3 whitespace-nowrap">{k}</th>
                           ))}
@@ -215,9 +232,9 @@ function ModalJelaskan({ idMetrik, judul, qs, tutup }: {
                       </thead>
                       <tbody>
                         {(tabel.baris ?? []).map((b: any[], j: number) => (
-                          <tr key={j} className="border-b border-white/5">
+                          <tr key={j} className="border-b border-[#EDEFF2]">
                             {b.map((sel, k) => (
-                              <td key={k} className={`py-1 pr-3 ${k === 0 ? "text-slate-300" : "font-mono text-slate-400"}`}>
+                              <td key={k} className={`py-1 pr-3 ${k === 0 ? "text-[#1D2434]" : "font-mono text-[#64676C]"}`}>
                                 {sel}
                               </td>
                             ))}
@@ -228,11 +245,11 @@ function ModalJelaskan({ idMetrik, judul, qs, tutup }: {
                   </div>
                 ))}
                 {d.rumus && (
-                  <div className="rounded-lg border border-violet-500/20 bg-white/5 p-3">
-                    <div className="text-xs font-semibold text-slate-200 mb-1">
+                  <div className="rounded-sm border border-[#E4E5E8] bg-[#F8F8F8] p-3">
+                    <div className="text-xs font-semibold text-[#1D2434] mb-1">
                       {t("Cara dihitung (rujukan teknis)")}
                     </div>
-                    <p className="text-xs text-slate-400 whitespace-pre-line">{d.rumus}</p>
+                    <p className="text-xs text-[#64676C] whitespace-pre-line">{d.rumus}</p>
                   </div>
                 )}
               </div>
@@ -259,14 +276,15 @@ export function Kartu({ idMetrik, judul, keterangan, urlEkspor, qsJelaskan, anak
   const { t } = useBahasa();
 
   return (
-    <section className="rounded-xl bg-[#15143a]/90 p-5 shadow-lg shadow-black/30 border border-violet-500/20">
+    <section className="kartu-aksen rounded-sm bg-white p-5 shadow-[0_1px_3px_rgba(29,36,52,0.08)]
+                       border border-[#E4E5E8]">
       <div className="flex items-start justify-between gap-3 mb-1">
         <div>
-          <h2 className="text-lg font-semibold text-slate-100">{judul}</h2>
-          {keterangan && <p className="text-sm text-slate-400">{keterangan}</p>}
+          <h2 className="text-lg font-semibold text-[#1D2434]">{judul}</h2>
+          {keterangan && <p className="text-sm text-[#64676C]">{keterangan}</p>}
         </div>
         <div className="flex gap-2 shrink-0">
-          <button className={`${kelasTombolKecil} border-violet-400/60`} onClick={() => setBuka(true)}>
+          <button className={`${kelasTombolKecil} border-[#FF1313]`} onClick={() => setBuka(true)}>
             ✨ {t("Jelaskan ke saya")}
           </button>
           {urlEkspor && (
@@ -303,26 +321,26 @@ export function Panel5W1H({ url, judul, tutup }: {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
          onClick={tutup}>
-      <div className="max-h-[88vh] w-full max-w-3xl overflow-y-auto rounded-xl bg-[#1a1844] border border-violet-500/30 p-6 shadow-2xl shadow-violet-950/50"
+      <div className="max-h-[88vh] w-full max-w-3xl overflow-y-auto rounded-sm bg-white border border-[#E4E5E8] p-6 shadow-xl shadow-[#1D2434]/10"
            onClick={(e) => e.stopPropagation()}>
         <div className="flex items-start justify-between gap-3">
           <div>
-            <h3 className="text-lg font-semibold text-slate-100">{judul}</h3>
+            <h3 className="text-lg font-semibold text-[#1D2434]">{judul}</h3>
             {q.data?.periode && (
-              <p className="text-sm text-slate-400">Periode: {q.data.periode}</p>
+              <p className="text-sm text-[#64676C]">Periode: {q.data.periode}</p>
             )}
           </div>
           <button className={kelasTombolKecil} onClick={tutup}>Tutup</button>
         </div>
 
-        {q.isLoading && <p className="mt-4 text-sm text-slate-400">Menganalisa data…</p>}
+        {q.isLoading && <p className="mt-4 text-sm text-[#64676C]">Menganalisa data…</p>}
         {q.error && (
-          <p className="mt-4 rounded-md bg-red-500/10 border border-red-400/30 px-3 py-2 text-sm text-red-300">
+          <p className="mt-4 rounded-sm bg-[#FEF2F2] border border-[#FECACA] px-3 py-2 text-sm text-[#B91C1C]">
             {pesanGalat(q.error)}
           </p>
         )}
         {q.data?.ringkas && (
-          <p className="mt-4 rounded-md bg-amber-400/10 border border-amber-400/30 px-3 py-2 text-sm text-amber-300">
+          <p className="mt-4 rounded-sm bg-[#FFFBEB] border border-[#FDE68A] px-3 py-2 text-sm text-[#B45309]">
             {q.data.ringkas}
           </p>
         )}
@@ -330,8 +348,8 @@ export function Panel5W1H({ url, judul, tutup }: {
           <div className="mt-4 grid gap-4">
             {JUDUL_5W1H.map(([kunci, judulBagian, ikon]) => (
               q.data[kunci]?.length > 0 && (
-                <section key={kunci} className="rounded-lg border border-violet-500/20 bg-white/5 p-3">
-                  <h4 className="text-sm font-semibold text-violet-300 mb-1.5">
+                <section key={kunci} className="rounded-sm border border-[#E4E5E8] bg-[#F8F8F8] p-3">
+                  <h4 className="text-sm font-semibold text-[#FF1313] mb-1.5">
                     {ikon} {judulBagian}
                   </h4>
                   <ul className="list-disc pl-5 grid gap-1.5">
@@ -339,7 +357,7 @@ export function Panel5W1H({ url, judul, tutup }: {
                       <li key={i}
                           className={`text-sm leading-relaxed ${
                             kalimat.includes("HIPOTESIS")
-                              ? "text-amber-300" : "text-slate-200"}`}>
+                              ? "text-[#B45309]" : "text-[#1D2434]"}`}>
                         {kalimat}
                       </li>
                     ))}
@@ -348,7 +366,7 @@ export function Panel5W1H({ url, judul, tutup }: {
               )
             ))}
             {q.data.catatan.map((c: string, i: number) => (
-              <p key={i} className="rounded-md bg-white/5 border border-violet-500/20 px-3 py-2 text-xs text-slate-400">
+              <p key={i} className="rounded-sm bg-[#F8F8F8] border border-[#E4E5E8] px-3 py-2 text-xs text-[#64676C]">
                 {c}
               </p>
             ))}
@@ -360,4 +378,5 @@ export function Panel5W1H({ url, judul, tutup }: {
 }
 
 export const kelasTombolAnalisa =
-  "rounded-md bg-gradient-to-r from-violet-600 to-fuchsia-600 px-3 py-1.5 text-xs font-semibold text-white hover:from-violet-500 hover:to-fuchsia-500 shadow-lg shadow-violet-950/50";
+  "rounded-sm bg-[#1D2434] px-3 py-1.5 text-xs font-semibold text-white " +
+  "hover:bg-[#2A3345] transition-colors";

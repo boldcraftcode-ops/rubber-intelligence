@@ -99,27 +99,27 @@ export default function Database() {
              anak={
         <>
           {/* ---- ringkasan isi ---- */}
-          {info.isLoading && <p className="text-sm text-slate-400">Memuat info database…</p>}
+          {info.isLoading && <p className="text-sm text-[#64676C]">Memuat info database…</p>}
           {info.error && <Pesan jenis="error" teks={(info.error as Error).message} />}
           {info.data && (
             <>
-              <p className="text-sm text-slate-300 mb-3">
-                Jenis: <b className="text-slate-100">{info.data.jenis}</b>
+              <p className="text-sm text-[#1D2434] mb-3">
+                Jenis: <b className="text-[#1D2434]">{info.data.jenis}</b>
                 {info.data.ukuran_kb != null && (
-                  <> · Ukuran file: <b className="text-slate-100">
+                  <> · Ukuran file: <b className="text-[#1D2434]">
                     {fmtAngka(info.data.ukuran_kb, 1)} KB</b></>
                 )}
-                {" "}· Total baris: <b className="text-slate-100">
+                {" "}· Total baris: <b className="text-[#1D2434]">
                   {fmtAngka(info.data.total_baris, 0)}</b>
               </p>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                 {Object.entries(jumlah).map(([k, v]) => (
                   <div key={k}
-                       className={`rounded-lg border p-2.5 ${v > 0
-                         ? "border-violet-500/20 bg-white/5"
-                         : "border-violet-500/10 bg-white/[0.02] opacity-60"}`}>
-                    <p className="text-xs text-slate-400">{NAMA_TABEL[k] ?? k}</p>
-                    <p className="font-semibold text-slate-100">{fmtAngka(v, 0)} baris</p>
+                       className={`rounded-sm border p-2.5 ${v > 0
+                         ? "border-[#E4E5E8] bg-[#F8F8F8]"
+                         : "border-[#EDEFF2] bg-[#FAFAFB] opacity-60"}`}>
+                    <p className="text-xs text-[#64676C]">{NAMA_TABEL[k] ?? k}</p>
+                    <p className="font-semibold text-[#1D2434]">{fmtAngka(v, 0)} baris</p>
                   </div>
                 ))}
               </div>
@@ -128,9 +128,9 @@ export default function Database() {
 
           {/* ---- aksi ---- */}
           <div className="mt-5 grid sm:grid-cols-3 gap-3">
-            <div className="rounded-lg border border-violet-500/20 bg-white/5 p-4">
-              <p className="font-semibold text-slate-200 text-sm mb-1">⬇ Ekspor database</p>
-              <p className="text-xs text-slate-400 mb-3">
+            <div className="rounded-sm border border-[#E4E5E8] bg-[#F8F8F8] p-4">
+              <p className="font-semibold text-[#1D2434] text-sm mb-1">⬇ Ekspor database</p>
+              <p className="text-xs text-[#64676C] mb-3">
                 Unduh seluruh database sebagai satu file .db — untuk cadangan
                 atau dipindah ke komputer lain.
               </p>
@@ -139,9 +139,9 @@ export default function Database() {
               </a>
             </div>
 
-            <div className="rounded-lg border border-violet-500/20 bg-white/5 p-4">
-              <p className="font-semibold text-slate-200 text-sm mb-1">⬆ Impor database</p>
-              <p className="text-xs text-slate-400 mb-3">
+            <div className="rounded-sm border border-[#E4E5E8] bg-[#F8F8F8] p-4">
+              <p className="font-semibold text-[#1D2434] text-sm mb-1">⬆ Impor database</p>
+              <p className="text-xs text-[#64676C] mb-3">
                 Ganti seluruh isi dengan file .db hasil ekspor. Database lama
                 otomatis dicadangkan dulu di folder <code>cadangan/</code>.
               </p>
@@ -157,14 +157,14 @@ export default function Database() {
                      }} />
             </div>
 
-            <div className="rounded-lg border border-red-400/30 bg-red-500/5 p-4">
-              <p className="font-semibold text-red-300 text-sm mb-1">⚠ Kosongkan database</p>
-              <p className="text-xs text-slate-400 mb-3">
+            <div className="rounded-sm border border-[#FECACA] bg-red-500/5 p-4">
+              <p className="font-semibold text-[#B91C1C] text-sm mb-1">⚠ Kosongkan database</p>
+              <p className="text-xs text-[#64676C] mb-3">
                 Hapus SEMUA data (cadangan otomatis dibuat dulu). Aplikasi
                 kembali seperti baru dipasang.
               </p>
               <button
-                className="rounded-md border border-red-400/40 bg-red-500/10 px-2.5 py-1 text-xs font-medium text-red-300 hover:bg-red-500/20"
+                className="rounded-sm border border-[#FECACA] bg-[#FEF2F2] px-2.5 py-1 text-xs font-medium text-[#B91C1C] hover:bg-[#FEE2E2]"
                 onClick={() => { setPesan(null); setBukaKosongkan(true); }}>
                 Kosongkan…
               </button>
@@ -174,14 +174,14 @@ export default function Database() {
           {pesan && <Pesan jenis={pesan.jenis} teks={pesan.teks} />}
 
           {/* ---- panduan mulai dari nol ---- */}
-          <details className="mt-5 rounded-lg border border-violet-500/20 bg-white/5 p-4"
+          <details className="mt-5 rounded-sm border border-[#E4E5E8] bg-[#F8F8F8] p-4"
                      open={kosong}>
-              <summary className="cursor-pointer text-sm font-semibold text-violet-300">
+              <summary className="cursor-pointer text-sm font-semibold text-[#FF1313]">
                 🧭 Mulai dari database kosong — di mana saya input data?
               </summary>
               <table className="mt-3 w-full text-xs">
                 <thead>
-                  <tr className="text-left text-slate-400 border-b border-violet-500/20">
+                  <tr className="text-left text-[#64676C] border-b border-[#E4E5E8]">
                     <th className="py-1.5 pr-2">Data yang diisi</th>
                     <th className="py-1.5 pr-2">Di mana</th>
                     <th className="py-1.5">Keterangan</th>
@@ -189,15 +189,15 @@ export default function Database() {
                 </thead>
                 <tbody>
                   {PANDUAN.map((p, i) => (
-                    <tr key={i} className="border-b border-violet-500/10 align-top">
-                      <td className="py-1.5 pr-2 text-slate-200">{p.langkah}</td>
-                      <td className="py-1.5 pr-2 font-semibold text-violet-300 whitespace-nowrap">{p.dimana}</td>
-                      <td className="py-1.5 text-slate-400">{p.wajib}</td>
+                    <tr key={i} className="border-b border-[#EDEFF2] align-top">
+                      <td className="py-1.5 pr-2 text-[#1D2434]">{p.langkah}</td>
+                      <td className="py-1.5 pr-2 font-semibold text-[#FF1313] whitespace-nowrap">{p.dimana}</td>
+                      <td className="py-1.5 text-[#64676C]">{p.wajib}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
-              <p className="mt-3 text-xs text-slate-500">
+              <p className="mt-3 text-xs text-[#64676C]">
                 Setelah data masuk, Ringkasan / Analisis / Stok / Alarm terisi
                 otomatis — mart & alarm dihitung ulang setiap ada data baru.
               </p>
@@ -209,18 +209,18 @@ export default function Database() {
       {bukaKosongkan && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
              onClick={() => setBukaKosongkan(false)}>
-          <div className="w-full max-w-md rounded-xl bg-[#1a1844] border border-red-400/40 p-6 shadow-2xl"
+          <div className="w-full max-w-md rounded-sm bg-white border border-[#FECACA] p-6 shadow-2xl"
                onClick={(e) => e.stopPropagation()}>
-            <h3 className="text-lg font-semibold text-red-300 mb-2">
+            <h3 className="text-lg font-semibold text-[#B91C1C] mb-2">
               ⚠ Kosongkan seluruh database?
             </h3>
-            <p className="text-sm text-slate-300">
+            <p className="text-sm text-[#1D2434]">
               Semua data (unggahan, tiket, pembelian, SICOM, kurs, stok, aturan,
               target, perencanaan, audit) akan dihapus. Cadangan otomatis dibuat
               dulu, tetapi pastikan Anda juga sudah <b>Ekspor database</b> bila perlu.
             </p>
-            <label className="block text-xs text-slate-400 mt-4 mb-1">
-              Ketik <b className="text-red-300">KOSONGKAN</b> untuk melanjutkan:
+            <label className="block text-xs text-[#64676C] mt-4 mb-1">
+              Ketik <b className="text-[#B91C1C]">KOSONGKAN</b> untuk melanjutkan:
             </label>
             <input className={kelasInput} value={ketik} autoFocus
                    onChange={(e) => setKetik(e.target.value)}
@@ -231,7 +231,7 @@ export default function Database() {
                 Batal
               </button>
               <button
-                className="rounded-md bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-500 disabled:opacity-40"
+                className="rounded-sm bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-500 disabled:opacity-40"
                 disabled={ketik.trim().toUpperCase() !== "KOSONGKAN" || kosongkan.isPending}
                 onClick={() => kosongkan.mutate()}>
                 {kosongkan.isPending ? "Menghapus…" : "Ya, hapus semua data"}

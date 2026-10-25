@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" width="120" height="120" role="img" aria-label="Rubber Intelligence">
+  <title>Rubber Intelligence</title>
+  <desc>Daun karet tiga helai (bahan baku), tetesan lateks, dan simpul data.</desc>
+
+  <!-- Tiga helai daun karet: satu helai digambar menghadap atas, lalu diputar -->
+  <g fill="#1D2434">
+    <path d="M60 56C54.5 46 54.5 32 60 20C65.5 32 65.5 46 60 56Z" />
+    <path d="M60 56C54.5 46 54.5 32 60 20C65.5 32 65.5 46 60 56Z"
+          transform="rotate(-58 60 56)" />
+    <path d="M60 56C54.5 46 54.5 32 60 20C65.5 32 65.5 46 60 56Z"
+          transform="rotate(58 60 56)" />
+  </g>
+
+  <!-- Tangkai -->
+  <line x1="60" y1="56" x2="60" y2="70" stroke="#1D2434" stroke-width="3.4"
+        stroke-linecap="round" />
+
+  <!-- Tetesan lateks -->
+  <path d="M60 70C65.4 81.6 68 86.6 68 91.2C68 96.6 64.4 100 60 100C55.6 100 52 96.6 52 91.2C52 86 54.6 81.4 60 70Z"
+        fill="#FF1313" />
+
+  <!-- Simpul data (kiri & kanan): tanda "intelligence" -->
+  <g stroke="#FF1313" stroke-width="2.2" fill="none" stroke-linecap="round"
+     stroke-linejoin="round">
+    <path d="M48 64H37L31 58" />
+    <path d="M72 64H83L89 58" />
+  </g>
+  <circle cx="29" cy="56" r="3.6" fill="#FF1313" />
+  <circle cx="91" cy="56" r="3.6" fill="#FF1313" />
+</svg>

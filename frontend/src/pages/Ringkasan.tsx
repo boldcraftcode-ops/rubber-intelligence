@@ -7,8 +7,9 @@ import {
 import { Kartu, NAMA_BULAN, Panel5W1H, ambilJson, fmtAngka, fmtTanggal, kelasTombolAnalisa, kelasTombolKecil, pesanGalat, urlApi } from "../bersama";
 import { useBahasa } from "../i18n";
 
-const WARNA = ["#60a5fa", "#fbbf24", "#34d399", "#f87171", "#c084fc",
-               "#2dd4bf", "#f472b6"];
+/* Palet korporat (navy / merah / abu) untuk seri grafik. */
+const WARNA = ["#1D2434", "#FF1313", "#64676C", "#3B82F6", "#EAB308",
+               "#F97316", "#0F766E"];
 
 /* ---------- telusur: bulan -> hari -> baris & unggahan ---------- */
 function Telusur({ tahun, bulan, tutup }: { tahun: number; bulan: number; tutup: () => void }) {
@@ -26,14 +27,14 @@ function Telusur({ tahun, bulan, tutup }: { tahun: number; bulan: number; tutup:
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
          onClick={tutup}>
-      <div className="max-h-[85vh] w-full max-w-4xl overflow-y-auto rounded-xl bg-[#1a1844] border border-violet-500/30 p-6 shadow-2xl shadow-violet-950/50"
+      <div className="max-h-[85vh] w-full max-w-4xl overflow-y-auto rounded-sm bg-white border border-[#E4E5E8] p-6 shadow-xl shadow-[#1D2434]/10"
            onClick={(e) => e.stopPropagation()}>
         <div className="flex justify-between items-start">
           <div>
-            <h3 className="text-lg font-semibold text-slate-100">
+            <h3 className="text-lg font-semibold text-[#1D2434]">
               Telusur asal angka — {NAMA_BULAN[bulan]} {tahun}
             </h3>
-            <p className="text-sm text-slate-400">
+            <p className="text-sm text-[#64676C]">
               OP Margin bulan = <b>{fmtAngka(bln.data?.op_margin)}</b> US¢/kg.{" "}
               {bln.data?.rumus}
             </p>
@@ -41,13 +42,13 @@ function Telusur({ tahun, bulan, tutup }: { tahun: number; bulan: number; tutup:
           <button className={kelasTombolKecil} onClick={tutup}>Tutup</button>
         </div>
 
-        <h4 className="mt-4 mb-1 text-sm font-semibold text-slate-300">
+        <h4 className="mt-4 mb-1 text-sm font-semibold text-[#1D2434]">
           1. Hari pembelian penyusun bulan ini (klik tanggal untuk lanjut)
         </h4>
         <div className="overflow-x-auto">
           <table className="w-full text-xs">
             <thead>
-              <tr className="text-left text-slate-400 border-b">
+              <tr className="text-left text-[#64676C] border-b">
                 <th className="py-1">Tanggal</th><th className="text-right">Qty kg</th>
                 <th className="text-right">Amount Rp</th><th className="text-right">Rp/kg</th>
                 <th className="text-right">Kurs</th><th className="text-right">SICOM</th>
@@ -57,10 +58,10 @@ function Telusur({ tahun, bulan, tutup }: { tahun: number; bulan: number; tutup:
             <tbody>
               {bln.data?.hari.map((h: any) => (
                 <tr key={h.tanggal}
-                    className={`border-b border-white/5 cursor-pointer hover:bg-violet-500/10 ${
-                      tanggal === h.tanggal ? "bg-violet-500/25" : ""}`}
+                    className={`border-b border-[#EDEFF2] cursor-pointer hover:bg-[#FFF1F1] ${
+                      tanggal === h.tanggal ? "bg-[#FFE4E4]" : ""}`}
                     onClick={() => setTanggal(h.tanggal)}>
-                  <td className="py-1 text-violet-300 underline">{fmtTanggal(h.tanggal)}</td>
+                  <td className="py-1 text-[#FF1313] underline">{fmtTanggal(h.tanggal)}</td>
                   <td className="text-right font-mono">{fmtAngka(h.qty_kg, 0)}</td>
                   <td className="text-right font-mono">{fmtAngka(h.amount_rp, 0)}</td>
                   <td className="text-right font-mono">{fmtAngka(h.harga_rp_per_kg, 2)}</td>
@@ -75,22 +76,22 @@ function Telusur({ tahun, bulan, tutup }: { tahun: number; bulan: number; tutup:
 
         {tanggal && (
           <>
-            <h4 className="mt-4 mb-1 text-sm font-semibold text-slate-300">
+            <h4 className="mt-4 mb-1 text-sm font-semibold text-[#1D2434]">
               2. Baris pembelian & tiket pada {fmtTanggal(tanggal)} + unggahan asal
             </h4>
             {hr.data?.pembelian.map((p: any, i: number) => (
-              <div key={i} className="mb-2 rounded-md border border-violet-500/20 p-2 text-xs">
+              <div key={i} className="mb-2 rounded-sm border border-[#E4E5E8] p-2 text-xs">
                 <b>Pembelian</b>: {p.item_code}
                 {p.kode_vendor ? ` / ${p.kode_vendor}` : ""}{p.ticket_no ? ` / ${p.ticket_no}` : ""} —{" "}
                 qty {fmtAngka(p.qty_kering_kg, 0)} kg, Amount Rp {fmtAngka(p.amount_rp, 0)}
-                <div className="text-slate-400">
+                <div className="text-[#64676C]">
                   Asal: unggahan #{p.unggahan?.id} · {p.unggahan?.nama_file} · oleh{" "}
                   {p.unggahan?.pengunggah} · {p.unggahan?.waktu?.replace("T", " ")} UTC
                 </div>
               </div>
             ))}
             {hr.data?.sicom && (
-              <div className="mb-2 rounded-md border border-violet-500/20 p-2 text-xs">
+              <div className="mb-2 rounded-sm border border-[#E4E5E8] p-2 text-xs">
                 <b>SICOM</b>: {fmtAngka(hr.data.sicom.usc_per_kg, 2)} US¢/kg ·{" "}
                 {hr.data.sicom.sumber ?? "-"}
                 {hr.data.sicom.unggahan &&
@@ -100,7 +101,7 @@ function Telusur({ tahun, bulan, tutup }: { tahun: number; bulan: number; tutup:
             {hr.data?.tiket.length > 0 ? (
               <table className="w-full text-xs">
                 <thead>
-                  <tr className="text-left text-slate-400 border-b">
+                  <tr className="text-left text-[#64676C] border-b">
                     <th className="py-1">Tiket (baris)</th><th>Vendor</th><th>Grade</th>
                     <th className="text-right">Wet kg</th><th className="text-right">DRC %</th>
                     <th className="text-right">Dry kg</th><th>Unggahan asal</th>
@@ -108,13 +109,13 @@ function Telusur({ tahun, bulan, tutup }: { tahun: number; bulan: number; tutup:
                 </thead>
                 <tbody>
                   {hr.data.tiket.map((t: any, i: number) => (
-                    <tr key={i} className="border-b border-white/5">
+                    <tr key={i} className="border-b border-[#EDEFF2]">
                       <td className="py-1">{t.ticket_no} ({t.line_seq})</td>
                       <td>{t.kode_vendor}</td><td>{t.item_code}</td>
                       <td className="text-right font-mono">{fmtAngka(t.wet_kg, 0)}</td>
                       <td className="text-right font-mono">{fmtAngka(t.drc_pct, 1)}</td>
                       <td className="text-right font-mono">{fmtAngka(t.dry_kg, 0)}</td>
-                      <td className="text-slate-400">
+                      <td className="text-[#64676C]">
                         #{t.unggahan?.id} · {t.unggahan?.pengunggah}
                       </td>
                     </tr>
@@ -122,7 +123,7 @@ function Telusur({ tahun, bulan, tutup }: { tahun: number; bulan: number; tutup:
                 </tbody>
               </table>
             ) : (
-              <p className="text-xs text-slate-500">
+              <p className="text-xs text-[#64676C]">
                 Tidak ada baris tiket pada tanggal ini (data tiket historis belum diunggah).
               </p>
             )}
@@ -176,22 +177,22 @@ function KartuElemen() {
       <>
         <div className="flex flex-wrap items-end gap-3 mb-3 text-xs">
           <div>
-            <label className="block text-slate-400 mb-1">{t("Dari bulan")}</label>
-            <input type="month" className="rounded-md border border-violet-400/30 bg-[#0b0a26]/80 px-2 py-1.5 text-slate-100"
+            <label className="block text-[#64676C] mb-1">{t("Dari bulan")}</label>
+            <input type="month" className="rounded-sm border border-[#E4E5E8] bg-white px-2 py-1.5 text-[#1D2434]"
                    value={dari} onChange={(e) => setDari(e.target.value)} />
           </div>
           <div>
-            <label className="block text-slate-400 mb-1">{t("Sampai bulan")}</label>
-            <input type="month" className="rounded-md border border-violet-400/30 bg-[#0b0a26]/80 px-2 py-1.5 text-slate-100"
+            <label className="block text-[#64676C] mb-1">{t("Sampai bulan")}</label>
+            <input type="month" className="rounded-sm border border-[#E4E5E8] bg-white px-2 py-1.5 text-[#1D2434]"
                    value={sampai} onChange={(e) => setSampai(e.target.value)} />
           </div>
           {(dari || sampai) && (
-            <button className="rounded-md border border-violet-400/30 bg-white/5 px-2.5 py-1.5 text-slate-300 hover:bg-violet-500/20"
+            <button className="rounded-sm border border-[#E4E5E8] bg-[#F8F8F8] px-2.5 py-1.5 text-[#1D2434] hover:bg-[#FFF1F1]"
                     onClick={() => { setDari(""); setSampai(""); }}>
               {t("tampilkan semua periode")}
             </button>
           )}
-          <span className="text-slate-500">
+          <span className="text-[#64676C]">
             {q.data ? `${q.data.baris.length} ${t("bulan ditampilkan")}` : ""}
           </span>
           <div className="ml-auto flex flex-wrap gap-2">
@@ -206,7 +207,7 @@ function KartuElemen() {
             </button>
           </div>
         </div>
-        <p className="-mt-1 mb-2 text-xs text-slate-500">
+        <p className="-mt-1 mb-2 text-xs text-[#64676C]">
           {t("Tombol analisa memakai periode yang dipilih di atas — bulan/tahun yang dianalisa sama dengan grafik.")}
         </p>
         {panel === "5w1h" && (
@@ -231,31 +232,31 @@ function KartuElemen() {
               <XAxis dataKey="label" fontSize={10} minTickGap={18} />
               <YAxis yAxisId="ton" fontSize={10}
                      label={{ value: "ton", angle: -90, position: "insideLeft",
-                              fontSize: 11, fill: "#a5b4fc" }} />
+                              fontSize: 11, fill: "#1D2434" }} />
               <YAxis yAxisId="usc" orientation="right" fontSize={10}
                      domain={["auto", "auto"]}
                      label={{ value: "US¢/kg", angle: 90, position: "insideRight",
-                              fontSize: 11, fill: "#a5b4fc" }} />
+                              fontSize: 11, fill: "#1D2434" }} />
               <Tooltip formatter={(v: any, nama: any) => [fmtAngka(v as number, 2), nama]} />
               <Legend />
               <Bar yAxisId="ton" dataKey="intake_ton" name="Intake"
-                   fill="#818cf8" opacity={0.85} />
+                   fill="#FF1313" opacity={0.9} />
               <Bar yAxisId="ton" dataKey="rm_stock_ton" name="RM Stock"
-                   fill="#2dd4bf" opacity={0.85} />
+                   fill="#1D2434" opacity={0.85} />
               <Line yAxisId="ton" dataKey="safety_ton" name="Safety Level Stock"
-                    stroke="#fbbf24" strokeDasharray="6 3" dot={false}
+                    stroke="#B45309" strokeDasharray="6 3" dot={false}
                     type="stepAfter" strokeWidth={1.5} />
               <Line yAxisId="usc" dataKey="sicom" name="SICOM"
-                    stroke="#f8fafc" dot={false} strokeWidth={2} connectNulls />
+                    stroke="#1D2434" dot={false} strokeWidth={2} connectNulls />
               <Line yAxisId="usc" dataKey="op_price" name="OP Price"
-                    stroke="#f472b6" dot={false} strokeWidth={2} connectNulls />
+                    stroke="#FF1313" dot={false} strokeWidth={2} connectNulls />
             </ComposedChart>
           </ResponsiveContainer>
         </div>
         <div className="mt-3 max-h-56 overflow-y-auto">
           <table className="w-full text-xs">
             <thead>
-              <tr className="text-left text-slate-400 border-b">
+              <tr className="text-left text-[#64676C] border-b">
                 <th className="py-1">{t("Date")}</th>
                 <th className="text-right">RM Stock</th>
                 <th className="text-right">Intake</th>
@@ -268,8 +269,8 @@ function KartuElemen() {
             </thead>
             <tbody>
               {q.data?.baris.map((b: any) => (
-                <tr key={b.label} className={`border-b border-white/5 ${
-                    b.stok_sebagian ? "bg-amber-400/10" : ""}`}>
+                <tr key={b.label} className={`border-b border-[#EDEFF2] ${
+                    b.stok_sebagian ? "bg-[#FFFBEB]" : ""}`}>
                   <td className="py-1">{b.label}{b.stok_sebagian ? " *" : ""}</td>
                   <td className="text-right font-mono">{fmtAngka(b.rm_stock_ton, 3)}</td>
                   <td className="text-right font-mono">{fmtAngka(b.intake_ton, 3)}</td>
@@ -278,17 +279,17 @@ function KartuElemen() {
                   <td className="text-right font-mono">{fmtAngka(b.op_price, 4)}</td>
                   <td className={`text-right font-mono font-semibold ${
                     b.op_margin === null ? "" : b.op_margin >= 0
-                      ? "text-emerald-400" : "text-red-400"}`}>
+                      ? "text-[#15803D]" : "text-[#DC2626]"}`}>
                     {fmtAngka(b.op_margin, 4)}
                   </td>
-                  <td className="pl-2 text-slate-500">{b.sumber_intake ?? "-"}</td>
+                  <td className="pl-2 text-[#64676C]">{b.sumber_intake ?? "-"}</td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
         {q.data?.catatan.map((c: string, i: number) => (
-          <p key={i} className="mt-2 rounded-md bg-amber-400/10 border border-amber-400/30 px-3 py-2 text-xs text-amber-300">
+          <p key={i} className="mt-2 rounded-sm bg-[#FFFBEB] border border-[#FDE68A] px-3 py-2 text-xs text-[#B45309]">
             {c}
           </p>
         ))}
@@ -301,10 +302,10 @@ function KartuElemen() {
 // Palet aman buta warna (bukan hijau-merah): biru = di atas target,
 // kuning = hanya tipis di atas target, oranye = di bawah target.
 const WARNA_STATUS: Record<string, { isi: string; ikon: string; teks: string }> = {
-  "di atas target": { isi: "#3b82f6", ikon: "✓", teks: "text-sky-300" },
-  tipis: { isi: "#eab308", ikon: "≈", teks: "text-yellow-300" },
-  "di bawah target": { isi: "#f97316", ikon: "!", teks: "text-orange-300" },
-  "tanpa target": { isi: "#64748b", ikon: "–", teks: "text-slate-400" },
+  "di atas target": { isi: "#3b82f6", ikon: "✓", teks: "text-[#0369A1]" },
+  tipis: { isi: "#eab308", ikon: "≈", teks: "text-[#A16207]" },
+  "di bawah target": { isi: "#f97316", ikon: "!", teks: "text-[#C2410C]" },
+  "tanpa target": { isi: "#9AA0A6", ikon: "–", teks: "text-[#64676C]" },
 };
 const warnaIkon = (status: string) => (WARNA_STATUS[status] ?? WARNA_STATUS["tanpa target"]).isi;
 
@@ -318,7 +319,7 @@ function SegmenTarget({ cx, cy, lebar }: any) {
   const w = (lebar ?? 16) / 2;
   return (
     <line x1={cx - w} x2={cx + w} y1={cy} y2={cy}
-          stroke="#e2e8f0" strokeWidth={3} strokeLinecap="round" />
+          stroke="#1D2434" strokeWidth={3} strokeLinecap="round" />
   );
 }
 
@@ -462,28 +463,28 @@ function KartuGrafikMargin() {
       <>
         <div className="flex flex-wrap items-end gap-3 mb-3 text-xs">
           <div>
-            <label className="block text-slate-400 mb-1">{t("Dari bulan")}</label>
-            <input type="month" className="rounded-md border border-violet-400/30 bg-[#0b0a26]/80 px-2 py-1.5 text-slate-100"
+            <label className="block text-[#64676C] mb-1">{t("Dari bulan")}</label>
+            <input type="month" className="rounded-sm border border-[#E4E5E8] bg-white px-2 py-1.5 text-[#1D2434]"
                    value={dari} onChange={(e) => setDari(e.target.value)} />
           </div>
           <div>
-            <label className="block text-slate-400 mb-1">{t("Sampai bulan")}</label>
-            <input type="month" className="rounded-md border border-violet-400/30 bg-[#0b0a26]/80 px-2 py-1.5 text-slate-100"
+            <label className="block text-[#64676C] mb-1">{t("Sampai bulan")}</label>
+            <input type="month" className="rounded-sm border border-[#E4E5E8] bg-white px-2 py-1.5 text-[#1D2434]"
                    value={sampai} onChange={(e) => setSampai(e.target.value)} />
           </div>
           {(dari || sampai) && (
-            <button className="rounded-md border border-violet-400/30 bg-white/5 px-2.5 py-1.5 text-slate-300 hover:bg-violet-500/20"
+            <button className="rounded-sm border border-[#E4E5E8] bg-[#F8F8F8] px-2.5 py-1.5 text-[#1D2434] hover:bg-[#FFF1F1]"
                     onClick={() => { setDari(""); setSampai(""); }}>
               {t("tampilkan semua periode")}
             </button>
           )}
           <div>
-            <label className="block text-slate-400 mb-1">{t("Satuan")}</label>
-            <div className="flex rounded-md overflow-hidden border border-violet-400/30">
+            <label className="block text-[#64676C] mb-1">{t("Satuan")}</label>
+            <div className="flex rounded-sm overflow-hidden border border-[#E4E5E8]">
               {([["usc", "US¢/kg"], ["rp", "Rp/kg"]] as const).map(([id, label]) => (
                 <button key={id} disabled={id === "rp" && !adaKurs}
-                  className={`px-2.5 py-1.5 ${unit === id ? "bg-violet-600 text-white"
-                    : "bg-white/5 text-slate-300 hover:bg-white/10"} disabled:opacity-40`}
+                  className={`px-2.5 py-1.5 ${unit === id ? "bg-[#FF1313] text-white"
+                    : "bg-[#F8F8F8] text-[#1D2434] hover:bg-[#F1F2F4]"} disabled:opacity-40`}
                   title={id === "rp" && !adaKurs ? t("Kurs bulanan belum tersedia") : undefined}
                   onClick={() => setUnit(id)}>
                   {label}
@@ -491,7 +492,7 @@ function KartuGrafikMargin() {
               ))}
             </div>
           </div>
-          <span className="text-slate-500 pb-1.5">
+          <span className="text-[#64676C] pb-1.5">
             {bulanan.data
               ? `${bulanan.data.jumlah_bulan} ${t("bulan ditampilkan")}` +
                 (periodeTeks ? ` (${periodeTeks})` : "")
@@ -503,17 +504,17 @@ function KartuGrafikMargin() {
           {([["tren", t("Tren & capaian target")], ["banding", t("Banding antar tahun")]] as const)
             .map(([id, label]) => (
             <button key={id}
-              className={`rounded-md px-3 py-1.5 text-xs font-medium ${mode === id
-                ? "bg-violet-600 text-white" : "bg-white/10 text-slate-300 hover:bg-white/20"}`}
+              className={`rounded-sm px-3 py-1.5 text-xs font-medium ${mode === id
+                ? "bg-[#FF1313] text-white" : "bg-[#F1F2F4] text-[#1D2434] hover:bg-[#E8E9EC]"}`}
               onClick={() => setMode(id)}>
               {label}
             </button>
           ))}
           {mode === "tren" && adaTarget.length > 0 && (
-            <span className="ml-auto text-xs text-slate-400">
-              <b className="text-sky-300">{capai}</b> {t("dari")} {adaTarget.length}{" "}
+            <span className="ml-auto text-xs text-[#64676C]">
+              <b className="text-[#0369A1]">{capai}</b> {t("dari")} {adaTarget.length}{" "}
               {t("bulan mencapai target")} ({fmtAngka((capai / adaTarget.length) * 100, 0)}%)
-              {tipis > 0 && <span className="text-yellow-300"> · {tipis} {t("tipis")}</span>}
+              {tipis > 0 && <span className="text-[#A16207]"> · {tipis} {t("tipis")}</span>}
             </span>
           )}
         </div>
@@ -524,12 +525,12 @@ function KartuGrafikMargin() {
               <ResponsiveContainer>
                 <ComposedChart data={dataTren}
                                margin={{ top: 22, right: 10, bottom: 5, left: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,.08)" />
+                  <CartesianGrid strokeDasharray="3 3" stroke="#EDEFF2" />
                   <XAxis dataKey="label" fontSize={10} minTickGap={26}
-                         tick={{ fill: "#cbd5e1" }} />
-                  <YAxis fontSize={11} tick={{ fill: "#cbd5e1" }}
+                         tick={{ fill: "#64676C" }} />
+                  <YAxis fontSize={11} tick={{ fill: "#64676C" }}
                          label={{ value: satuan, angle: -90, position: "insideLeft",
-                                  fontSize: 11, fill: "#a5b4fc" }} />
+                                  fontSize: 11, fill: "#1D2434" }} />
                   <Tooltip content={({ payload, label }) => {
                     const p: any = payload?.[0]?.payload;
                     if (!p) return null;
@@ -538,29 +539,29 @@ function KartuGrafikMargin() {
                       ? (p.kurs ? `≈ ${fmtAngka(p.marginUsc, 2)} US¢/kg` : null)
                       : (p.kurs ? `≈ ${fmtAngka(p.marginUsc * p.kurs / 100, 0)} Rp/kg` : null);
                     return (
-                      <div className="rounded-md bg-[#15143a] border border-violet-500/30 p-2 text-xs shadow">
+                      <div className="rounded-sm bg-white border border-[#E4E5E8] p-2 text-xs shadow">
                         <b>{label}</b><br />
                         {t("Margin")}: <b>{fmtNilai(p.margin ?? 0)}</b> {satuan}
-                        {lain && <span className="text-slate-500"> ({lain})</span>}<br />
+                        {lain && <span className="text-[#64676C]"> ({lain})</span>}<br />
                         {t("Target")}: {p.target === null ? "–" : `${fmtNilai(p.target)} ${satuan}`}<br />
                         {t("Selisih")}: <b className={st.teks}>
                           {p.delta === null ? "–" : `${p.delta >= 0 ? "+" : "−"}${fmtNilai(Math.abs(p.delta))}`}
                         </b><br />
                         <span className={st.teks}>{st.ikon} {t(p.status)}</span>
                         {p.kurs && (
-                          <div className="text-slate-500 mt-0.5">
+                          <div className="text-[#64676C] mt-0.5">
                             {t("Kurs")}: {fmtAngka(p.kurs, 0)} Rp/USD
                           </div>
                         )}
                       </div>
                     );
                   }} />
-                  <ReferenceLine y={0} stroke="#64748b" />
+                  <ReferenceLine y={0} stroke="#9AA0A6" />
                   {anotasiTampil.map((a) => (
-                    <ReferenceLine key={a.label} x={a.label} stroke="#a78bfa"
+                    <ReferenceLine key={a.label} x={a.label} stroke="#FF1313"
                                    strokeDasharray="2 3"
                                    label={{ value: a.teks, position: "insideTop",
-                                            fill: "#c4b5fd", fontSize: 9 }} />
+                                            fill: "#FF1313", fontSize: 9 }} />
                   ))}
                   <Bar dataKey="margin" name="OP Margin" maxBarSize={16} isAnimationActive={false}>
                     {dataTren.map((d: any, i: number) => (
@@ -578,7 +579,7 @@ function KartuGrafikMargin() {
                           : `${fmtNilai(d.margin)} (${d.delta >= 0 ? "+" : "−"}${fmtNilai(Math.abs(d.delta))})`;
                         return (
                           <text x={p.x + p.width / 2} y={y} textAnchor="middle"
-                                fontSize={n > 20 ? 8 : 9} fontWeight={600} fill="#e2e8f0">
+                                fontSize={n > 20 ? 8 : 9} fontWeight={600} fill="#FFFFFF">
                             {st.ikon} {teks}
                           </text>
                         );
@@ -594,7 +595,7 @@ function KartuGrafikMargin() {
 
             {/* Panel selisih terhadap target: satu pandangan melihat bulan minus */}
             <div className="mt-2">
-              <div className="text-[11px] text-slate-400 mb-0.5">
+              <div className="text-[11px] text-[#64676C] mb-0.5">
                 {t("Selisih terhadap target (ke atas = di atas target, ke bawah = kurang)")}
               </div>
               <div className="h-24">
@@ -602,13 +603,13 @@ function KartuGrafikMargin() {
                   <BarChart data={dataTren} margin={{ top: 4, right: 10, bottom: 0, left: 0 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,.06)" />
                     <XAxis dataKey="label" hide />
-                    <YAxis fontSize={9} tick={{ fill: "#94a3b8" }} width={38} />
+                    <YAxis fontSize={9} tick={{ fill: "#64676C" }} width={38} />
                     <Tooltip content={({ payload, label }) => {
                       const p: any = payload?.[0]?.payload;
                       if (!p) return null;
                       const st = WARNA_STATUS[p.status] ?? WARNA_STATUS["tanpa target"];
                       return (
-                        <div className="rounded-md bg-[#15143a] border border-violet-500/30 p-2 text-xs shadow">
+                        <div className="rounded-sm bg-white border border-[#E4E5E8] p-2 text-xs shadow">
                           <b>{label}</b><br />
                           {t("Selisih")}: {p.delta === null ? "–"
                             : `${p.delta >= 0 ? "+" : "−"}${fmtNilai(Math.abs(p.delta))}`} {satuan}<br />
@@ -616,7 +617,7 @@ function KartuGrafikMargin() {
                         </div>
                       );
                     }} />
-                    <ReferenceLine y={0} stroke="#94a3b8" />
+                    <ReferenceLine y={0} stroke="#9AA0A6" />
                     <Bar dataKey="delta" isAnimationActive={false} maxBarSize={16}>
                       {dataTren.map((d: any, i: number) => (
                         <Cell key={i} fill={warnaIkon(d.status)} />
@@ -627,18 +628,18 @@ function KartuGrafikMargin() {
               </div>
             </div>
 
-            <div className="mt-2 grid gap-1 text-xs text-slate-400">
+            <div className="mt-2 grid gap-1 text-xs text-[#64676C]">
               <p>
                 {t("Cara baca: satu batang = satu bulan")}
                 {periodeTeks ? `, ${t("periode aktif")} ${periodeTeks}` : ""}
                 {bulanan.data ? ` (${bulanan.data.jumlah_bulan} ${t("bulan")})` : ""}.
                 {" "}
-                <span className="text-sky-300">■ ✓ {t("di atas target")}</span> ·{" "}
-                <span className="text-yellow-300">■ ≈ {t("tipis")} (&lt; {fmtAngka(ambangTipis, pakaiRp ? 0 : 1)} {satuan} {t("di atas target")})</span> ·{" "}
-                <span className="text-orange-300">■ ! {t("di bawah target")}</span> ·{" "}
-                <span className="text-slate-200">▬ {t("segmen target bulan itu")}</span>
+                <span className="text-[#0369A1]">■ ✓ {t("di atas target")}</span> ·{" "}
+                <span className="text-[#A16207]">■ ≈ {t("tipis")} (&lt; {fmtAngka(ambangTipis, pakaiRp ? 0 : 1)} {satuan} {t("di atas target")})</span> ·{" "}
+                <span className="text-[#C2410C]">■ ! {t("di bawah target")}</span> ·{" "}
+                <span className="text-[#1D2434]">▬ {t("segmen target bulan itu")}</span>
               </p>
-              <p className="text-slate-500">
+              <p className="text-[#64676C]">
                 {t("Warna tidak sendirian — setiap batang diberi ikon dan angka, jadi tetap terbaca oleh penglihatan buta warna.")}
               </p>
             </div>
@@ -646,10 +647,10 @@ function KartuGrafikMargin() {
         ) : (
           <>
             <div className="flex flex-wrap gap-2 mb-2 text-xs">
-              <span className="text-slate-400">{t("Pilih tahun yang dibandingkan:")}</span>
+              <span className="text-[#64676C]">{t("Pilih tahun yang dibandingkan:")}</span>
               {tahunSemua.map((th) => (
-                <label key={th} className="flex items-center gap-1 text-slate-300">
-                  <input type="checkbox" className="accent-violet-500"
+                <label key={th} className="flex items-center gap-1 text-[#1D2434]">
+                  <input type="checkbox" className="accent-[#FF1313]"
                          checked={tahunDipilih.includes(th)}
                          onChange={(e) => setPilih(e.target.checked
                            ? [...tahunDipilih, th].sort()
@@ -662,11 +663,11 @@ function KartuGrafikMargin() {
               <ResponsiveContainer>
                 <LineChart data={dataBanding}
                            margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,.08)" />
-                  <XAxis dataKey="bulan" fontSize={12} tick={{ fill: "#cbd5e1" }} />
-                  <YAxis fontSize={11} tick={{ fill: "#cbd5e1" }}
+                  <CartesianGrid strokeDasharray="3 3" stroke="#EDEFF2" />
+                  <XAxis dataKey="bulan" fontSize={12} tick={{ fill: "#64676C" }} />
+                  <YAxis fontSize={11} tick={{ fill: "#64676C" }}
                          label={{ value: "US¢/kg", angle: -90, position: "insideLeft",
-                                  fontSize: 11, fill: "#a5b4fc" }} />
+                                  fontSize: 11, fill: "#1D2434" }} />
                   <Tooltip formatter={(v: any) => `${fmtAngka(v as number)} US¢/kg`} />
                   <Legend />
                   {antar.data?.filter((th: any) => tahunDipilih.includes(th.tahun))
@@ -679,7 +680,7 @@ function KartuGrafikMargin() {
                 </LineChart>
               </ResponsiveContainer>
             </div>
-            <p className="mt-2 text-xs text-slate-400">
+            <p className="mt-2 text-xs text-[#64676C]">
               {t("Cara baca: membandingkan pola bulanan beberapa tahun (mis. apakah margin biasanya turun di pertengahan tahun). Centang maksimal 2–3 tahun supaya tetap mudah dibaca; garis paling tebal = tahun terbaru yang dipilih.")}
               {periodeTeks && ` ${t("Periode aktif")}: ${periodeTeks}.`}
             </p>
@@ -700,8 +701,8 @@ function KepalaPanel({ judul, periode, url, tutup }: {
   return (
     <div className="flex items-start justify-between gap-3">
       <div>
-        <h3 className="text-lg font-semibold text-slate-100">{judul}</h3>
-        {periode && <p className="text-sm text-slate-400">{t("Periode")}: {periode}</p>}
+        <h3 className="text-lg font-semibold text-[#1D2434]">{judul}</h3>
+        {periode && <p className="text-sm text-[#64676C]">{t("Periode")}: {periode}</p>}
       </div>
       <div className="flex gap-2 shrink-0">
         <a className={kelasTombolKecil}
@@ -721,18 +722,18 @@ function TipBridge({ active, payload }: any) {
   const d = isi?.payload;
   if (!d) return null;
   return (
-    <div className="rounded-md border border-violet-500/40 bg-[#1a1844] px-3 py-2 text-xs shadow-xl">
-      <div className="font-semibold text-slate-100 mb-1">{d.label}</div>
-      <div className={d.delta >= 0 ? "text-emerald-300" : "text-rose-300"}>
+    <div className="rounded-sm border border-[#FF1313]/40 bg-white px-3 py-2 text-xs shadow-xl">
+      <div className="font-semibold text-[#1D2434] mb-1">{d.label}</div>
+      <div className={d.delta >= 0 ? "text-[#15803D]" : "text-[#BE123C]"}>
         {d.delta >= 0 ? "+" : ""}{fmtAngka(d.delta, 2)} US¢/kg
       </div>
       {d.langkah && (
         <>
-          <div className="text-slate-400 mt-0.5">
+          <div className="text-[#64676C] mt-0.5">
             {fmtAngka(d.sebelum, 2)} → {fmtAngka(d.sesudah, 2)}
           </div>
           {typeof d.mentah === "number" && (
-            <div className="text-slate-500 mt-0.5">
+            <div className="text-[#64676C] mt-0.5">
               {t("perubahan")}: {d.mentah >= 0 ? "+" : ""}{fmtAngka(d.mentah, 2)}
             </div>
           )}
@@ -781,7 +782,7 @@ function PanelMarginBridge({ url, tutup, awal, akhir, ubah }: {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
          onClick={tutup}>
-      <div className="max-h-[92vh] w-full max-w-4xl overflow-y-auto rounded-xl bg-[#1a1844] border border-violet-500/30 p-6 shadow-2xl shadow-violet-950/50"
+      <div className="max-h-[92vh] w-full max-w-4xl overflow-y-auto rounded-sm bg-white border border-[#E4E5E8] p-6 shadow-xl shadow-[#1D2434]/10"
            onClick={(e) => e.stopPropagation()}>
         <KepalaPanel judul={t("Margin Bridge — analisa grafik")}
                      periode={d ? `${labelPeriode(d.periode_a)} → ${labelPeriode(d.periode_b)}` : undefined}
@@ -789,28 +790,28 @@ function PanelMarginBridge({ url, tutup, awal, akhir, ubah }: {
 
         <div className="mt-3 flex flex-wrap items-end gap-3 text-xs">
           <div>
-            <label className="block text-slate-400 mb-1">{t("Periode awal")}</label>
-            <input type="month" className="rounded-md border border-violet-400/30 bg-[#0b0a26]/80 px-2 py-1.5 text-slate-100"
+            <label className="block text-[#64676C] mb-1">{t("Periode awal")}</label>
+            <input type="month" className="rounded-sm border border-[#E4E5E8] bg-white px-2 py-1.5 text-[#1D2434]"
                    value={awal} onChange={(e) => ubah(e.target.value, akhir)} />
           </div>
           <div>
-            <label className="block text-slate-400 mb-1">{t("Periode akhir")}</label>
-            <input type="month" className="rounded-md border border-violet-400/30 bg-[#0b0a26]/80 px-2 py-1.5 text-slate-100"
+            <label className="block text-[#64676C] mb-1">{t("Periode akhir")}</label>
+            <input type="month" className="rounded-sm border border-[#E4E5E8] bg-white px-2 py-1.5 text-[#1D2434]"
                    value={akhir} onChange={(e) => ubah(awal, e.target.value)} />
           </div>
-          <p className="text-slate-500">{t("Bawaan: mengikuti filter kartu grafik.")}</p>
+          <p className="text-[#64676C]">{t("Bawaan: mengikuti filter kartu grafik.")}</p>
         </div>
 
-        <p className="mt-2 text-sm text-slate-300 font-mono">
+        <p className="mt-2 text-sm text-[#1D2434] font-mono">
           ΔM = ΔSICOM − ΔOP Price
         </p>
-        <p className="text-xs text-slate-400">
+        <p className="text-xs text-[#64676C]">
           {t("SICOM = harga acuan pasar (di luar kendali), OP Price = harga beli kita (keputusan). SICOM turun menekan margin; OP Price turun justru menolong.")}
         </p>
 
-        {q.isLoading && <p className="mt-4 text-sm text-slate-400">{t("Memuat…")}</p>}
+        {q.isLoading && <p className="mt-4 text-sm text-[#64676C]">{t("Memuat…")}</p>}
         {q.error && (
-          <p className="mt-4 rounded-md bg-red-500/10 border border-red-400/30 px-3 py-2 text-sm text-red-300">
+          <p className="mt-4 rounded-sm bg-[#FEF2F2] border border-[#FECACA] px-3 py-2 text-sm text-[#B91C1C]">
             {pesanGalat(q.error)}
           </p>
         )}
@@ -819,13 +820,13 @@ function PanelMarginBridge({ url, tutup, awal, akhir, ubah }: {
           <>
             <div className="mt-3 grid gap-2 sm:grid-cols-3">
               {[
-                [t("OP Margin awal"), fmtAngka(d.awal, 2), "text-slate-200"],
+                [t("OP Margin awal"), fmtAngka(d.awal, 2), "text-[#1D2434]"],
                 [t("Perubahan margin"), `${d.delta_margin >= 0 ? "+" : ""}${fmtAngka(d.delta_margin, 2)}`,
-                 d.delta_margin >= 0 ? "text-emerald-300" : "text-rose-300"],
-                [t("OP Margin akhir"), fmtAngka(d.akhir, 2), "text-slate-200"],
+                 d.delta_margin >= 0 ? "text-[#15803D]" : "text-[#BE123C]"],
+                [t("OP Margin akhir"), fmtAngka(d.akhir, 2), "text-[#1D2434]"],
               ].map(([l, v, k]) => (
-                <div key={l as string} className="rounded-lg border border-violet-500/20 bg-white/5 p-3">
-                  <div className="text-[11px] text-slate-400">{l}</div>
+                <div key={l as string} className="rounded-sm border border-[#E4E5E8] bg-[#F8F8F8] p-3">
+                  <div className="text-[11px] text-[#64676C]">{l}</div>
                   <div className={`font-mono text-lg font-semibold ${k}`}>{v}</div>
                 </div>
               ))}
@@ -834,16 +835,16 @@ function PanelMarginBridge({ url, tutup, awal, akhir, ubah }: {
             <div className="h-72 mt-3">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={titik} margin={{ top: 10, right: 10, bottom: 5, left: -10 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,.08)" />
-                  <XAxis dataKey="label" tick={{ fill: "#cbd5e1", fontSize: 10 }}
+                  <CartesianGrid strokeDasharray="3 3" stroke="#EDEFF2" />
+                  <XAxis dataKey="label" tick={{ fill: "#64676C", fontSize: 10 }}
                          interval={0} height={48} angle={-12} textAnchor="end" />
-                  <YAxis tick={{ fill: "#cbd5e1", fontSize: 11 }}
+                  <YAxis tick={{ fill: "#64676C", fontSize: 11 }}
                          label={{ value: "US¢/kg", angle: -90, position: "insideLeft",
-                                  fill: "#94a3b8", fontSize: 11 }} />
+                                  fill: "#64676C", fontSize: 11 }} />
                   <Tooltip content={<TipBridge />} />
                   <Bar dataKey="dasar" stackId="a" fill="transparent" isAnimationActive={false} />
                   <Bar dataKey="nilai" stackId="a" isAnimationActive={false}
-                       stroke="#0b0a26" strokeWidth={0.5}>
+                       stroke="#FFFFFF" strokeWidth={0.8}>
                     {titik.map((x, i) => (
                       <Cell key={i} fill={warna(x)} stroke={garis(x)} strokeWidth={1.5} />
                     ))}
@@ -856,7 +857,7 @@ function PanelMarginBridge({ url, tutup, awal, akhir, ubah }: {
                       return (
                         <text x={p.x + p.width / 2} y={y} textAnchor="middle"
                               fontSize={10} fontWeight={700}
-                              fill={d.total ? "#c4b5fd" : naik ? "#4ade80" : "#fca5a5"}>
+                              fill={d.total ? "#1D2434" : naik ? "#0F766E" : "#FF1313"}>
                           {teks}
                         </text>
                       );
@@ -866,26 +867,26 @@ function PanelMarginBridge({ url, tutup, awal, akhir, ubah }: {
               </ResponsiveContainer>
             </div>
 
-            <div className="mt-3 rounded-lg border border-violet-500/20 bg-white/5 p-3">
+            <div className="mt-3 rounded-sm border border-[#E4E5E8] bg-[#F8F8F8] p-3">
               <div className="flex flex-wrap items-center gap-2 mb-1.5">
-                <span className="text-sm font-semibold text-slate-200">
+                <span className="text-sm font-semibold text-[#1D2434]">
                   {t("Kenapa naik, kenapa turun")}
                 </span>
                 {d.kesimpulan && (
-                  <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${
+                  <span className={`rounded-sm px-2 py-0.5 text-[10px] font-medium ${
                     d.kesimpulan.includes("pasar")
-                      ? "bg-sky-500/15 text-sky-300"
+                      ? "bg-[#F0F9FF] text-[#0369A1]"
                       : d.kesimpulan.includes("keputusan")
-                        ? "bg-amber-500/15 text-amber-300"
-                        : "bg-emerald-500/15 text-emerald-300"}`}>
+                        ? "bg-[#FEF3C7] text-[#B45309]"
+                        : "bg-[#DCFCE7] text-[#15803D]"}`}>
                     {d.kesimpulan}
                   </span>
                 )}
               </div>
               <ul className="grid gap-1">
                 {(d.analisa ?? []).map((a: string, i: number) => (
-                  <li key={i} className="text-xs text-slate-300 leading-relaxed flex gap-1.5">
-                    <span className="text-violet-400 shrink-0">▸</span><span>{a}</span>
+                  <li key={i} className="text-xs text-[#1D2434] leading-relaxed flex gap-1.5">
+                    <span className="text-[#FF1313] shrink-0">▸</span><span>{a}</span>
                   </li>
                 ))}
               </ul>
@@ -896,22 +897,22 @@ function PanelMarginBridge({ url, tutup, awal, akhir, ubah }: {
                 const negatif = l.nilai < 0;
                 return (
                   <div key={`j-${l.kode}`}
-                       className={`rounded-lg border p-3 ${negatif
-                         ? "border-red-500/50 bg-red-500/10"
-                         : "border-emerald-500/40 bg-emerald-500/10"}`}>
+                       className={`rounded-sm border p-3 ${negatif
+                         ? "border-red-500/50 bg-[#FEF2F2]"
+                         : "border-emerald-500/40 bg-[#F0FDF4]"}`}>
                     <div className="flex items-center justify-between gap-2">
-                      <span className="font-semibold text-slate-100">
+                      <span className="font-semibold text-[#1D2434]">
                         {negatif ? "▼ " : "▲ "}{l.label}
                       </span>
                       <span className={`font-mono font-bold ${negatif
-                        ? "text-red-300" : "text-emerald-300"}`}>
+                        ? "text-[#B91C1C]" : "text-[#15803D]"}`}>
                         {l.nilai >= 0 ? "+" : "−"}{fmtAngka(Math.abs(l.nilai), 2)}
                       </span>
                     </div>
-                    <p className="mt-1 text-[11px] leading-relaxed text-slate-300">
+                    <p className="mt-1 text-[11px] leading-relaxed text-[#1D2434]">
                       {l.penjelasan}
                     </p>
-                    <div className="mt-1 text-[10px] text-slate-500">
+                    <div className="mt-1 text-[10px] text-[#64676C]">
                       {l.jenis === "eksternal" ? t("pasar — di luar kendali")
                         : t("keputusan pembelian")}
                     </div>
@@ -921,32 +922,32 @@ function PanelMarginBridge({ url, tutup, awal, akhir, ubah }: {
             </div>
 
             <div className="mt-3 grid gap-3 sm:grid-cols-2 text-xs">
-              <div className="rounded-lg border border-violet-500/20 bg-white/5 p-3">
-                <div className="font-semibold text-slate-200 mb-1">{t("Kontribusi")}</div>
+              <div className="rounded-sm border border-[#E4E5E8] bg-[#F8F8F8] p-3">
+                <div className="font-semibold text-[#1D2434] mb-1">{t("Kontribusi")}</div>
                 {d.langkah.map((l: any) => (
                   <div key={l.kode} className="flex justify-between py-0.5">
-                    <span className="text-slate-400">
-                      {l.label} <span className="text-slate-600">
+                    <span className="text-[#64676C]">
+                      {l.label} <span className="text-[#64676C]">
                         ({l.jenis === "eksternal" ? t("pasar") : t("keputusan")})
                       </span>
                     </span>
-                    <span className={`font-mono ${l.nilai >= 0 ? "text-emerald-300" : "text-rose-300"}`}>
+                    <span className={`font-mono ${l.nilai >= 0 ? "text-[#15803D]" : "text-[#BE123C]"}`}>
                       {l.nilai >= 0 ? "+" : ""}{fmtAngka(l.nilai, 2)}
                     </span>
                   </div>
                 ))}
                 {d.passthrough && (
-                  <p className="mt-2 text-slate-400 leading-relaxed">
+                  <p className="mt-2 text-[#64676C] leading-relaxed">
                     {t("OP Price hanya mengikuti")}{" "}
-                    <b className="text-slate-200">{fmtAngka(Math.abs(d.passthrough.rasio) * 100, 1)}%</b>{" "}
+                    <b className="text-[#1D2434]">{fmtAngka(Math.abs(d.passthrough.rasio) * 100, 1)}%</b>{" "}
                     {t("dari perubahan SICOM; sisa")}{" "}
-                    <b className="text-slate-200">{fmtAngka(Math.abs(d.passthrough.porsi_ditanggung_margin) * 100, 1)}%</b>{" "}
+                    <b className="text-[#1D2434]">{fmtAngka(Math.abs(d.passthrough.porsi_ditanggung_margin) * 100, 1)}%</b>{" "}
                     {t("ditanggung margin.")}
                   </p>
                 )}
               </div>
-              <div className="rounded-lg border border-violet-500/20 bg-white/5 p-3">
-                <button className="font-semibold text-slate-200 mb-1 hover:text-violet-300"
+              <div className="rounded-sm border border-[#E4E5E8] bg-[#F8F8F8] p-3">
+                <button className="font-semibold text-[#1D2434] mb-1 hover:text-[#FF1313]"
                         onClick={() => setRincian(!rincian)}>
                   {rincian ? "▾" : "▸"} {t("Rincian Δ OP Price (harga Rp vs kurs)")}
                 </button>
@@ -955,39 +956,39 @@ function PanelMarginBridge({ url, tutup, awal, akhir, ubah }: {
                     {[["harga_rp", t("Efek harga beli (Rp/kg)")], ["kurs", t("Efek kurs")]]
                       .map(([k, nama]) => (
                         <div key={k} className="flex justify-between py-0.5">
-                          <span className="text-slate-400">{nama}</span>
+                          <span className="text-[#64676C]">{nama}</span>
                           <span className={`font-mono ${(d.rincian_op_price as any)[k] >= 0
-                            ? "text-emerald-300" : "text-rose-300"}`}>
+                            ? "text-[#15803D]" : "text-[#BE123C]"}`}>
                             {(d.rincian_op_price as any)[k] >= 0 ? "+" : ""}
                             {fmtAngka((d.rincian_op_price as any)[k], 2)}
                           </span>
                         </div>
                       ))}
-                    <div className="flex justify-between border-t border-white/10 mt-1 pt-1">
-                      <span className="text-slate-300">{t("Total = −Δ OP Price")}</span>
-                      <span className="font-mono text-slate-200">
+                    <div className="flex justify-between border-t border-[#E4E5E8] mt-1 pt-1">
+                      <span className="text-[#1D2434]">{t("Total = −Δ OP Price")}</span>
+                      <span className="font-mono text-[#1D2434]">
                         {fmtAngka(d.rincian_op_price.total, 2)}
                       </span>
                     </div>
-                    <p className="mt-1 text-slate-500">
+                    <p className="mt-1 text-[#64676C]">
                       {t("Kurs efektif")}: {fmtAngka(d.rincian_op_price.kurs_a, 0)} →{" "}
                       {fmtAngka(d.rincian_op_price.kurs_b, 0)} Rp/USD
                     </p>
                   </>
                 ) : (
-                  <p className="text-slate-500">{t("Klik untuk memisahkan efek harga beli dan kurs.")}</p>
+                  <p className="text-[#64676C]">{t("Klik untuk memisahkan efek harga beli dan kurs.")}</p>
                 )}
               </div>
             </div>
 
             <div className="mt-4">
-              <div className="text-sm font-semibold text-slate-200 mb-1">
+              <div className="text-sm font-semibold text-[#1D2434] mb-1">
                 {t("Bridge per bulan — mana yang dipicu pasar, mana yang keputusan")}
               </div>
               <div className="max-h-64 overflow-y-auto">
                 <table className="w-full text-xs">
                   <thead>
-                    <tr className="text-left text-slate-400 border-b">
+                    <tr className="text-left text-[#64676C] border-b">
                       <th className="py-1 pr-2">{t("Bulan")}</th>
                       <th className="text-right px-1">Δ SICOM</th>
                       <th className="text-right px-1">Δ OP Price</th>
@@ -1000,31 +1001,31 @@ function PanelMarginBridge({ url, tutup, awal, akhir, ubah }: {
                     {(d.per_bulan ?? []).map((b: any) => (
                       <Fragment key={b.bulan}>
                       <tr className="border-b-0">
-                        <td className="pt-1.5 pr-2 text-slate-300">{b.bulan}</td>
+                        <td className="pt-1.5 pr-2 text-[#1D2434]">{b.bulan}</td>
                         <td className={`text-right px-1 font-mono ${
-                          b.kontribusi_sicom >= 0 ? "text-emerald-300" : "text-rose-300"}`}>
+                          b.kontribusi_sicom >= 0 ? "text-[#15803D]" : "text-[#BE123C]"}`}>
                           {b.delta_sicom >= 0 ? "+" : ""}{fmtAngka(b.delta_sicom, 2)}
                         </td>
-                        <td className="text-right px-1 font-mono text-slate-300">
+                        <td className="text-right px-1 font-mono text-[#1D2434]">
                           {b.delta_op_price >= 0 ? "+" : ""}{fmtAngka(b.delta_op_price, 2)}
                         </td>
                         <td className={`text-right px-1 font-mono font-semibold ${
-                          b.delta_margin >= 0 ? "text-emerald-300" : "text-rose-300"}`}>
+                          b.delta_margin >= 0 ? "text-[#15803D]" : "text-[#BE123C]"}`}>
                           {b.delta_margin >= 0 ? "+" : ""}{fmtAngka(b.delta_margin, 2)}
                         </td>
-                        <td className="text-right px-1 font-mono text-slate-400">
+                        <td className="text-right px-1 font-mono text-[#64676C]">
                           {b.passthrough === null ? "–" : `${fmtAngka(b.passthrough * 100, 0)}%`}
                         </td>
                         <td className="pl-2">
                           <span className={`rounded px-1.5 py-0.5 text-[10px] ${
                             b.penyebab === "pasar"
-                              ? "bg-sky-500/15 text-sky-300" : "bg-amber-500/15 text-amber-300"}`}>
+                              ? "bg-[#F0F9FF] text-[#0369A1]" : "bg-[#FEF3C7] text-[#B45309]"}`}>
                             {b.penyebab === "pasar" ? t("dipicu pasar") : t("dipicu keputusan")}
                           </span>
                         </td>
                       </tr>
-                      <tr className="border-b border-white/5">
-                        <td colSpan={6} className="pb-1.5 pl-2 text-[10px] leading-relaxed text-slate-500">
+                      <tr className="border-b border-[#EDEFF2]">
+                        <td colSpan={6} className="pb-1.5 pl-2 text-[10px] leading-relaxed text-[#64676C]">
                           ↳ {b.penjelasan}
                         </td>
                       </tr>
@@ -1035,13 +1036,13 @@ function PanelMarginBridge({ url, tutup, awal, akhir, ubah }: {
               </div>
             </div>
 
-            <p className="mt-2 text-xs text-slate-400">
+            <p className="mt-2 text-xs text-[#64676C]">
               {t("Selisih penutupan (awal + komponen − akhir):")}{" "}
               <span className="font-mono">{fmtAngka(d.penutupan_selisih, 8)}</span>{" "}
               {t("— bridge tertutup persis.")}
             </p>
             {d.catatan.map((c: string, i: number) => (
-              <p key={i} className="mt-1 text-[11px] text-slate-500">{c}</p>
+              <p key={i} className="mt-1 text-[11px] text-[#64676C]">{c}</p>
             ))}
           </>
         )}
@@ -1069,15 +1070,15 @@ function PanelDaysOfCover({ url, tutup, awal, akhir, ubah }: {
   }));
   const kini = d?.terkini;
   const warnaStatus = (s: string) => s === "aman"
-    ? "text-emerald-300 border-emerald-400/40 bg-emerald-500/10"
+    ? "text-[#15803D] border-[#BBF7D0] bg-[#F0FDF4]"
     : s === "di bawah safety"
-      ? "text-rose-300 border-rose-400/40 bg-rose-500/10"
-      : "text-slate-300 border-slate-400/40 bg-white/5";
+      ? "text-[#BE123C] border-[#FECDD3] bg-[#FFF1F2]"
+      : "text-[#1D2434] border-[#D5D7DB] bg-[#F8F8F8]";
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
          onClick={tutup}>
-      <div className="max-h-[92vh] w-full max-w-4xl overflow-y-auto rounded-xl bg-[#1a1844] border border-violet-500/30 p-6 shadow-2xl shadow-violet-950/50"
+      <div className="max-h-[92vh] w-full max-w-4xl overflow-y-auto rounded-sm bg-white border border-[#E4E5E8] p-6 shadow-xl shadow-[#1D2434]/10"
            onClick={(e) => e.stopPropagation()}>
         <KepalaPanel judul={t("Days of Cover — analisa grafik")}
                      periode={d ? `${d.dari} – ${d.sampai}` : undefined}
@@ -1085,27 +1086,27 @@ function PanelDaysOfCover({ url, tutup, awal, akhir, ubah }: {
 
         <div className="mt-3 flex flex-wrap items-end gap-3 text-xs">
           <div>
-            <label className="block text-slate-400 mb-1">{t("Dari bulan")}</label>
-            <input type="month" className="rounded-md border border-violet-400/30 bg-[#0b0a26]/80 px-2 py-1.5 text-slate-100"
+            <label className="block text-[#64676C] mb-1">{t("Dari bulan")}</label>
+            <input type="month" className="rounded-sm border border-[#E4E5E8] bg-white px-2 py-1.5 text-[#1D2434]"
                    value={awal} onChange={(e) => ubah(e.target.value, akhir)} />
           </div>
           <div>
-            <label className="block text-slate-400 mb-1">{t("Sampai bulan")}</label>
-            <input type="month" className="rounded-md border border-violet-400/30 bg-[#0b0a26]/80 px-2 py-1.5 text-slate-100"
+            <label className="block text-[#64676C] mb-1">{t("Sampai bulan")}</label>
+            <input type="month" className="rounded-sm border border-[#E4E5E8] bg-white px-2 py-1.5 text-[#1D2434]"
                    value={akhir} onChange={(e) => ubah(awal, e.target.value)} />
           </div>
         </div>
 
-        <p className="mt-2 text-sm text-slate-300 font-mono">
+        <p className="mt-2 text-sm text-[#1D2434] font-mono">
           Pemakaian = Stok awal + Intake − Stok akhir; DoC = Stok akhir ÷ (Pemakaian ÷ hari)
         </p>
-        <p className="text-xs text-slate-400">
+        <p className="text-xs text-[#64676C]">
           {t("Pemakaian tidak ada di data, jadi dihitung dari neraca stok. DoC lebih adil daripada tonase karena menyesuaikan pemakaian.")}
         </p>
 
-        {q.isLoading && <p className="mt-4 text-sm text-slate-400">{t("Memuat…")}</p>}
+        {q.isLoading && <p className="mt-4 text-sm text-[#64676C]">{t("Memuat…")}</p>}
         {q.error && (
-          <p className="mt-4 rounded-md bg-red-500/10 border border-red-400/30 px-3 py-2 text-sm text-red-300">
+          <p className="mt-4 rounded-sm bg-[#FEF2F2] border border-[#FECACA] px-3 py-2 text-sm text-[#B91C1C]">
             {pesanGalat(q.error)}
           </p>
         )}
@@ -1114,34 +1115,34 @@ function PanelDaysOfCover({ url, tutup, awal, akhir, ubah }: {
           <>
             <div className="mt-3 flex flex-wrap items-end gap-6">
               <div>
-                <div className="text-4xl font-bold font-mono text-violet-300">
+                <div className="text-4xl font-bold font-mono text-[#FF1313]">
                   {fmtAngka(kini.doc_hari, 1)}{" "}
-                  <span className="text-base text-slate-400">{t("hari")}</span>
+                  <span className="text-base text-[#64676C]">{t("hari")}</span>
                 </div>
-                <div className="text-xs text-slate-400 mt-1">
+                <div className="text-xs text-[#64676C] mt-1">
                   {kini.bulan} · {t("stok akhir")} {fmtAngka(kini.stok_akhir_ton, 0)} ton ·{" "}
                   {t("pemakaian")} {fmtAngka(kini.pemakaian_harian_ton, 0)} ton/{t("hari")}
                 </div>
               </div>
-              <span className={`rounded-full border px-3 py-1 text-xs font-medium ${warnaStatus(kini.status)}`}>
+              <span className={`rounded-sm border px-3 py-1 text-xs font-medium ${warnaStatus(kini.status)}`}>
                 {t(kini.status)} · {t("safety")} {fmtAngka(kini.safety_hari, 1)} {t("hari")}
               </span>
-              <div className="text-xs text-slate-400">
+              <div className="text-xs text-[#64676C]">
                 <div>
                   {t("Rerata pemakaian:")}{" "}
-                  <b className="text-slate-200 font-mono">{fmtAngka(d.rerata_pemakaian_bulan_ton, 0)}</b>{" "}
+                  <b className="text-[#1D2434] font-mono">{fmtAngka(d.rerata_pemakaian_bulan_ton, 0)}</b>{" "}
                   ton/{t("bulan")} ({fmtAngka(d.rerata_pemakaian_harian_ton, 0)} ton/{t("hari")})
                 </div>
                 <div>
-                  {t("Safety dinamis (21,5 hari):")} <b className="text-slate-200 font-mono">
+                  {t("Safety dinamis (21,5 hari):")} <b className="text-[#1D2434] font-mono">
                     {fmtAngka(d.safety_dinamis_ton, 0)}</b> ton
                 </div>
                 <div>
-                  {t("Terendah:")} <b className="text-rose-300 font-mono">{fmtAngka(d.terendah?.doc_hari, 1)}</b>{" "}
+                  {t("Terendah:")} <b className="text-[#BE123C] font-mono">{fmtAngka(d.terendah?.doc_hari, 1)}</b>{" "}
                   ({d.terendah?.bulan}) · {t("Tertinggi:")}{" "}
-                  <b className="text-emerald-300 font-mono">{fmtAngka(d.tertinggi?.doc_hari, 1)}</b>{" "}
+                  <b className="text-[#15803D] font-mono">{fmtAngka(d.tertinggi?.doc_hari, 1)}</b>{" "}
                   ({d.tertinggi?.bulan}) · {t("bulan di bawah safety:")}{" "}
-                  <b className="text-slate-200 font-mono">{d.jumlah_bulan_di_bawah_safety}</b>/{d.jumlah_bulan}
+                  <b className="text-[#1D2434] font-mono">{d.jumlah_bulan_di_bawah_safety}</b>/{d.jumlah_bulan}
                 </div>
               </div>
             </div>
@@ -1149,24 +1150,25 @@ function PanelDaysOfCover({ url, tutup, awal, akhir, ubah }: {
             <div className="h-64 mt-4">
               <ResponsiveContainer width="100%" height="100%">
                 <ComposedChart data={seri} margin={{ top: 10, right: 10, bottom: 5, left: -15 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,.08)" />
-                  <XAxis dataKey="label" tick={{ fill: "#cbd5e1", fontSize: 10 }} minTickGap={12} />
-                  <YAxis tick={{ fill: "#cbd5e1", fontSize: 11 }}
+                  <CartesianGrid strokeDasharray="3 3" stroke="#EDEFF2" />
+                  <XAxis dataKey="label" tick={{ fill: "#64676C", fontSize: 10 }} minTickGap={12} />
+                  <YAxis tick={{ fill: "#64676C", fontSize: 11 }}
                          label={{ value: t("hari"), angle: -90, position: "insideLeft",
-                                  fill: "#94a3b8", fontSize: 11 }} />
-                  <Tooltip contentStyle={{ background: "#1a1844", border: "1px solid #7c3aed66",
-                                           borderRadius: 8, fontSize: 12 }}
+                                  fill: "#64676C", fontSize: 11 }} />
+                  <Tooltip contentStyle={{ background: "#FFFFFF", border: "1px solid #E4E5E8",
+                                           borderRadius: 8, fontSize: 12,
+                                           color: "#1D2434" }}
                            formatter={(v: any, _n: any, p: any) =>
                              [fmtAngka(v, 1), p?.dataKey === "doc" ? t("Days of cover")
                                : t("Safety (hari)")]} />
                   <Legend wrapperStyle={{ fontSize: 12 }} />
                   <Bar dataKey="doc" name={t("Days of cover")} isAnimationActive={false}>
                     {seri.map((x: any, i: number) => (
-                      <Cell key={i} fill={(x.doc ?? 0) >= (x.safety ?? 0) ? "#34d399" : "#f87171"} />
+                      <Cell key={i} fill={(x.doc ?? 0) >= (x.safety ?? 0) ? "#1D2434" : "#FF1313"} />
                     ))}
                   </Bar>
                   <Line type="stepAfter" dataKey="safety" name={t("Safety (hari)")}
-                        stroke="#fbbf24" strokeWidth={1.5} strokeDasharray="5 4" dot={false} />
+                        stroke="#B45309" strokeWidth={1.5} strokeDasharray="5 4" dot={false} />
                 </ComposedChart>
               </ResponsiveContainer>
             </div>
@@ -1174,7 +1176,7 @@ function PanelDaysOfCover({ url, tutup, awal, akhir, ubah }: {
             <div className="mt-4 max-h-72 overflow-y-auto">
               <table className="w-full text-xs">
                 <thead>
-                  <tr className="text-left text-slate-400 border-b">
+                  <tr className="text-left text-[#64676C] border-b">
                     <th className="py-1 pr-2">{t("Bulan")}</th>
                     <th className="text-right px-1">{t("Stok awal")}</th>
                     <th className="text-right px-1">Intake</th>
@@ -1188,22 +1190,22 @@ function PanelDaysOfCover({ url, tutup, awal, akhir, ubah }: {
                 </thead>
                 <tbody>
                   {baris.map((b) => (
-                    <tr key={b.bulan} className={`border-b border-white/5 ${
+                    <tr key={b.bulan} className={`border-b border-[#EDEFF2] ${
                       b.perlu_cek ? "bg-amber-400/5" : ""}`}>
-                      <td className="py-1 pr-2 text-slate-300" title={b.alasan_cek.join("; ")}>
+                      <td className="py-1 pr-2 text-[#1D2434]" title={b.alasan_cek.join("; ")}>
                         {b.bulan}{b.perlu_cek ? " ⚠" : ""}
                       </td>
-                      <td className="text-right px-1 font-mono text-slate-400">{fmtAngka(b.stok_awal_ton, 0)}</td>
-                      <td className="text-right px-1 font-mono text-slate-300">{fmtAngka(b.intake_ton, 0)}</td>
-                      <td className="text-right px-1 font-mono text-slate-300">{fmtAngka(b.stok_akhir_ton, 0)}</td>
-                      <td className="text-right px-1 font-mono text-slate-400">{fmtAngka(b.pemakaian_ton, 0)}</td>
-                      <td className="text-right px-1 font-mono text-slate-400">{fmtAngka(b.pemakaian_harian_ton, 0)}</td>
+                      <td className="text-right px-1 font-mono text-[#64676C]">{fmtAngka(b.stok_awal_ton, 0)}</td>
+                      <td className="text-right px-1 font-mono text-[#1D2434]">{fmtAngka(b.intake_ton, 0)}</td>
+                      <td className="text-right px-1 font-mono text-[#1D2434]">{fmtAngka(b.stok_akhir_ton, 0)}</td>
+                      <td className="text-right px-1 font-mono text-[#64676C]">{fmtAngka(b.pemakaian_ton, 0)}</td>
+                      <td className="text-right px-1 font-mono text-[#64676C]">{fmtAngka(b.pemakaian_harian_ton, 0)}</td>
                       <td className={`text-right px-1 font-mono font-semibold ${
-                        b.status === "aman" ? "text-emerald-300" : "text-rose-300"}`}>
+                        b.status === "aman" ? "text-[#15803D]" : "text-[#BE123C]"}`}>
                         {fmtAngka(b.doc_hari, 1)}
                       </td>
-                      <td className="text-right px-1 font-mono text-amber-300/90">{fmtAngka(b.safety_hari, 1)}</td>
-                      <td className="pl-2 text-slate-400">{t(b.status)}</td>
+                      <td className="text-right px-1 font-mono text-[#B45309]">{fmtAngka(b.safety_hari, 1)}</td>
+                      <td className="pl-2 text-[#64676C]">{t(b.status)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -1211,7 +1213,7 @@ function PanelDaysOfCover({ url, tutup, awal, akhir, ubah }: {
             </div>
 
             {d.bulan_tak_terhitung.length > 0 && (
-              <div className="mt-2 rounded-md bg-amber-400/10 border border-amber-400/30 px-3 py-2 text-xs text-amber-300">
+              <div className="mt-2 rounded-sm bg-[#FFFBEB] border border-[#FDE68A] px-3 py-2 text-xs text-[#B45309]">
                 <div className="font-semibold mb-0.5">{t("Bulan tidak bisa dihitung:")}</div>
                 {d.bulan_tak_terhitung.map((x: any) => (
                   <div key={x.bulan}>• {x.bulan} — {x.alasan}</div>
@@ -1219,7 +1221,7 @@ function PanelDaysOfCover({ url, tutup, awal, akhir, ubah }: {
               </div>
             )}
             {d.catatan.map((c: string, i: number) => (
-              <p key={i} className="mt-1 text-[11px] text-slate-500">{c}</p>
+              <p key={i} className="mt-1 text-[11px] text-[#64676C]">{c}</p>
             ))}
           </>
         )}
@@ -1259,8 +1261,8 @@ export default function Ringkasan() {
           <div className="mb-3 flex gap-1 flex-wrap">
             {tahunQ.data?.map((th: number) => (
               <button key={th}
-                className={`rounded-md px-3 py-1 text-sm ${th === thn
-                  ? "bg-violet-600 text-white" : "bg-white/10 text-slate-300 hover:bg-white/20"}`}
+                className={`rounded-sm px-3 py-1 text-sm ${th === thn
+                  ? "bg-[#FF1313] text-white" : "bg-[#F1F2F4] text-[#1D2434] hover:bg-[#E8E9EC]"}`}
                 onClick={() => setTahun(th)}>
                 {th}
               </button>
@@ -1269,7 +1271,7 @@ export default function Ringkasan() {
           <div className="overflow-x-auto">
             <table className="w-full text-xs">
               <thead>
-                <tr className="text-left text-slate-400 border-b">
+                <tr className="text-left text-[#64676C] border-b">
                   <th className="py-1 pr-2"> </th>
                   {ringkas.data?.bulan.map((b: any) => (
                     <th key={b.bulan} className="text-right px-1">{NAMA_BULAN[b.bulan]}</th>
@@ -1280,13 +1282,13 @@ export default function Ringkasan() {
               </thead>
               <tbody>
                 {label.map(([kunci, nama, des]) => (
-                  <tr key={kunci} className="border-b border-white/5">
-                    <td className="py-1 pr-2 font-medium text-slate-300 whitespace-nowrap">{t(nama)}</td>
+                  <tr key={kunci} className="border-b border-[#EDEFF2]">
+                    <td className="py-1 pr-2 font-medium text-[#1D2434] whitespace-nowrap">{t(nama)}</td>
                     {ringkas.data?.bulan.map((b: any) => (
                       <td key={b.bulan}
                           className={`text-right px-1 font-mono ${
-                            kunci === "op_margin" ? "text-violet-300 cursor-pointer underline" : ""} ${
-                            b.catatan_koreksi && kunci === "op_margin" ? "bg-amber-400/10" : ""}`}
+                            kunci === "op_margin" ? "text-[#FF1313] cursor-pointer underline" : ""} ${
+                            b.catatan_koreksi && kunci === "op_margin" ? "bg-[#FFFBEB]" : ""}`}
                           title={kunci === "op_margin" ? (b.catatan_koreksi ?? "klik untuk telusur") : undefined}
                           onClick={() => kunci === "op_margin" && setTelusur(b.bulan)}>
                         {kunci === "pencapaian"
@@ -1297,7 +1299,7 @@ export default function Ringkasan() {
                     <td className="text-right px-1 font-mono font-semibold">
                       {kunci === "op_margin" ? fmtAngka(ringkas.data?.avg_ytd_sederhana) : ""}
                     </td>
-                    <td className="text-right px-1 font-mono text-slate-400">
+                    <td className="text-right px-1 font-mono text-[#64676C]">
                       {kunci === "op_margin" ? fmtAngka(ringkas.data?.avg_ytd_tertimbang) : ""}
                     </td>
                   </tr>
@@ -1306,11 +1308,11 @@ export default function Ringkasan() {
             </table>
           </div>
           {ringkas.data?.catatan.map((c: string, i: number) => (
-            <p key={i} className="mt-2 rounded-md bg-amber-400/10 border border-amber-400/30 px-3 py-2 text-xs text-amber-300">
+            <p key={i} className="mt-2 rounded-sm bg-[#FFFBEB] border border-[#FDE68A] px-3 py-2 text-xs text-[#B45309]">
               {t("Catatan koreksi:")} {c}
             </p>
           ))}
-          <p className="mt-2 text-xs text-slate-500">
+          <p className="mt-2 text-xs text-[#64676C]">
             {t('Avg YTD = rata-rata sederhana bulan berdata (resmi, seperti Excel); kolom "Tertimbang" = rata-rata tertimbang tonase (informasi).')}
           </p>
         </>
