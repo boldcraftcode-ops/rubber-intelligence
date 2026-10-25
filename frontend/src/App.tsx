@@ -123,6 +123,9 @@ export default function App() {
   });
   const admin = saya.data?.peran === "admin";
   const modeLokal = saya.data?.mode === "lokal";
+  /* Login sedang DIMATIKAN (AUTH_DISABLED=true) — dipakai sementara saat
+     pemecahan masalah. Penanda di layar supaya tidak lupa dinyalakan lagi. */
+  const tanpaLogin = saya.data?.mode === "nonaktif";
 
   // nama pengisi otomatis mengikuti akun login
   useEffect(() => {
@@ -259,6 +262,19 @@ export default function App() {
       {/* ===== Isi halaman ===== */}
       <main className="flex-1 min-w-0 px-8 py-7">
         <div className="mx-auto max-w-[1200px]">
+          {tanpaLogin && (
+            <div className="mb-5 rounded-sm border border-[#FDE68A] bg-[#FFFBEB]
+                            border-l-2 border-l-[#FF1313] px-4 py-2.5">
+              <p className="text-sm font-semibold text-[#B45309]">
+                MODE TANPA LOGIN (SEMENTARA)
+              </p>
+              <p className="mt-0.5 text-xs leading-snug text-[#64676C]">
+                Login dimatikan lewat <code>AUTH_DISABLED=true</code>. Semua
+                orang bisa membuka aplikasi ini tanpa sandi. Nyalakan kembali
+                login sebelum dipakai bersama atau dipasang di internet.
+              </p>
+            </div>
+          )}
           {/* ===== kepala halaman ===== */}
           <header className="mb-6 border-b border-[#E4E5E8] pb-4">
             <div className="flex items-end justify-between gap-4">

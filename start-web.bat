@@ -166,7 +166,23 @@ echo Menjalankan API di jendela "OP Margin - API" (dengan auto-reload).
 rem  AUTH_DISABLED dibuang untuk jendela ini supaya login BENAR-BENAR aktif,
 rem  apa pun sisa setelan di backend\.env (variabel lingkungan menang atas
 rem  isi .env karena load_dotenv tidak menimpa).
+rem
+rem  PENGECUALIAN SEMENTARA: bila berkas tanpa-login.txt ada di folder ini,
+rem  login DIMATIKAN (AUTH_DISABLED=true) supaya aplikasi bisa dibuka tanpa
+rem  sandi. Hapus berkas itu untuk mengaktifkan login kembali.
+if exist "%~dp0tanpa-login.txt" goto mode_tanpa_login
 set "AUTH_DISABLED="
+goto lanjut_login
+
+:mode_tanpa_login
+set "AUTH_DISABLED=true"
+echo.
+echo  PERHATIAN: tanpa-login.txt ditemukan -> LOGIN DIMATIKAN sementara.
+echo  Semua orang yang bisa membuka alamat ini bisa memakai aplikasi.
+echo  Hapus berkas tanpa-login.txt lalu jalankan ulang untuk mengaktifkan login.
+echo.
+
+:lanjut_login
 start "OP Margin - API" /D "%~dp0backend" cmd /k ".venv\Scripts\python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload"
 echo Menjalankan tampilan web di jendela "OP Margin - Web".
 start "OP Margin - Web" /D "%~dp0frontend" cmd /k "npm run dev"

@@ -20,3 +20,6 @@ frontend/tsconfig.tsbuildinfo
 .env
 .DS_Store
 Thumbs.db
+
+# Penanda sementara: mematikan form login (JANGAN ikut di-commit)
+tanpa-login.txt

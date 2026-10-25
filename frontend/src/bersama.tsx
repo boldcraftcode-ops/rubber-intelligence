@@ -37,15 +37,23 @@ export const urlApi = (path: string) => `${API_URL}${path}`;
    pada saat login, disimpan di sini, dan dikirim lewat header Authorization. */
 const KUNCI_TOKEN = "op-margin.token";
 
+/* Salinan di MEMORI. Ini penting: di dalam iframe yang di-sandbox browser juga
+   memblokir localStorage (melempar galat), sehingga token tidak bisa disimpan
+   sama sekali dan setiap permintaan kembali 401. Salinan memori membuat sesi
+   tetap hidup selama halaman belum dimuat ulang. */
+let tokenMemori: string | null = null;
+
 export const tokenSesi = (): string | null => {
+  if (tokenMemori) return tokenMemori;
   try { return localStorage.getItem(KUNCI_TOKEN); } catch { return null; }
 };
 
 export const simpanToken = (token: string | null | undefined) => {
+  tokenMemori = token || null;
   try {
     if (token) localStorage.setItem(KUNCI_TOKEN, token);
     else localStorage.removeItem(KUNCI_TOKEN);
-  } catch { /* localStorage diblokir: cookie masih dipakai */ }
+  } catch { /* localStorage diblokir: salinan memori sudah menyimpan */ }
 };
 
 const kepalaSesi = (): Record<string, string> => {
