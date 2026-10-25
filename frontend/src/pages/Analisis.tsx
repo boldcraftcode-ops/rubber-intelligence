@@ -13,6 +13,132 @@ const WARNA_SERI = ["#1D2434", "#FF1313", "#3B82F6", "#64676C", "#0F766E",
 
 const TAHUN_SEMUA: (number | "")[] = ["", 2020, 2021, 2022, 2023, 2024, 2025, 2026, 2027];
 
+/* Hari terakhir dari sebuah bulan "YYYY-MM" -> "YYYY-MM-DD". */
+const akhirBulan = (ym: string) => {
+  const [y, m] = ym.split("-").map(Number);
+  return `${ym}-${String(new Date(y, m, 0).getDate()).padStart(2, "0")}`;
+};
+
+/* Jumlah bulan yang dicakup rentang "YYYY-MM".."YYYY-MM" (0 bila kosong/tidak sah). */
+const hitungJumlahBulan = (dari: string, sampai: string) => {
+  if (!dari || !sampai) return 0;
+  const [y1, m1] = dari.split("-").map(Number);
+  const [y2, m2] = sampai.split("-").map(Number);
+  if (!y1 || !y2) return 0;
+  const n = (y2 - y1) * 12 + (m2 - m1) + 1;
+  return n > 0 ? n : 0;
+};
+
+/* Pemilih rentang bulan (dipakai kartu yang butuh rincian bulanan). */
+function PilihRentangBulan({ dari, sampai, setDari, setSampai }: any) {
+  return (
+    <div className="flex flex-wrap items-end gap-2 text-xs">
+      <div>
+        <label className="mb-1 block text-[#64676C]">Dari bulan</label>
+        <input type="month" className="rounded-sm border border-[#E4E5E8] bg-white px-2 py-1.5 text-[#1D2434]"
+               value={dari} onChange={(e) => setDari(e.target.value)} />
+      </div>
+      <div>
+        <label className="mb-1 block text-[#64676C]">Sampai bulan</label>
+        <input type="month" className="rounded-sm border border-[#E4E5E8] bg-white px-2 py-1.5 text-[#1D2434]"
+               value={sampai} onChange={(e) => setSampai(e.target.value)} />
+      </div>
+      {(dari || sampai) && (
+        <button className={kelasTombolKecil}
+                onClick={() => { setDari(""); setSampai(""); }}>
+          hapus filter
+        </button>
+      )}
+    </div>
+  );
+}
+
+/* Tabel bulan x dimensi — angka yang sama dengan grafik.
+   Dipakai kartu Tonase & Margin per grade/vendor (kartu Penerimaan punya
+   versi sendiri karena memisahkan grade biasa vs EUDR). */
+export function TabelBulanan({ data, dimensi, nilaiKey, desimal, satuan,
+                        footerNilai, drill }: {
+  data: any;
+  dimensi: string;
+  nilaiKey: string;          // "ton_per_bulan" | "margin_per_bulan"
+  desimal: number;
+  satuan: string;
+  footerNilai?: (number | null)[];   // total per bulan (mis. margin tertimbang)
+  drill?: (b: any) => void;
+}) {
+  const bulan: { ym: string; label: string }[] = data?.bulan ?? [];
+  const seri: any[] = data?.baris ?? [];
+  if (!bulan.length || !seri.length) return null;
+
+  const sel = (v: number | null | undefined) => v === null || v === undefined
+    ? "–"
+    : (v === 0 ? "0" : fmtAngka(v, desimal));
+
+  return (
+    <div className="mt-3 overflow-x-auto">
+      <table className="w-full text-xs" data-uji="tabel-bulanan">
+        <thead>
+          <tr className="border-b text-left text-[#64676C]">
+            <th className="sticky left-0 z-10 bg-white py-1 pr-3">{dimensi}</th>
+            {bulan.map((b) => (
+              <th key={b.ym} className="px-2 py-1 text-right whitespace-nowrap">
+                {b.label}
+              </th>
+            ))}
+            <th className="px-2 py-1 text-right font-semibold whitespace-nowrap">Total</th>
+            <th className="px-2 py-1 text-right whitespace-nowrap">Porsi</th>
+          </tr>
+        </thead>
+        <tbody>
+          {seri.map((b: any, i: number) => (
+            <tr key={b.kunci}
+                className={`border-b border-[#EDEFF2] ${drill && data.drill_berikutnya
+                  ? "cursor-pointer hover:bg-[#FFF1F1]" : ""}`}
+                onClick={() => drill?.(b)}>
+              <td className="sticky left-0 z-10 bg-white py-1 pr-3">
+                <span className="mr-1.5 inline-block h-2 w-2 rounded-sm align-middle"
+                      style={{ background: WARNA_SERI[i % WARNA_SERI.length] }} />
+                {b.label ?? b.kunci}
+              </td>
+              {(b[nilaiKey] ?? []).map((v: number | null, j: number) => (
+                <td key={j} className={`px-2 py-1 text-right font-mono ${
+                  v === 0 || v === null ? "text-[#C9CCD1]" : ""}`}>
+                  {sel(v)}
+                </td>
+              ))}
+              <td className="px-2 py-1 text-right font-mono font-semibold">
+                {sel(b[nilaiKey === "ton_per_bulan" ? "ton" : "op_margin"])}
+              </td>
+              <td className="px-2 py-1 text-right font-mono">
+                {b.porsi !== null && b.porsi !== undefined
+                  ? fmtAngka(b.porsi * 100, 1) + "%" : "–"}
+              </td>
+            </tr>
+          ))}
+          {footerNilai && (
+            <tr className="bg-[#F8F8F8] font-semibold">
+              <td className="sticky left-0 z-10 bg-[#F8F8F8] py-1 pr-3">
+                Total per bulan
+              </td>
+              {footerNilai.map((v, j) => (
+                <td key={j} className="px-2 py-1 text-right font-mono">{sel(v)}</td>
+              ))}
+              <td className="px-2 py-1 text-right font-mono">–</td>
+              <td className="px-2 py-1 text-right font-mono">100%</td>
+            </tr>
+          )}
+        </tbody>
+      </table>
+      <p className="mt-2 text-xs text-[#64676C]">
+        {data.jumlah_bulan} bulan × {seri.length} baris
+        {data.jumlah_dimensi > seri.length
+          ? ` (dari ${data.jumlah_dimensi} ${dimensi}, sisanya digabung)` : ""}
+        {" "}· satuan {satuan} · sel kosong = tidak ada data bulan itu
+      </p>
+    </div>
+  );
+}
+
 function PilihPeriode({ tahun, setTahun, bulan, setBulan }: any) {
   return (
     <div className="flex gap-2 mb-3">
@@ -401,28 +527,48 @@ function KartuPenerimaan() {
 function KartuTonase() {
   const [dimensi, setDimensi] = useState("provinsi");
   const [jejak, setJejak] = useState<{ dim: string; nilai: string }[]>([]);
-  const [tahun, setTahun] = useState<number | "">("");
-  const [bulan, setBulan] = useState<number | "">("");
+  const [dari, setDari] = useState("");
+  const [sampai, setSampai] = useState("");
+  const [topN, setTopN] = useState(8);
+
+  const jumlahBulan = hitungJumlahBulan(dari, sampai);
+  const modeBulan = jumlahBulan > 1;
 
   const params = new URLSearchParams({ dimensi });
-  if (tahun) params.set("tahun", String(tahun));
-  if (bulan) params.set("bulan", String(bulan));
+  if (modeBulan) {
+    params.set("per", "bulan");
+    params.set("top", String(topN));
+  }
+  if (dari) params.set("dari", `${dari}-01`);
+  if (sampai) params.set("sampai", akhirBulan(sampai));
   jejak.forEach((j) => params.set(j.dim, j.nilai));
   const url = `/api/kartu/tonase?${params.toString()}`;
 
   const q = useQuery({ queryKey: ["tonase", url], queryFn: () => ambilJson(url) });
 
   const drill = (baris: any) => {
-    if (!q.data?.drill_berikutnya) return;
+    if (baris?.kunci === "__lainnya__" || !q.data?.drill_berikutnya) return;
     setJejak([...jejak, { dim: dimensi, nilai: baris.kunci }]);
     setDimensi(q.data.drill_berikutnya);
   };
 
   const mulaiUlang = (dim: string) => { setJejak([]); setDimensi(dim); };
 
+  /* grafik bulanan: satu batang per bulan, ditumpuk per dimensi (ton) */
+  const bulan: { ym: string; label: string }[] = q.data?.per === "bulan"
+    ? (q.data.bulan ?? []) : [];
+  const seriBulan: any[] = q.data?.per === "bulan" ? (q.data.baris ?? []) : [];
+  const grafik = bulan.map((b, i) => {
+    const titik: Record<string, any> = { nama: b.label };
+    seriBulan.forEach((r: any) => {
+      titik[r.label ?? r.kunci] = r.ton_per_bulan[i] ?? 0;
+    });
+    return titik;
+  });
+
   return (
     <Kartu idMetrik="tonase" judul="Tonase (drill-down)"
-           keterangan="Ton kering dari tiket. Klik baris wilayah untuk turun: provinsi → kabupaten → kecamatan → desa."
+           keterangan="Ton kering dari tiket. Bila periode lebih dari satu bulan, tampil rincian per bulan sesuai dimensi. Klik baris wilayah untuk turun: provinsi → kabupaten → kecamatan → desa."
            urlEkspor={url}
            anak={
       <>
@@ -436,7 +582,20 @@ function KartuTonase() {
             </button>
           ))}
         </div>
-        <PilihPeriode tahun={tahun} setTahun={setTahun} bulan={bulan} setBulan={setBulan} />
+        <div className="mb-3 flex flex-wrap items-end gap-3">
+          <PilihRentangBulan dari={dari} sampai={sampai}
+                             setDari={setDari} setSampai={setSampai} />
+          {modeBulan && (
+            <label className="flex items-center gap-1.5 text-xs text-[#64676C]">
+              Tampilkan
+              <select className="rounded-sm border border-[#D5D7DB] bg-white px-1.5 py-1"
+                      value={topN} onChange={(e) => setTopN(Number(e.target.value))}>
+                {[5, 8, 12, 20].map((n) => <option key={n} value={n}>{n}</option>)}
+              </select>
+              {dimensi} terbesar
+            </label>
+          )}
+        </div>
         {jejak.length > 0 && (
           <p className="mb-2 text-xs text-[#64676C]">
             Jejak: {jejak.map((j) => `${j.dim} = ${j.nilai}`).join(" → ")} →{" "}
@@ -446,37 +605,70 @@ function KartuTonase() {
             </button>
           </p>
         )}
-        <table className="w-full text-xs">
-          <thead>
-            <tr className="text-left text-[#64676C] border-b">
-              <th className="py-1">{dimensi}</th><th className="text-right">Ton kering</th>
-              <th className="text-right">Porsi</th><th className="text-right">Tiket</th>
-            </tr>
-          </thead>
-          <tbody>
-            {q.data?.baris.map((b: any) => (
-              <tr key={b.kunci}
-                  className={`border-b border-[#EDEFF2] ${q.data.drill_berikutnya
-                    ? "cursor-pointer hover:bg-[#FFF1F1]" : ""}`}
-                  onClick={() => drill(b)}>
-                <td className="py-1">{b.label}</td>
-                <td className="text-right font-mono">{fmtAngka(b.ton, 3)}</td>
-                <td className="text-right font-mono">
-                  {b.porsi !== null ? fmtAngka(b.porsi * 100, 1) + "%" : "–"}
-                </td>
-                <td className="text-right font-mono">{b.jumlah_tiket}</td>
-              </tr>
-            ))}
-            {q.data?.baris.length === 0 && (
-              <tr><td colSpan={4} className="py-2 text-[#64676C]">
-                Tidak ada data tiket untuk filter ini.</td></tr>
+
+        {modeBulan ? (
+          bulan.length > 0 && seriBulan.length > 0 ? (
+            <>
+              <div style={{ height: Math.max(220, 40 + seriBulan.length * 6 + 160) }}>
+                <ResponsiveContainer>
+                  <BarChart data={grafik} margin={{ top: 5, right: 20, bottom: 5, left: 10 }}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="nama" fontSize={10} />
+                    <YAxis fontSize={10} tickFormatter={(v) => fmtAngka(v as number, 1)} />
+                    <Tooltip formatter={(v: any, nama: any) =>
+                      [fmtAngka(v as number, 1) + " ton", nama]} />
+                    <Legend wrapperStyle={{ fontSize: 11 }} />
+                    {seriBulan.map((r: any, i: number) => (
+                      <Bar key={r.kunci} dataKey={r.label ?? r.kunci} stackId="ton"
+                           fill={WARNA_SERI[i % WARNA_SERI.length]} />
+                    ))}
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+              <TabelBulanan data={q.data} dimensi={dimensi} nilaiKey="ton_per_bulan"
+                            desimal={3} satuan="ton kering"
+                            footerNilai={q.data.total_per_bulan} drill={drill} />
+            </>
+          ) : (
+            <p className="rounded-sm border border-[#E4E5E8] bg-[#F8F8F8] px-3 py-4 text-sm text-[#64676C]">
+              Tidak ada data tiket untuk filter ini.
+            </p>
+          )
+        ) : (
+          <>
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="text-left text-[#64676C] border-b">
+                  <th className="py-1">{dimensi}</th><th className="text-right">Ton kering</th>
+                  <th className="text-right">Porsi</th><th className="text-right">Tiket</th>
+                </tr>
+              </thead>
+              <tbody>
+                {q.data?.baris.map((b: any) => (
+                  <tr key={b.kunci}
+                      className={`border-b border-[#EDEFF2] ${q.data.drill_berikutnya
+                        ? "cursor-pointer hover:bg-[#FFF1F1]" : ""}`}
+                      onClick={() => drill(b)}>
+                    <td className="py-1">{b.label}</td>
+                    <td className="text-right font-mono">{fmtAngka(b.ton, 3)}</td>
+                    <td className="text-right font-mono">
+                      {b.porsi !== null ? fmtAngka(b.porsi * 100, 1) + "%" : "–"}
+                    </td>
+                    <td className="text-right font-mono">{b.jumlah_tiket}</td>
+                  </tr>
+                ))}
+                {q.data?.baris.length === 0 && (
+                  <tr><td colSpan={4} className="py-2 text-[#64676C]">
+                    Tidak ada data tiket untuk filter ini.</td></tr>
+                )}
+              </tbody>
+            </table>
+            {q.data && (
+              <p className="mt-2 text-xs text-[#64676C]">
+                Total: <b>{fmtAngka(q.data.total_ton, 3)}</b> ton kering · sumber {q.data.sumber}
+              </p>
             )}
-          </tbody>
-        </table>
-        {q.data && (
-          <p className="mt-2 text-xs text-[#64676C]">
-            Total: <b>{fmtAngka(q.data.total_ton, 3)}</b> ton kering · sumber {q.data.sumber}
-          </p>
+          </>
         )}
       </>
     } />
@@ -676,32 +868,103 @@ function KartuMarginHarian() {
 /* ---------- margin per grade / vendor ---------- */
 function KartuMarginPer() {
   const [dimensi, setDimensi] = useState<"grade" | "vendor">("grade");
-  const [tahun, setTahun] = useState<number>(2026);
-  const url = `/api/kartu/margin-per?dimensi=${dimensi}&tahun=${tahun}`;
+  const [dari, setDari] = useState("");
+  const [sampai, setSampai] = useState("");
+  const [topN, setTopN] = useState(8);
+
+  const jumlahBulan = hitungJumlahBulan(dari, sampai);
+  const modeBulan = jumlahBulan > 1;
+
+  const params = new URLSearchParams({ dimensi });
+  if (modeBulan) {
+    params.set("per", "bulan");
+    params.set("top", String(topN));
+  }
+  if (dari) params.set("dari", `${dari}-01`);
+  if (sampai) params.set("sampai", akhirBulan(sampai));
+  const url = `/api/kartu/margin-per?${params.toString()}`;
+
   const q = useQuery({ queryKey: ["margin-per", url], queryFn: () => ambilJson(url) });
+
+  /* Margin adalah TINGKAT (US¢/kg) — batang dikelompokkan, tidak ditumpuk. */
+  const bulan: { ym: string; label: string }[] = q.data?.per === "bulan"
+    ? (q.data.bulan ?? []) : [];
+  const seriBulan: any[] = q.data?.per === "bulan" ? (q.data.baris ?? []) : [];
+  const grafik = bulan.map((b, i) => {
+    const titik: Record<string, any> = { nama: b.label };
+    seriBulan.forEach((r: any) => {
+      titik[r.label ?? r.kunci] = r.margin_per_bulan[i];
+    });
+    return titik;
+  });
 
   return (
     <Kartu idMetrik="margin_per" judul="Margin per grade / vendor"
+           keterangan="Margin US¢/kg tertimbang tonase kering. Bila periode lebih dari satu bulan, tampil rincian per bulan; total per bulan memakai timbangan tonase, bukan penjumlahan margin."
            urlEkspor={q.data?.status === "ok" ? url : undefined}
            anak={
       <>
-        <div className="flex gap-2 mb-3">
+        <div className="mb-3 flex flex-wrap items-center gap-3">
           {(["grade", "vendor"] as const).map((d) => (
             <button key={d}
               className={`rounded-sm px-3 py-1 text-xs ${dimensi === d
                 ? "bg-[#FF1313] text-white" : "bg-[#F1F2F4] text-[#1D2434]"}`}
               onClick={() => setDimensi(d)}>per {d}</button>
           ))}
-          <select className={kelasInput + " max-w-32"} value={tahun}
-                  onChange={(e) => setTahun(Number(e.target.value))}>
-            {[2020, 2021, 2022, 2023, 2024, 2025, 2026].map((t) => (
-              <option key={t} value={t}>{t}</option>))}
-          </select>
+          <PilihRentangBulan dari={dari} sampai={sampai}
+                             setDari={setDari} setSampai={setSampai} />
+          {modeBulan && (
+            <label className="flex items-center gap-1.5 text-xs text-[#64676C]">
+              Tampilkan
+              <select className="rounded-sm border border-[#D5D7DB] bg-white px-1.5 py-1"
+                      value={topN} onChange={(e) => setTopN(Number(e.target.value))}>
+                {[5, 8, 12, 20].map((n) => <option key={n} value={n}>{n}</option>)}
+              </select>
+              {dimensi} terbesar
+            </label>
+          )}
         </div>
+
         {q.data?.status === "data harga belum tersedia" ? (
           <p className="rounded-sm bg-[#F8F8F8] border border-[#E4E5E8] px-3 py-4 text-sm text-[#1D2434]">
             <b>Data harga belum tersedia.</b> {q.data.pesan}
           </p>
+        ) : modeBulan ? (
+          bulan.length > 0 && seriBulan.length > 0 ? (
+            <>
+              <div style={{ height: Math.max(220, 40 + seriBulan.length * 8 + 150) }}>
+                <ResponsiveContainer>
+                  <BarChart data={grafik} margin={{ top: 5, right: 20, bottom: 5, left: 10 }}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="nama" fontSize={10} />
+                    <YAxis fontSize={10} tickFormatter={(v) => fmtAngka(v as number, 1)} />
+                    <Tooltip formatter={(v: any, nama: any) =>
+                      [v === null || v === undefined ? "–" : fmtAngka(v as number, 2) + " US¢/kg", nama]} />
+                    <Legend wrapperStyle={{ fontSize: 11 }} />
+                    {seriBulan.map((r: any, i: number) => (
+                      <Bar key={r.kunci} dataKey={r.label ?? r.kunci}
+                           fill={WARNA_SERI[i % WARNA_SERI.length]} />
+                    ))}
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+              <TabelBulanan data={q.data} dimensi={dimensi} nilaiKey="margin_per_bulan"
+                            desimal={2} satuan="US¢/kg"
+                            footerNilai={q.data.total_per_bulan?.op_margin} />
+              <p className="mt-2 text-xs text-[#64676C]">
+                Ton per bulan:{" "}
+                {(q.data.total_per_bulan?.ton ?? []).map((t: number, i: number) => (
+                  <span key={i} className="mr-2 font-mono">
+                    {bulan[i]?.label} {fmtAngka(t, 1)} t
+                  </span>
+                ))}
+              </p>
+            </>
+          ) : (
+            <p className="rounded-sm border border-[#E4E5E8] bg-[#F8F8F8] px-3 py-4 text-sm text-[#64676C]">
+              Tidak ada data harga rinci untuk filter ini.
+            </p>
+          )
         ) : (
           <table className="w-full text-xs">
             <thead>

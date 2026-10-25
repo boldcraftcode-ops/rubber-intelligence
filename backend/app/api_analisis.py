@@ -130,6 +130,24 @@ def _bulan_berurutan(awal: tuple[int, int], akhir: tuple[int, int]) -> list[tupl
     return hasil
 
 
+def _daftar_bulan(dari: dt.date | None, sampai: dt.date | None,
+                 berdata: list[tuple[int, int]], maks: int = 24) -> list[tuple[int, int]]:
+    """Sumbu bulan untuk rincian bulanan.
+
+    Mengikuti periode filter (bukan data), supaya mengganti filter lain tidak
+    menggeser sumbu dan membandingkan bulan jadi menyesatkan. Bila rentangnya
+    lebih panjang dari `maks` bulan, dipotong ke rentang bulan berdata.
+    """
+    if dari and sampai and (dari.year, dari.month) <= (sampai.year, sampai.month):
+        bulan = _bulan_berurutan((dari.year, dari.month), (sampai.year, sampai.month))
+        if len(bulan) > maks and berdata:
+            bulan = [b for b in bulan if berdata[0] <= b <= berdata[-1]]
+        return bulan
+    if berdata:
+        return _bulan_berurutan(berdata[0], berdata[-1])
+    return []
+
+
 def _label_bulan_singkat(th: int, bl: int) -> str:
     return f"{NAMA_BULAN_SINGKAT[bl]}-{str(th)[2:]}"
 
@@ -260,6 +278,192 @@ def _penerimaan_per_bulan(potongan: list[tuple], dimensi: str,
                         + [round(sum(total_per_bulan), 1), None])
         return respon_xlsx(f"penerimaan_per_{dimensi}_per_bulan.xlsx",
                            judul, isi_xlsx)
+    return hasil
+
+
+def _margin_per_bulan(rinci: list, dimensi: str, kurs_cari, sicom_cari,
+                      awal: dt.date, akhir: dt.date, top: int,
+                      format: str | None) -> dict:
+    """Bentuk jawaban `per=bulan` untuk kartu Margin per grade/vendor.
+
+    Margin adalah TINGKAT (US¢/kg), bukan jumlah — jadi tidak boleh dijumlahkan
+    antar dimensi. Untuk total per bulan dipakai agregat tertimbang tonase
+    seluruh data bulan itu (rumus yang sama dengan mart bulanan).
+    """
+    berdata = sorted({(p.tanggal.year, p.tanggal.month) for p in rinci})
+    bulan = _daftar_bulan(awal, akhir, berdata)
+    indeks = {b: i for i, b in enumerate(bulan)}
+    label_bulan = [_label_bulan_singkat(th, bl) for th, bl in bulan]
+    n = len(bulan)
+
+    per_kunci: dict[str, dict] = defaultdict(
+        lambda: {"harian": [[] for _ in range(n)]})
+    semua_bulan: list[list] = [[] for _ in range(n)]
+    tiket_bulan: list[set] = [set() for _ in range(n)]
+    for p in rinci:
+        k = kurs_cari.pada(p.tanggal)
+        s = sicom_cari.pada(p.tanggal)
+        if not k or not s:
+            continue
+        i = indeks.get((p.tanggal.year, p.tanggal.month))
+        if i is None:
+            continue
+        baris_h = rumus.BarisHarian(float(p.qty_kering_kg), float(p.amount_rp),
+                                   float(k.idr_per_usd), s.usc_per_kg)
+        kunci = p.item_code if dimensi == "grade" else p.kode_vendor
+        per_kunci[kunci]["harian"][i].append(baris_h)
+        semua_bulan[i].append(baris_h)
+
+    def ton_dari(data: list) -> float:
+        return sum(x.qty_kg for x in data) / 1000.0
+
+    def margin_dari(data: list) -> float | None:
+        if not data:
+            return None
+        return rumus.agregat_bulanan(data).op_margin_usc
+
+    keluar: list[dict] = []
+    urut = sorted(per_kunci.items(),
+                  key=lambda kv: -sum(ton_dari(d) for d in kv[1]["harian"]))
+    total_ton = sum(ton_dari(d) for _k, a in urut for d in a["harian"])
+
+    for kunci, a in urut[:top]:
+        ton_baris = [round(ton_dari(d), 3) for d in a["harian"]]
+        keluar.append({
+            "kunci": kunci,
+            "ton_per_bulan": ton_baris,
+            "margin_per_bulan": [
+                (round(m, 4) if (m := margin_dari(d)) is not None else None)
+                for d in a["harian"]],
+            "ton": round(sum(ton_baris), 3),
+            "porsi": round(sum(ton_baris) / total_ton, 4) if total_ton else None,
+            "op_margin": margin_dari([x for d in a["harian"] for x in d]),
+        })
+
+    if len(urut) > top:
+        sisa = urut[top:]
+        gab = [[] for _ in range(n)]
+        for _k, a in sisa:
+            for i in range(n):
+                gab[i].extend(a["harian"][i])
+        ton_baris = [round(ton_dari(d), 3) for d in gab]
+        keluar.append({
+            "kunci": "__lainnya__",
+            "label": f"Lainnya ({len(sisa)} {dimensi})",
+            "ton_per_bulan": ton_baris,
+            "margin_per_bulan": [
+                (round(m, 4) if (m := margin_dari(d)) is not None else None)
+                for d in gab],
+            "ton": round(sum(ton_baris), 3),
+            "porsi": round(sum(ton_baris) / total_ton, 4) if total_ton else None,
+            "op_margin": margin_dari([x for d in gab for x in d]),
+            "gabungan": True,
+        })
+
+    total_per_bulan = {
+        "ton": [round(ton_dari(d), 3) for d in semua_bulan],
+        "op_margin": [
+            (round(m, 4) if (m := margin_dari(d)) is not None else None)
+            for d in semua_bulan],
+    }
+    hasil = {
+        "status": "ok", "dimensi": dimensi, "per": "bulan", "top": top,
+        "bulan": [{"ym": f"{th}-{bl:02d}", "label": lb}
+                  for (th, bl), lb in zip(bulan, label_bulan)],
+        "jumlah_bulan": n,
+        "baris": keluar,
+        "total_per_bulan": total_per_bulan,
+        "jumlah_dimensi": len(urut),
+        "sumber": "pembelian rinci (bukan total harian) — margin US¢/kg "
+                  "tertimbang tonase kering",
+    }
+    if format == "xlsx":
+        judul = [dimensi] + [f"Margin {lb}" for lb in label_bulan] + ["Margin total"]
+        isi_xlsx = [[b.get("label", b["kunci"])] + b["margin_per_bulan"]
+                    + [b["op_margin"]] for b in keluar]
+        return respon_xlsx(f"margin_per_{dimensi}_per_bulan.xlsx", judul, isi_xlsx)
+    return hasil
+
+
+def _tonase_per_bulan(potongan: list[tuple], dimensi: str,
+                      dari: dt.date | None, sampai: dt.date | None,
+                      top: int, format: str | None,
+                      session: Session) -> dict:
+    """Bentuk jawaban `per=bulan` untuk kartu Tonase: bulan x dimensi (ton)."""
+    berdata = sorted({b for _k, b, _t, _n in potongan if b})
+    bulan = _daftar_bulan(dari, sampai, berdata)
+    indeks = {b: i for i, b in enumerate(bulan)}
+    label_bulan = [_label_bulan_singkat(th, bl) for th, bl in bulan]
+
+    isi: dict[str, dict] = defaultdict(lambda: {"ton": [0.0] * len(bulan),
+                                                "tiket": set()})
+    for kunci, bln, ton, no_tiket in potongan:
+        i = indeks.get(bln)
+        if i is None:
+            continue
+        isi[kunci]["ton"][i] += ton
+        isi[kunci]["tiket"].add(no_tiket)
+
+    total_ton = sum(sum(a["ton"]) for a in isi.values())
+    urut = sorted(isi.items(), key=lambda kv: -sum(kv[1]["ton"]))
+    nama_vendor = {v.kode: v.nama_baku for v in session.scalars(select(Vendor))} \
+        if dimensi == "vendor" else {}
+
+    baris_keluar: list[dict] = []
+    for kunci, a in urut[:top]:
+        baris_keluar.append({
+            "kunci": kunci,
+            "label": f"{kunci} — {nama_vendor[kunci]}" if kunci in nama_vendor else kunci,
+            "ton_per_bulan": [round(x, 3) for x in a["ton"]],
+            "ton": round(sum(a["ton"]), 3),
+            "porsi": round(sum(a["ton"]) / total_ton, 4) if total_ton else None,
+            "jumlah_tiket": len(a["tiket"]),
+        })
+
+    if len(urut) > top:
+        sisa = urut[top:]
+        gab = [0.0] * len(bulan)
+        tiket = set()
+        for _k, a in sisa:
+            for i in range(len(bulan)):
+                gab[i] += a["ton"][i]
+            tiket |= a["tiket"]
+        baris_keluar.append({
+            "kunci": "__lainnya__",
+            "label": f"Lainnya ({len(sisa)} {dimensi})",
+            "ton_per_bulan": [round(x, 3) for x in gab],
+            "ton": round(sum(gab), 3),
+            "porsi": round(sum(gab) / total_ton, 4) if total_ton else None,
+            "jumlah_tiket": len(tiket),
+            "gabungan": True,
+        })
+
+    total_per_bulan = [round(sum(b["ton_per_bulan"][i] for b in baris_keluar), 3)
+                       for i in range(len(bulan))]
+    drill = None
+    if dimensi in URUTAN_WILAYAH[:-1]:
+        drill = URUTAN_WILAYAH[URUTAN_WILAYAH.index(dimensi) + 1]
+
+    hasil = {
+        "dimensi": dimensi, "per": "bulan", "top": top,
+        "drill_berikutnya": drill,
+        "bulan": [{"ym": f"{th}-{bl:02d}", "label": lb}
+                  for (th, bl), lb in zip(bulan, label_bulan)],
+        "jumlah_bulan": len(bulan),
+        "baris": baris_keluar,
+        "total_per_bulan": total_per_bulan,
+        "total_ton": round(total_ton, 3),
+        "total_tiket": len({n for _k, _b, _t, n in potongan}),
+        "jumlah_dimensi": len(urut),
+        "sumber": "tiket_baris (Dry, tanpa tiket nol)",
+    }
+    if format == "xlsx":
+        judul = [dimensi] + label_bulan + ["Total ton", "Porsi"]
+        isi_xlsx = [[b["label"]] + b["ton_per_bulan"] + [b["ton"], b["porsi"]]
+                    for b in baris_keluar]
+        isi_xlsx.append(["TOTAL"] + total_per_bulan
+                        + [round(sum(total_per_bulan), 3), None])
+        return respon_xlsx(f"tonase_per_{dimensi}_per_bulan.xlsx", judul, isi_xlsx)
     return hasil
 
 
@@ -1100,17 +1304,42 @@ def pasang_router(app, ambil_session):
     @router.get("/kartu/tonase")
     def kartu_tonase(dimensi: str = "provinsi",
                      tahun: int | None = None, bulan: int | None = None,
+                     dari: dt.date | None = None, sampai: dt.date | None = None,
                      vendor: str | None = None, grade: str | None = None,
                      eudr: bool | None = None,
                      provinsi: str | None = None, kabupaten: str | None = None,
                      kecamatan: str | None = None, desa: str | None = None,
+                     per: str = "dimensi", top: int = 8,
                      format: str | None = None, session: Session = dep):
+        """Tonase kering per dimensi. `per=bulan` -> rincian bulan x dimensi
+        (dipakai bila filter periode lebih dari satu bulan)."""
         if dimensi not in DIMENSI_TONASE:
             raise HTTPException(422, f"Dimensi '{dimensi}' tidak dikenal. "
                                      f"Pilihan: {', '.join(DIMENSI_TONASE)}.")
+        if per not in ("dimensi", "bulan"):
+            raise HTTPException(422, "Parameter per hanya boleh \"dimensi\" "
+                                     "atau \"bulan\".")
+        if not 1 <= top <= 40:
+            raise HTTPException(422, "Parameter top harus antara 1 dan 40.")
         q = _filter_tiket(select(TiketBaris), tahun, bulan, vendor, grade, eudr,
                           provinsi, kabupaten, kecamatan, desa, session=session)
+        if dari:
+            q = q.where(TiketBaris.ticket_date >= dari)
+        if sampai:
+            q = q.where(TiketBaris.ticket_date <= sampai)
         kolom = {"vendor": "kode_vendor", "grade": "item_code"}.get(dimensi, dimensi)
+
+        if per == "bulan":
+            potongan: list[tuple[str, tuple[int, int] | None, float, str]] = []
+            for t in session.scalars(q):
+                potongan.append((
+                    getattr(t, kolom) or "(kosong)",
+                    (t.ticket_date.year, t.ticket_date.month) if t.ticket_date else None,
+                    float(t.dry_kg or 0) / 1000.0,
+                    t.ticket_no))
+            return _tonase_per_bulan(potongan, dimensi, dari, sampai, top,
+                                     format, session)
+
         agreg: dict[str, dict] = defaultdict(lambda: {"ton": 0.0, "tiket": set()})
         for t in session.scalars(q):
             kunci = getattr(t, kolom) or "(kosong)"
@@ -1399,11 +1628,37 @@ def pasang_router(app, ambil_session):
 
     # ------------------------------------------------------------ kartu: margin per grade/vendor
     @router.get("/kartu/margin-per")
-    def kartu_margin_per(dimensi: str, tahun: int, bulan: int | None = None,
+    def kartu_margin_per(dimensi: str, tahun: int | None = None,
+                         bulan: int | None = None,
+                         dari: dt.date | None = None, sampai: dt.date | None = None,
+                         per: str = "dimensi", top: int = 8,
                          format: str | None = None, session: Session = dep):
+        """Margin per grade/vendor.
+
+        `per=bulan` -> rincian bulan x dimensi (margin US¢/kg + ton), dipakai
+        bila filter periode lebih dari satu bulan. Tanpa `per=bulan` bentuk
+        jawaban lama tidak berubah.
+        """
         if dimensi not in ("grade", "vendor"):
             raise HTTPException(422, "Dimensi hanya boleh 'grade' atau 'vendor'.")
-        awal, akhir = _rentang(tahun, bulan)
+        if per not in ("dimensi", "bulan"):
+            raise HTTPException(422, "Parameter per hanya boleh \"dimensi\" "
+                                     "atau \"bulan\".")
+        if not 1 <= top <= 40:
+            raise HTTPException(422, "Parameter top harus antara 1 dan 40.")
+        if dari or sampai:
+            awal = dari or sampai
+            akhir = sampai or dari
+            if awal > akhir:
+                raise HTTPException(422, "Tanggal 'dari' harus sebelum 'sampai'.")
+        else:
+            if tahun is None:
+                # Tanpa tahun: pakai tahun terakhir yang ada datanya.
+                akhir_p = session.scalars(select(Pembelian)
+                                          .order_by(Pembelian.tanggal.desc())
+                                          .limit(1)).first()
+                tahun = akhir_p.tanggal.year if akhir_p else dt.date.today().year
+            awal, akhir = _rentang(tahun, bulan)
         q = select(Pembelian).where(Pembelian.tanggal >= awal, Pembelian.tanggal <= akhir)
         semua = list(session.scalars(q))
         if dimensi == "grade":
@@ -1428,6 +1683,10 @@ def pasang_router(app, ambil_session):
             grup[kunci].append(rumus.BarisHarian(
                 float(p.qty_kering_kg), float(p.amount_rp),
                 float(k.idr_per_usd), s.usc_per_kg))
+        if per == "bulan":
+            return _margin_per_bulan(rinci, dimensi, kurs_cari, sicom_cari,
+                                     awal, akhir, top, format)
+
         baris = []
         for kunci, data in sorted(grup.items()):
             h = rumus.agregat_bulanan(data)
