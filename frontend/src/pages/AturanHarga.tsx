@@ -17,10 +17,10 @@ function KartuRekomendasi() {
            keterangan="Dihitung di level rata-rata semua grade — selisih antar grade belum ditetapkan [TERBUKA]."
            anak={
       !r ? null : r.status !== "OK" ? (
-        <p className={`rounded-md px-3 py-4 text-sm font-semibold ${
+        <p className={`rounded-sm px-3 py-4 text-sm font-semibold ${
           r.status === "ATURAN BELUM DIISI"
-            ? "bg-red-500/10 text-red-300 border border-red-400/30"
-            : "bg-amber-400/10 text-amber-300 border border-amber-400/30"}`}>
+            ? "bg-[#FEF2F2] text-[#B91C1C] border border-[#FECACA]"
+            : "bg-[#FFFBEB] text-[#B45309] border border-[#FDE68A]"}`}>
           {r.status}
           {r.alasan.map((a: string, i: number) => (
             <span key={i} className="block font-normal mt-1">{a}</span>
@@ -38,18 +38,18 @@ function KartuRekomendasi() {
                  ? fmtAngka(r.harga_beli_maks_usc - r.harga_beli_aktual_terakhir_usc)
                  : "–"],
             ].map(([label, nilai]) => (
-              <div key={label as string} className="rounded-lg border border-violet-500/20 bg-white/5 p-3">
-                <p className="text-xs text-slate-400">{label}</p>
-                <p className="font-semibold text-slate-100">{nilai}</p>
+              <div key={label as string} className="rounded-sm border border-[#E4E5E8] bg-[#F8F8F8] p-3">
+                <p className="text-xs text-[#64676C]">{label}</p>
+                <p className="font-semibold text-[#1D2434]">{nilai}</p>
               </div>
             ))}
           </div>
-          <p className="text-xs font-semibold text-slate-300 mb-1">Alasan (selalu ditampilkan):</p>
-          <ul className="list-disc pl-5 text-xs text-slate-300">
+          <p className="text-xs font-semibold text-[#1D2434] mb-1">Alasan (selalu ditampilkan):</p>
+          <ul className="list-disc pl-5 text-xs text-[#1D2434]">
             {r.alasan.map((a: string, i: number) => <li key={i}>{a}</li>)}
           </ul>
           {r.aturan_contoh && (
-            <p className="mt-2 rounded-md bg-red-500/10 border border-red-400/30 px-3 py-2 text-xs text-red-300">
+            <p className="mt-2 rounded-sm bg-[#FEF2F2] border border-[#FECACA] px-3 py-2 text-xs text-[#B91C1C]">
               Aturan yang berlaku masih CONTOH dari template — buat versi resmi di bawah.
             </p>
           )}
@@ -100,19 +100,19 @@ function KartuAturan() {
            anak={
       <>
         {q.data?.kosong && (
-          <p className="mb-3 rounded-md bg-red-500/10 border border-red-400/30 px-3 py-2 text-sm font-semibold text-red-300">
+          <p className="mb-3 rounded-sm bg-[#FEF2F2] border border-[#FECACA] px-3 py-2 text-sm font-semibold text-[#B91C1C]">
             ATURAN BELUM DIISI
           </p>
         )}
         {q.data?.versi.map((v: any) => (
-          <div key={v.berlaku_dari} className="mb-3 rounded-lg border border-violet-500/20 p-3">
-            <p className="text-sm font-semibold text-slate-200">
+          <div key={v.berlaku_dari} className="mb-3 rounded-sm border border-[#E4E5E8] p-3">
+            <p className="text-sm font-semibold text-[#1D2434]">
               Berlaku sejak {fmtTanggal(v.berlaku_dari)}
-              {v.contoh && <span className="ml-2 rounded bg-red-500/20 text-red-400 px-1.5 py-0.5 text-xs">CONTOH</span>}
+              {v.contoh && <span className="ml-2 rounded bg-[#FEE2E2] text-[#DC2626] px-1.5 py-0.5 text-xs">CONTOH</span>}
             </p>
             <table className="mt-1 w-full text-xs">
               <thead>
-                <tr className="text-left text-slate-400 border-b">
+                <tr className="text-left text-[#64676C] border-b">
                   <th className="py-1">Rasio ≥</th><th>Rasio &lt;</th>
                   <th className="text-right">Penyesuaian US¢/kg</th><th className="pl-3">Keterangan</th>
                   <th>Oleh</th>
@@ -120,12 +120,12 @@ function KartuAturan() {
               </thead>
               <tbody>
                 {v.baris.map((b: any, i: number) => (
-                  <tr key={i} className="border-b border-white/5">
+                  <tr key={i} className="border-b border-[#EDEFF2]">
                     <td className="py-1 font-mono">{b.batas_bawah ?? "–∞"}</td>
                     <td className="font-mono">{b.batas_atas ?? "∞"}</td>
                     <td className="text-right font-mono">{fmtAngka(b.penyesuaian_usc, 2)}</td>
-                    <td className="pl-3 text-slate-400">{b.keterangan ?? "-"}</td>
-                    <td className="text-slate-500">{b.dibuat_oleh}</td>
+                    <td className="pl-3 text-[#64676C]">{b.keterangan ?? "-"}</td>
+                    <td className="text-[#64676C]">{b.dibuat_oleh}</td>
                   </tr>
                 ))}
               </tbody>
@@ -133,7 +133,7 @@ function KartuAturan() {
           </div>
         ))}
 
-        <h3 className="mt-4 mb-2 text-sm font-semibold text-slate-200">Buat versi baru</h3>
+        <h3 className="mt-4 mb-2 text-sm font-semibold text-[#1D2434]">Buat versi baru</h3>
         <div className="grid sm:grid-cols-2 gap-3 mb-2">
           <div>
             <label className={kelasLabel}>Berlaku sejak</label>
@@ -175,7 +175,7 @@ function KartuAturan() {
           </button>
         </div>
         {info && <Pesan jenis={info.jenis} teks={info.teks} />}
-        <p className="mt-2 text-xs text-slate-500">
+        <p className="mt-2 text-xs text-[#64676C]">
           Versi lama tidak dihapus: tanggal sebelum "berlaku sejak" tetap memakai versi lama,
           jadi hasil historis tidak berubah. Semua perubahan tercatat di audit log di bawah.
         </p>
@@ -215,7 +215,7 @@ function KartuParameter() {
       <>
         <table className="w-full text-xs mb-3">
           <thead>
-            <tr className="text-left text-slate-400 border-b">
+            <tr className="text-left text-[#64676C] border-b">
               <th className="py-1">Berlaku sejak</th><th className="text-right">Kapasitas ton/hari</th>
               <th className="text-right">Safety ton</th><th className="text-right">Safety hari</th>
               <th className="pl-3">Catatan</th>
@@ -223,12 +223,12 @@ function KartuParameter() {
           </thead>
           <tbody>
             {q.data?.map((p: any) => (
-              <tr key={p.berlaku_dari} className="border-b border-white/5">
+              <tr key={p.berlaku_dari} className="border-b border-[#EDEFF2]">
                 <td className="py-1">{fmtTanggal(p.berlaku_dari)}</td>
                 <td className="text-right font-mono">{fmtAngka(p.kapasitas_ton_per_hari, 2)}</td>
                 <td className="text-right font-mono">{p.safety_stock_ton !== null ? fmtAngka(p.safety_stock_ton, 1) : "–"}</td>
                 <td className="text-right font-mono">{p.safety_stock_hari !== null ? fmtAngka(p.safety_stock_hari, 0) : "–"}</td>
-                <td className="pl-3 text-slate-400">{p.catatan ?? "-"}</td>
+                <td className="pl-3 text-[#64676C]">{p.catatan ?? "-"}</td>
               </tr>
             ))}
           </tbody>
@@ -267,11 +267,11 @@ function KartuAudit() {
            keterangan="Siapa mengubah aturan/parameter/perencanaan/alarm, kapan, dan apa isinya."
            anak={
       <div className="max-h-72 overflow-y-auto">
-        {q.data?.length === 0 && <p className="text-sm text-slate-500">Belum ada perubahan.</p>}
+        {q.data?.length === 0 && <p className="text-sm text-[#64676C]">Belum ada perubahan.</p>}
         {q.data?.map((a: any, i: number) => (
-          <div key={i} className="mb-2 rounded-md border border-violet-500/20 p-2 text-xs">
+          <div key={i} className="mb-2 rounded-sm border border-[#E4E5E8] p-2 text-xs">
             <b>{a.objek}</b> — {a.aksi} oleh <b>{a.siapa}</b> · {a.waktu.replace("T", " ")} UTC
-            <pre className="mt-1 whitespace-pre-wrap text-slate-400">
+            <pre className="mt-1 whitespace-pre-wrap text-[#64676C]">
               {JSON.stringify(a.detail, null, 1)}
             </pre>
           </div>

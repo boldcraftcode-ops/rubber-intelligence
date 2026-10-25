@@ -28,14 +28,14 @@ export default function Stok() {
               ["Status", t.status],
             ].map(([label, nilai]) => (
               <div key={label as string}
-                   className={`rounded-lg border p-3 ${label === "Status" && t.status === "di bawah safety"
-                     ? "border-red-400/40 bg-red-500/10" : "border-violet-500/20 bg-white/5"}`}>
-                <p className="text-xs text-slate-400">{label}</p>
-                <p className="font-semibold text-slate-100">{nilai}</p>
+                   className={`rounded-sm border p-3 ${label === "Status" && t.status === "di bawah safety"
+                     ? "border-[#FECACA] bg-[#FEF2F2]" : "border-[#E4E5E8] bg-[#F8F8F8]"}`}>
+                <p className="text-xs text-[#64676C]">{label}</p>
+                <p className="font-semibold text-[#1D2434]">{nilai}</p>
               </div>
             ))}
           </div>
-        ) : <p className="text-sm text-slate-500">Belum ada data stok.</p>
+        ) : <p className="text-sm text-[#64676C]">Belum ada data stok.</p>
       } />
 
       <Kartu idMetrik="stok" judul="Grafik stok vs safety stock"
@@ -51,8 +51,8 @@ export default function Stok() {
               <Tooltip formatter={(v: any) => fmtAngka(v as number, 1) + " ton"}
                        labelFormatter={(l) => fmtTanggal(l as string)} />
               <Legend />
-              <Line dataKey="stok" name="Stok (ton)" stroke="#818cf8" dot={false} />
-              <Line dataKey="safety" name="Safety stock (ton)" stroke="#fb7185"
+              <Line dataKey="stok" name="Stok (ton)" stroke="#1D2434" dot={false} />
+              <Line dataKey="safety" name="Safety stock (ton)" stroke="#FF1313"
                     dot={false} strokeDasharray="6 3" />
             </LineChart>
           </ResponsiveContainer>
@@ -63,8 +63,8 @@ export default function Stok() {
              keterangan="Rasio stok < 100% safety stock."
              anak={
         <>
-          <p className="text-sm text-slate-300 mb-2">
-            <b className={diBawah.length ? "text-red-400" : "text-emerald-400"}>
+          <p className="text-sm text-[#1D2434] mb-2">
+            <b className={diBawah.length ? "text-[#DC2626]" : "text-[#15803D]"}>
               {diBawah.length}
             </b>{" "}
             dari {q.data?.jumlah_hari ?? 0} hari berdata.
@@ -73,7 +73,7 @@ export default function Stok() {
             <div className="max-h-60 overflow-y-auto">
               <table className="w-full text-xs">
                 <thead>
-                  <tr className="text-left text-slate-400 border-b">
+                  <tr className="text-left text-[#64676C] border-b">
                     <th className="py-1">Tanggal</th><th className="text-right">Stok ton</th>
                     <th className="text-right">Safety ton</th><th className="text-right">Rasio</th>
                     <th className="text-right">Days</th>
@@ -81,7 +81,7 @@ export default function Stok() {
                 </thead>
                 <tbody>
                   {diBawah.slice(-60).reverse().map((b: any) => (
-                    <tr key={b.tanggal} className="border-b border-white/5 bg-red-500/10">
+                    <tr key={b.tanggal} className="border-b border-[#EDEFF2] bg-[#FEF2F2]">
                       <td className="py-1">{fmtTanggal(b.tanggal)}</td>
                       <td className="text-right font-mono">{fmtAngka(b.stok_ton, 1)}</td>
                       <td className="text-right font-mono">{fmtAngka(b.safety_ton, 1)}</td>

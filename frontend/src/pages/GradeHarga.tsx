@@ -32,20 +32,20 @@ function KartuMasterGrade() {
       <>
         <table className="w-full text-xs mb-4">
           <thead>
-            <tr className="text-left text-slate-400 border-b">
+            <tr className="text-left text-[#64676C] border-b">
               <th className="py-1">Item Code</th><th>Kelompok</th><th>EUDR</th>
               <th>Keterangan</th><th></th>
             </tr>
           </thead>
           <tbody>
             {q.data?.map((g: any) => (
-              <tr key={g.item_code} className="border-b border-white/5">
-                <td className="py-1 font-mono text-slate-100">{g.item_code}</td>
-                <td className="text-slate-300">{g.kelompok ?? "-"}</td>
+              <tr key={g.item_code} className="border-b border-[#EDEFF2]">
+                <td className="py-1 font-mono text-[#1D2434]">{g.item_code}</td>
+                <td className="text-[#1D2434]">{g.kelompok ?? "-"}</td>
                 <td>{g.eudr
-                  ? <span className="rounded bg-emerald-500/20 text-emerald-400 px-1.5 py-0.5">EUDR</span>
+                  ? <span className="rounded bg-[#DCFCE7] text-[#15803D] px-1.5 py-0.5">EUDR</span>
                   : "–"}</td>
-                <td className="text-slate-400">{g.keterangan ?? "-"}</td>
+                <td className="text-[#64676C]">{g.keterangan ?? "-"}</td>
                 <td>
                   <button className={kelasTombolKecil}
                           onClick={() => setForm({
@@ -59,7 +59,7 @@ function KartuMasterGrade() {
           </tbody>
         </table>
 
-        <h3 className="text-sm font-semibold text-slate-200 mb-2">
+        <h3 className="text-sm font-semibold text-[#1D2434] mb-2">
           {q.data?.some((g: any) => g.item_code === form.item_code)
             ? `Ubah grade ${form.item_code}` : "Tambah grade baru"}
         </h3>
@@ -74,8 +74,8 @@ function KartuMasterGrade() {
             <input className={kelasInput} placeholder="mis. Slab 4" value={form.kelompok}
                    onChange={(e) => setForm({ ...form, kelompok: e.target.value })} />
           </div>
-          <label className="flex items-center gap-2 text-sm text-slate-300 pb-2">
-            <input type="checkbox" className="accent-violet-500" checked={form.eudr}
+          <label className="flex items-center gap-2 text-sm text-[#1D2434] pb-2">
+            <input type="checkbox" className="accent-[#FF1313]" checked={form.eudr}
                    onChange={(e) => setForm({ ...form, eudr: e.target.checked })} />
             EUDR
           </label>
@@ -152,7 +152,7 @@ function KartuHargaGrade() {
           <a className={kelasTombolKecil} href={urlApi("/api/harga-grade/template")}>
             ⬇ Unduh template bulk import
           </a>
-          <span className="text-xs text-slate-500">
+          <span className="text-xs text-[#64676C]">
             Bulk import: unduh template → isi kolom harga → unggah di tab
             <b> Unggah Data</b> (sheet Harga_Grade; boleh banyak tanggal sekaligus).
           </span>
@@ -160,7 +160,7 @@ function KartuHargaGrade() {
 
         <table className="w-full text-xs">
           <thead>
-            <tr className="text-left text-slate-400 border-b">
+            <tr className="text-left text-[#64676C] border-b">
               <th className="py-1">Grade</th>
               <th className="text-right">Harga berlaku</th>
               <th>Sejak</th>
@@ -171,15 +171,15 @@ function KartuHargaGrade() {
           </thead>
           <tbody>
             {terkini.data?.baris.map((b: any) => (
-              <tr key={b.item_code} className="border-b border-white/5">
-                <td className="py-1.5 font-mono text-slate-100">
+              <tr key={b.item_code} className="border-b border-[#EDEFF2]">
+                <td className="py-1.5 font-mono text-[#1D2434]">
                   {b.item_code}
-                  {b.eudr && <span className="ml-1.5 rounded bg-emerald-500/20 text-emerald-400 px-1 py-0.5 text-[10px]">EUDR</span>}
+                  {b.eudr && <span className="ml-1.5 rounded bg-[#DCFCE7] text-[#15803D] px-1 py-0.5 text-[10px]">EUDR</span>}
                 </td>
                 <td className="text-right font-mono">
                   {b.harga_rp_per_kg ? fmtAngka(b.harga_rp_per_kg, 0) : "–"}
                 </td>
-                <td className="text-slate-500">
+                <td className="text-[#64676C]">
                   {b.berlaku_sejak ? fmtTanggal(b.berlaku_sejak) : "belum ada"}
                 </td>
                 <td className="text-right font-mono">
@@ -187,7 +187,7 @@ function KartuHargaGrade() {
                 </td>
                 <td className={`text-right font-mono ${
                   b.margin_indikatif_usc === null ? "" :
-                  b.margin_indikatif_usc >= 0 ? "text-emerald-400" : "text-red-400"}`}>
+                  b.margin_indikatif_usc >= 0 ? "text-[#15803D]" : "text-[#DC2626]"}`}>
                   {b.margin_indikatif_usc !== null ? fmtAngka(b.margin_indikatif_usc, 2) : "–"}
                 </td>
                 <td className="pl-3">
@@ -199,7 +199,7 @@ function KartuHargaGrade() {
               </tr>
             ))}
             {terkini.data?.baris.length === 0 && (
-              <tr><td colSpan={6} className="py-3 text-slate-500">
+              <tr><td colSpan={6} className="py-3 text-[#64676C]">
                 Belum ada grade di master — tambahkan dulu di kartu Master grade.
               </td></tr>
             )}
@@ -207,39 +207,39 @@ function KartuHargaGrade() {
         </table>
         {info && <Pesan jenis={info.jenis} teks={info.teks} />}
 
-        <p className="mt-2 text-xs text-slate-500">
+        <p className="mt-2 text-xs text-[#64676C]">
           SICOM {terkini.data?.sicom_usc ? fmtAngka(terkini.data.sicom_usc, 2) : "–"} US¢/kg ·
           kurs {terkini.data?.kurs ? fmtAngka(terkini.data.kurs, 0) : "–"} IDR/USD
           ({fmtTanggal(tanggal)}).
         </p>
         {terkini.data && (
-          <p className="mt-2 rounded-md bg-amber-400/10 border border-amber-400/30 px-3 py-2 text-xs text-amber-300">
+          <p className="mt-2 rounded-sm bg-[#FFFBEB] border border-[#FDE68A] px-3 py-2 text-xs text-[#B45309]">
             {terkini.data.catatan}
           </p>
         )}
 
-        <h3 className="mt-4 mb-1 text-sm font-semibold text-slate-300">
+        <h3 className="mt-4 mb-1 text-sm font-semibold text-[#1D2434]">
           30 isian terakhir
         </h3>
         <div className="max-h-56 overflow-y-auto">
           <table className="w-full text-xs">
             <thead>
-              <tr className="text-left text-slate-400 border-b">
+              <tr className="text-left text-[#64676C] border-b">
                 <th className="py-1">Berlaku sejak</th><th>Grade</th>
                 <th className="text-right">Rp/kg</th><th>Diisi oleh</th>
               </tr>
             </thead>
             <tbody>
               {riwayat.data?.map((h: any, i: number) => (
-                <tr key={i} className="border-b border-white/5">
+                <tr key={i} className="border-b border-[#EDEFF2]">
                   <td className="py-1">{fmtTanggal(h.tanggal)}</td>
                   <td className="font-mono">{h.item_code}</td>
                   <td className="text-right font-mono">{fmtAngka(h.harga_rp_per_kg, 0)}</td>
-                  <td className="text-slate-500">{h.diisi_oleh ?? "-"}</td>
+                  <td className="text-[#64676C]">{h.diisi_oleh ?? "-"}</td>
                 </tr>
               ))}
               {riwayat.data?.length === 0 && (
-                <tr><td colSpan={4} className="py-2 text-slate-500">Belum ada isian.</td></tr>
+                <tr><td colSpan={4} className="py-2 text-[#64676C]">Belum ada isian.</td></tr>
               )}
             </tbody>
           </table>

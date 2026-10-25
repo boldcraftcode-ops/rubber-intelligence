@@ -29,17 +29,17 @@ function BarisEdit({ tahunTarget, r, sesudahSimpan }: {
 
   return (
     <>
-      <tr className={`border-b border-white/5 ${r.perkiraan ? "bg-amber-400/10" : ""}`}>
+      <tr className={`border-b border-[#EDEFF2] ${r.perkiraan ? "bg-[#FFFBEB]" : ""}`}>
         <td className="py-1 font-medium">
           {NAMA_BULAN[r.bulan]}
           {r.perkiraan && (
-            <span className="ml-1 rounded bg-amber-400/20 text-amber-400 px-1 py-0.5 text-[10px]">
+            <span className="ml-1 rounded bg-[#FEF3C7] text-[#B45309] px-1 py-0.5 text-[10px]">
               perkiraan
             </span>
           )}
         </td>
         {Object.entries(r.margin_per_tahun).map(([t, v]) => (
-          <td key={t} className="text-right font-mono text-slate-400">{fmtAngka(v as number)}</td>
+          <td key={t} className="text-right font-mono text-[#64676C]">{fmtAngka(v as number)}</td>
         ))}
         <td className="text-right font-mono font-semibold">{fmtAngka(r.rata_rata_dasar)}</td>
         <td className="text-right font-mono">
@@ -55,8 +55,8 @@ function BarisEdit({ tahunTarget, r, sesudahSimpan }: {
                    onChange={(e) => setEffort(e.target.value)} />
           ) : fmtAngka(r.effort, 2)}
         </td>
-        <td className="text-right font-mono font-bold text-violet-200">{fmtAngka(r.net_margin)}</td>
-        <td className="pl-3 text-slate-400">
+        <td className="text-right font-mono font-bold text-[#1D2434]">{fmtAngka(r.net_margin)}</td>
+        <td className="pl-3 text-[#64676C]">
           {edit ? (
             <input className={`${kelasInput} w-full`} value={alasan} placeholder="alasan"
                    onChange={(e) => setAlasan(e.target.value)} />
@@ -102,15 +102,15 @@ export default function Perencanaan() {
              anak={
         <>
           <div className="flex flex-wrap items-center gap-3 mb-3 text-sm">
-            <label className="font-medium text-slate-300">Tahun target:</label>
+            <label className="font-medium text-[#1D2434]">Tahun target:</label>
             <select className={kelasInput + " max-w-28"} value={tahunTarget}
                     onChange={(e) => { setTahunTarget(Number(e.target.value)); setDasar([]); }}>
               {[2026, 2027, 2028].map((t) => <option key={t} value={t}>{t}</option>)}
             </select>
-            <label className="font-medium text-slate-300">Tahun dasar:</label>
+            <label className="font-medium text-[#1D2434]">Tahun dasar:</label>
             {tahunTersedia.map((t) => (
               <label key={t} className="flex items-center gap-1">
-                <input type="checkbox" className="accent-violet-500"
+                <input type="checkbox" className="accent-[#FF1313]"
                        checked={dipakai.includes(t)}
                        onChange={(e) => {
                          const baru = e.target.checked
@@ -121,12 +121,12 @@ export default function Perencanaan() {
                 {t}
               </label>
             ))}
-            <span className="text-xs text-slate-500">(default: 4 tahun terakhir)</span>
+            <span className="text-xs text-[#64676C]">(default: 4 tahun terakhir)</span>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-xs">
               <thead>
-                <tr className="text-left text-slate-400 border-b">
+                <tr className="text-left text-[#64676C] border-b">
                   <th className="py-1">Bulan</th>
                   {dipakai.map((t: number) => <th key={t} className="text-right">{t}</th>)}
                   <th className="text-right">Rata-rata dasar</th>
@@ -149,7 +149,7 @@ export default function Perencanaan() {
               </tbody>
             </table>
           </div>
-          <p className="mt-2 text-xs text-slate-500">
+          <p className="mt-2 text-xs text-[#64676C]">
             Bulan bertanda "perkiraan" = sebagian tahun dasar belum punya data aktual.
             Penyesuaian & Effort wajib disertai alasan; dasarnya masih [TERBUKA] —
             nilai awal dimuat apa adanya dari template. Semua perubahan tercatat di audit log.

@@ -26,9 +26,9 @@ export default function StokMargin() {
               [`Rata-rata margin saat stok ≥ 80% safety (${q.data?.jumlah_bulan_stok_tinggi ?? 0} bln)`,
                fmtAngka(q.data?.margin_stok_tinggi, 2)],
             ].map(([label, nilai]) => (
-              <div key={label as string} className="rounded-lg border border-violet-500/20 bg-white/5 p-3">
-                <p className="text-xs text-slate-400">{label}</p>
-                <p className="font-semibold text-slate-100">{nilai ?? "–"}</p>
+              <div key={label as string} className="rounded-sm border border-[#E4E5E8] bg-[#F8F8F8] p-3">
+                <p className="text-xs text-[#64676C]">{label}</p>
+                <p className="font-semibold text-[#1D2434]">{nilai ?? "–"}</p>
               </div>
             ))}
           </div>
@@ -48,19 +48,19 @@ export default function StokMargin() {
                     const p: any = payload?.[0]?.payload;
                     if (!p) return null;
                     return (
-                      <div className="rounded-md bg-[#15143a]/90 border border-violet-500/20 p-2 text-xs shadow">
+                      <div className="rounded-sm bg-white border border-[#E4E5E8] p-2 text-xs shadow">
                         <b>{NAMA_BULAN[p.bulan]} {p.tahun}</b><br />
                         rasio {fmtAngka(p.rasio_stok, 3)} · margin {fmtAngka(p.op_margin, 4)}<br />
                         {fmtAngka(p.ton, 0)} ton
                       </div>
                     );
                   }} />
-                <Scatter data={q.data?.titik ?? []} fill="#a78bfa" />
+                <Scatter data={q.data?.titik ?? []} fill="#FF1313" />
               </ScatterChart>
             </ResponsiveContainer>
           </div>
           {q.data && (
-            <p className="mt-3 rounded-md bg-amber-400/10 border border-amber-400/30 px-3 py-2 text-xs text-amber-300">
+            <p className="mt-3 rounded-sm bg-[#FFFBEB] border border-[#FDE68A] px-3 py-2 text-xs text-[#B45309]">
               {q.data.catatan}
             </p>
           )}

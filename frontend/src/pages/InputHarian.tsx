@@ -34,9 +34,9 @@ function KartuSicom({ pengisi }: { pengisi: string }) {
   });
 
   return (
-    <section className="rounded-xl bg-[#15143a]/90 p-5 shadow-lg shadow-black/30 border border-violet-500/20">
-      <h2 className="text-lg font-semibold text-slate-100">SICOM harian (TSR20)</h2>
-      <p className="text-sm text-slate-400 mb-4">
+    <section className="rounded-sm bg-white p-5 shadow-sm border border-[#E4E5E8]">
+      <h2 className="text-lg font-semibold text-[#1D2434]">SICOM harian (TSR20)</h2>
+      <p className="text-sm text-[#64676C] mb-4">
         Dicek tiap hari dari website SICOM. Hari libur otomatis memakai harga terakhir —
         tidak perlu diisi.
       </p>
@@ -76,10 +76,10 @@ function KartuSicom({ pengisi }: { pengisi: string }) {
       </form>
       {info && <Pesan jenis={info.jenis} teks={info.teks} />}
 
-      <h3 className="mt-5 mb-2 text-sm font-semibold text-slate-300">10 hari terakhir</h3>
+      <h3 className="mt-5 mb-2 text-sm font-semibold text-[#1D2434]">10 hari terakhir</h3>
       <table className="w-full text-sm">
         <thead>
-          <tr className="text-left text-slate-400 border-b border-violet-500/20">
+          <tr className="text-left text-[#64676C] border-b border-[#E4E5E8]">
             <th className="py-1">Tanggal</th>
             <th className="py-1 text-right">US¢/kg</th>
             <th className="py-1 pl-4">Sumber</th>
@@ -87,14 +87,14 @@ function KartuSicom({ pengisi }: { pengisi: string }) {
         </thead>
         <tbody>
           {riwayat.data?.map((b: any) => (
-            <tr key={b.tanggal} className="border-b border-white/5">
+            <tr key={b.tanggal} className="border-b border-[#EDEFF2]">
               <td className="py-1">{fmtTanggal(b.tanggal)}</td>
               <td className="py-1 text-right font-mono">{fmtAngka(b.usc_per_kg, 2)}</td>
-              <td className="py-1 pl-4 text-slate-400">{b.sumber ?? "-"}</td>
+              <td className="py-1 pl-4 text-[#64676C]">{b.sumber ?? "-"}</td>
             </tr>
           ))}
           {riwayat.data?.length === 0 && (
-            <tr><td colSpan={3} className="py-2 text-slate-500">Belum ada data.</td></tr>
+            <tr><td colSpan={3} className="py-2 text-[#64676C]">Belum ada data.</td></tr>
           )}
         </tbody>
       </table>
@@ -129,9 +129,9 @@ function KartuKurs({ pengisi }: { pengisi: string }) {
   });
 
   return (
-    <section className="rounded-xl bg-[#15143a]/90 p-5 shadow-lg shadow-black/30 border border-violet-500/20">
-      <h2 className="text-lg font-semibold text-slate-100">Kurs USD/IDR</h2>
-      <p className="text-sm text-slate-400 mb-4">
+    <section className="rounded-sm bg-white p-5 shadow-sm border border-[#E4E5E8]">
+      <h2 className="text-lg font-semibold text-[#1D2434]">Kurs USD/IDR</h2>
+      <p className="text-sm text-[#64676C] mb-4">
         Ditetapkan perusahaan dari data bank. Isi hanya saat kurs berubah — berlaku
         sejak tanggal yang dipilih (boleh di tengah bulan).
       </p>
@@ -166,12 +166,12 @@ function KartuKurs({ pengisi }: { pengisi: string }) {
       </form>
       {info && <Pesan jenis={info.jenis} teks={info.teks} />}
 
-      <h3 className="mt-5 mb-2 text-sm font-semibold text-slate-300">
+      <h3 className="mt-5 mb-2 text-sm font-semibold text-[#1D2434]">
         10 perubahan terakhir
       </h3>
       <table className="w-full text-sm">
         <thead>
-          <tr className="text-left text-slate-400 border-b border-violet-500/20">
+          <tr className="text-left text-[#64676C] border-b border-[#E4E5E8]">
             <th className="py-1">Berlaku sejak</th>
             <th className="py-1 text-right">IDR/USD</th>
             <th className="py-1 pl-4">Sumber</th>
@@ -179,14 +179,14 @@ function KartuKurs({ pengisi }: { pengisi: string }) {
         </thead>
         <tbody>
           {riwayat.data?.map((b: any) => (
-            <tr key={b.berlaku_dari} className="border-b border-white/5">
+            <tr key={b.berlaku_dari} className="border-b border-[#EDEFF2]">
               <td className="py-1">{fmtTanggal(b.berlaku_dari)}</td>
               <td className="py-1 text-right font-mono">{fmtAngka(b.idr_per_usd, 0)}</td>
-              <td className="py-1 pl-4 text-slate-400">{b.sumber ?? "-"}</td>
+              <td className="py-1 pl-4 text-[#64676C]">{b.sumber ?? "-"}</td>
             </tr>
           ))}
           {riwayat.data?.length === 0 && (
-            <tr><td colSpan={3} className="py-2 text-slate-500">Belum ada data.</td></tr>
+            <tr><td colSpan={3} className="py-2 text-[#64676C]">Belum ada data.</td></tr>
           )}
         </tbody>
       </table>
@@ -199,7 +199,7 @@ export default function InputHarian({ pengisi }: { pengisi: string }) {
     <div className="grid grid-cols-1 gap-6">
       <KartuSicom pengisi={pengisi} />
       <KartuKurs pengisi={pengisi} />
-      <p className="text-xs text-slate-500">
+      <p className="text-xs text-[#64676C]">
         Setiap simpanan dicatat (siapa &amp; kapan) dan langsung memperbarui perhitungan
         OP Margin. Tanggal ditampilkan dd/mm/yyyy, angka memakai format Indonesia.
       </p>
