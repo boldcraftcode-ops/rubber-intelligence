@@ -264,6 +264,82 @@ GET /api/health      -> "web_statistik":"...frontend/dist"   (mode satu-origin)
 
 Satu-origin menghilangkan seluruh masalah ini karena cookie selalu same-site.
 
+## 6c. Mode login: kondisi sekarang & cara mengembalikannya
+
+> Ditulis atas permintaan pemilik proyek. Sebelumnya bagian ini sengaja
+> dikosongkan; sekarang justru **wajib** dibaca sebelum menyerahkan aplikasi
+> ke orang lain.
+
+### Kondisi saat dokumen ini dibuat
+
+Login sedang **DIMATIKAN sementara** untuk keperluan pemecahan masalah, dengan
+satu penanda berkas di akar repo:
+
+```
+tanpa-login.txt        <- ADA  = login dimatikan
+                       <- TIDAK ADA = login username+sandi aktif
+```
+
+Berkas itu **tidak masuk Git** (ada di `.gitignore`), jadi penandanya hanya
+hidup di komputer pemilik. Di mesin lain, login aktif secara bawaan.
+
+Saat penanda ada, aplikasi menampilkan banner kuning di atas semua halaman:
+**"MODE TANPA LOGIN (SEMENTARA)"**. Banner itu sengaja dibuat mencolok supaya
+tidak lupa. Selama penanda ada, **siapa pun yang bisa membuka alamat aplikasi
+masuk sebagai admin tanpa sandi** — jangan biarkan kondisi ini ada saat aplikasi
+dipasang di internet.
+
+### Cara mengembalikan (Windows, cara tercepat)
+
+```
+1. Klik dua kali  tanpa-login-mati.bat
+   -> berkas tanpa-login.txt dihapus, muncul pesan "login AKTIF lagi"
+2. Tutup jendela "OP Margin - API" dan "OP Margin - Web"
+   (atau jalankan hentikan-api.bat)
+3. Jalankan start-web.bat
+4. Login dengan username + sandi
+5. Muat ulang halaman dengan Ctrl+F5
+```
+
+### Cara memastikan sudah benar (tanpa menebak)
+
+| Periksa | Hasil yang benar |
+|---|---|
+| `tanpa-login.txt` di folder aplikasi | **tidak ada** (`dir tanpa-login.txt` → File Not Found) |
+| `http://localhost:8000/api/auth/mode` | `"cara":"username-sandi"` dan `"perlu_login":true` |
+| `http://localhost:8000/api/health` → `login` | `cara` = `username-sandi` |
+| Halaman aplikasi | banner kuning **hilang**, muncul form login |
+| `diagnosa.bat` | melaporkan mode login lokal |
+
+Kalau setelah langkah di atas masih terbuka tanpa login, berarti
+**`AUTH_DISABLED=true` tertulis di `backend/.env`.** Hapus baris itu:
+
+```
+notepad backend\.env        # hapus baris AUTH_DISABLED=...
+```
+
+Lalu jalankan ulang `start-web.bat`. Perlu diketahui: `start-web.bat` sudah
+membuang `AUTH_DISABLED` sendiri, jadi masalah ini hanya muncul bila API
+dinyalakan dengan cara lain (mis. service Windows atau perintah manual).
+
+### Di server / produksi
+
+Di `APP_ENV=produksi`, aplikasi **menolak start** bila `AUTH_DISABLED=true`
+(pengaman, lihat `auth.validasi_start`). Artinya salah setelan tidak bisa
+diam-diam membuka aplikasi di internet — API langsung gagal hidup dan
+alasannya tertulis di konsol.
+
+### Hal yang harus dibereskan lebih dulu sebelum login dinyalakan lagi
+
+1. Tentukan apakah masalah "login lalu kembali ke form" sudah selesai: versi
+   0.7.6 menyimpan token di memori **juga**, bukan hanya `localStorage`, karena
+   di dalam iframe keduanya diblokir. Uji dulu di **browser biasa**, bukan
+   preview di dalam iframe.
+2. Pastikan `SECRET_KEY` di `backend/.env` terisi (minimal 32 karakter) supaya
+   sesi tidak berakhir setiap API dijalankan ulang.
+3. Ganti sandi `admin` bawaan (`admin123`) setelah bisa masuk: menu kanan atas →
+   Ganti sandi, lalu buat akun untuk setiap pemakai di menu **Pengguna**.
+
 ## 7. Aturan yang tidak boleh dilanggar
 
 Semua ini lahir dari kegagalan nyata, bukan kehati-hatian berlebihan.
@@ -298,7 +374,11 @@ Semua ini lahir dari kegagalan nyata, bukan kehati-hatian berlebihan.
 10. **Jangan menyentuh setelan cookie tanpa alasan.** Bawaan `lax` sudah benar
     untuk satu domain. `none` hanya untuk halaman web & API di situs berbeda,
     dan wajib disertai `Secure` (sudah otomatis lewat `cookie_secure`).
-11. **Jangan bekerja di branch lain.** Semua pekerjaan di
+11. **Bypass login hanya untuk sementara.** Penandanya `tanpa-login.txt`
+    (dibuat `tanpa-login-aktif.bat`, dihapus `tanpa-login-mati.bat`). Kondisi
+    ini HARUS dikembalikan sebelum aplikasi dipakai bersama atau dipasang di
+    internet — lihat bagian 6c.
+12. **Jangan bekerja di branch lain.** Semua pekerjaan di
     `arena/18670644-rubber-intelligence`; PR #1 dari branch itu.
 
 ---
@@ -414,6 +494,7 @@ tidak, pengguna akan melihat layar "beda versi" (yang memang tujuannya).
 | Logo tidak muncul di login | aset eksternal/CDN | taruh di `frontend/public/`, rujuk path relatif |
 | Preview aplikasi kosong total | kode browser memanggil `localhost:8000` langsung | selalu pakai URL relatif `/api/...`; dev server memproksikan |
 | Login "berhasil" tapi langsung kembali ke form (deploy) | cookie `SameSite=lax` tidak dikirim lintas situs | `COOKIE_SAMESITE=none`, atau pakai satu-origin (`SAJIKAN_WEB=true`) |
+| Aplikasi terbuka tanpa form login | penanda `tanpa-login.txt` ada, atau `AUTH_DISABLED=true` di `backend/.env` | jalankan `tanpa-login-mati.bat`, hapus baris itu, jalankan ulang `start-web.bat` (bagian 6c) |
 | Login 200 tetapi `/api/auth/saya` 401, kembali ke form | cookie sesi tidak terkirim (iframe / lintas situs / cookie pihak ketiga diblokir) | sejak 0.7.5 ada cadangan `Authorization: Bearer` — pastikan tampilan web versi baru; untuk deploy beda situs setel `COOKIE_SAMESITE=none` atau pakai satu-origin |
 | `uvicorn: Attribute "app" not found in module "app.main"` | baris `app = buat_app()` di akhir `main.py` ikut terhapus saat menyunting | tambahkan kembali; **tes unit tidak menangkapnya** karena tes memanggil `buat_app()` |
 
