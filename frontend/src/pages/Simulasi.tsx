@@ -10,7 +10,7 @@ function Geser({ label, nilai, setNilai, min, max, step, satuan }: {
     <div>
       <label className={kelasLabel}>{label} ({satuan})</label>
       <div className="flex gap-3 items-center">
-        <input type="range" className="flex-1 accent-violet-500" min={min} max={max} step={step}
+        <input type="range" className="flex-1 accent-[#FF1313]" min={min} max={max} step={step}
                value={nilai === "" ? min : Number(nilai)}
                onChange={(e) => setNilai(e.target.value)} />
         <input type="text" inputMode="decimal" className={`${kelasInput} w-28`}
@@ -52,17 +52,17 @@ export default function Simulasi() {
           </div>
 
           {q.error && (
-            <p className="rounded-md bg-red-500/10 border border-red-400/30 px-3 py-2 text-sm text-red-300">
+            <p className="rounded-sm bg-[#FEF2F2] border border-[#FECACA] px-3 py-2 text-sm text-[#B91C1C]">
               {(q.error as Error).message}
             </p>
           )}
           {r && r.status === "ATURAN BELUM DIISI" && (
-            <p className="rounded-md bg-red-500/10 border border-red-400/30 px-3 py-3 text-sm font-semibold text-red-300">
+            <p className="rounded-sm bg-[#FEF2F2] border border-[#FECACA] px-3 py-3 text-sm font-semibold text-[#B91C1C]">
               ATURAN BELUM DIISI — isi aturan stok → harga dahulu di tab Aturan Harga.
             </p>
           )}
           {r && r.status === "DATA KURANG" && (
-            <p className="rounded-md bg-amber-400/10 border border-amber-400/30 px-3 py-3 text-sm text-amber-300">
+            <p className="rounded-sm bg-[#FFFBEB] border border-[#FDE68A] px-3 py-3 text-sm text-[#B45309]">
               {r.pesan}
             </p>
           )}
@@ -75,32 +75,32 @@ export default function Simulasi() {
                   ["Target efektif", `${fmtAngka(r.target_bulan_usc, 2)} ${r.penyesuaian_usc >= 0 ? "+" : "−"} ${fmtAngka(Math.abs(r.penyesuaian_usc), 2)} = ${fmtAngka(r.target_efektif_usc, 2)}`],
                   ["Harga beli maks", `${fmtAngka(r.harga_beli_maks_usc)} US¢ = Rp ${fmtAngka(r.harga_beli_maks_rp_kg, 0)}/kg`],
                 ].map(([label, nilai]) => (
-                  <div key={label as string} className="rounded-lg border border-violet-500/20 bg-white/5 p-3">
-                    <p className="text-xs text-slate-400">{label}</p>
-                    <p className="font-semibold text-slate-100 text-sm">{nilai}</p>
+                  <div key={label as string} className="rounded-sm border border-[#E4E5E8] bg-[#F8F8F8] p-3">
+                    <p className="text-xs text-[#64676C]">{label}</p>
+                    <p className="font-semibold text-[#1D2434] text-sm">{nilai}</p>
                   </div>
                 ))}
               </div>
               {r.harga_aktual && (
-                <p className="text-sm text-slate-300">
+                <p className="text-sm text-[#1D2434]">
                   Bila harga beli tetap seperti {fmtTanggal(r.harga_aktual.tanggal)}{" "}
                   (Rp {fmtAngka(r.harga_aktual.harga_rp_per_kg, 0)}/kg ={" "}
                   {fmtAngka(r.harga_aktual.harga_usc_dengan_kurs_simulasi)} US¢ dengan kurs
                   simulasi), margin menjadi{" "}
                   <b className={r.harga_aktual.margin_jika_harga_sama >= 0
-                    ? "text-emerald-400" : "text-red-400"}>
+                    ? "text-[#15803D]" : "text-[#DC2626]"}>
                     {fmtAngka(r.harga_aktual.margin_jika_harga_sama)} US¢/kg
                   </b>.
                 </p>
               )}
               {r.aturan_contoh && (
-                <p className="mt-2 rounded-md bg-red-500/10 border border-red-400/30 px-3 py-2 text-xs text-red-300">
+                <p className="mt-2 rounded-sm bg-[#FEF2F2] border border-[#FECACA] px-3 py-2 text-xs text-[#B91C1C]">
                   Aturan yang dipakai masih CONTOH — hasil simulasi bukan kebijakan resmi.
                 </p>
               )}
             </>
           )}
-          <p className="mt-3 text-xs text-slate-500">{r?.catatan ?? "Simulasi — tidak ada yang disimpan."}</p>
+          <p className="mt-3 text-xs text-[#64676C]">{r?.catatan ?? "Simulasi — tidak ada yang disimpan."}</p>
         </>
       } />
     </div>

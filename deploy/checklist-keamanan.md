@@ -10,16 +10,19 @@ Centang semua sebelum dan sesudah go-live; ulangi tiap ada perubahan besar.
 - [ ] `config.yml` tunnel punya baris terakhir `service: http_status:404`.
 
 ## Login & otorisasi
-- [ ] Cloudflare Access aktif untuk **frontend dan api** dengan kebijakan
-      email yang sama; email di luar daftar ditolak (diuji sungguhan).
+- [ ] Login memakai **username + sandi** aplikasi (`/api/auth/login`); tidak
+      ada jalur masuk lain. Cloudflare Access sudah dihapus.
 - [ ] `.env` produksi: `APP_ENV=produksi`, TANPA `AUTH_DISABLED`
       (aplikasi menolak start bila `AUTH_DISABLED=true` di produksi — jangan
       dilemahkan).
-- [ ] `CF_ACCESS_TEAM_DOMAIN` dan `CF_ACCESS_AUD` terisi benar; backend
-      memverifikasi sendiri tanda tangan/audience/masa berlaku token
-      (uji: panggil API tanpa login → 401).
-- [ ] Uji dari HP (data seluler): login email terdaftar = bisa; email lain =
-      ditolak.
+- [ ] `SECRET_KEY` produksi terisi acak **minimal 32 karakter** (aplikasi
+      menolak start bila kosong/pendek). Jangan pakai nilai contoh.
+- [ ] Uji: panggil API tanpa sesi → 401; header `Cf-Access-Jwt-Assertion`
+      atau cookie `CF_Authorization` sisa lama TIDAK bisa dipakai masuk.
+- [ ] Sandi `admin` sudah diganti dari `admin123`; akun yang tidak dipakai
+      dinonaktifkan (menu Pengguna).
+- [ ] Uji dari HP (data seluler): login dengan akun sendiri = bisa; sandi
+      salah = ditolak.
 
 ## Aplikasi
 - [ ] CORS: `FRONTEND_ORIGIN` hanya berisi alamat frontend resmi.
@@ -45,4 +48,7 @@ Centang semua sebelum dan sesudah go-live; ulangi tiap ada perubahan besar.
 ## Pemeliharaan
 - [ ] Windows Update aktif di PC server; PC tidak dipakai browsing harian.
 - [ ] Akun Windows server ber-password; layar terkunci otomatis.
-- [ ] Daftar email Access ditinjau saat ada karyawan keluar/masuk.
+- [ ] Daftar pengguna aplikasi (menu Pengguna) ditinjau saat ada karyawan
+      keluar/masuk; akun mantan karyawan langsung dinonaktifkan.
+- [ ] Sisa setelan `CF_ACCESS_*`/`AUTH_MODE` di `.env` sudah dibersihkan
+      (tidak dipakai lagi, hanya menimbulkan kebingungan).

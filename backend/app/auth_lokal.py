@@ -1,6 +1,7 @@
 """Login lokal: form username+sandi, data pengguna di tabel `pengguna`.
 
-Dipakai bila AUTH_MODE=lokal di .env (pengganti Cloudflare Access).
+Satu-satunya cara login aplikasi (pengganti Cloudflare Access yang sudah
+dihapus).
 
 Cara kerja:
 - POST /api/auth/login memverifikasi sandi (PBKDF2-SHA256) lalu menanam
@@ -13,7 +14,7 @@ Cara kerja:
 
 Keamanan:
 - SECRET_KEY minimal 32 karakter; di produksi aplikasi menolak start bila
-  kosong/pendek (gagal-tertutup, konsisten dengan mode Access).
+  kosong/pendek (gagal-tertutup).
 - Hash sandi PBKDF2-SHA256 240.000 iterasi + salt acak per pengguna.
 - Jeda 0,5 dtk pada login gagal (menghambat tebak-tebakan massal) dan
   setiap percobaan tercatat di audit log.
@@ -38,7 +39,8 @@ from .models import Pengguna
 
 COOKIE_SESI = "op_sesi"
 SESI_JAM = 12  # masa berlaku sesi (jam)
-JALUR_BEBAS_LOKAL = ("/api/health", "/api/sehat", "/api/auth/login")
+JALUR_BEBAS_LOKAL = ("/api/health", "/api/sehat", "/api/auth/login",
+                     "/api/auth/mode")
 
 _ITERASI = 240_000
 
@@ -176,10 +178,25 @@ class PenggunaUbah(BaseModel):
 def pasang_router_auth(app, ambil_session, cfg):
     router = APIRouter(prefix="/api/auth")
     dep = Depends(ambil_session)
-    lokal_aktif = cfg.mode == "lokal" and not cfg.auth_disabled
+    lokal_aktif = not cfg.auth_disabled
+
+    @router.get("/mode")
+    def mode_login():
+        """Cara login yang berlaku di proses ini — TANPA login, tanpa rahasia.
+
+        Dipakai tampilan web (dan diagnosa.bat) untuk memastikan proses yang
+        berjalan memang memakai login username+sandi.
+        """
+        from .auth import info_mode
+        return info_mode(cfg)
 
     @router.post("/login")
     def login(data: LoginMasuk, response: Response, session: Session = dep):
+        if not lokal_aktif:
+            raise HTTPException(422, "Login sedang DIMATIKAN di proses API ini "
+                                     "(AUTH_DISABLED=true). Hapus baris itu "
+                                     "dari backend/.env lalu jalankan ulang "
+                                     "API.")
         p = session.get(Pengguna, data.username.strip().lower())
         if p is None or not p.aktif or not cek_sandi(data.sandi, p.hash_sandi):
             time.sleep(0.5)  # perlambat percobaan tebak sandi
@@ -204,10 +221,9 @@ def pasang_router_auth(app, ambil_session, cfg):
     @router.get("/saya")
     def saya(request: Request, session: Session = dep):
         if not lokal_aktif:
-            # Mode development / mode Access: tidak ada sesi lokal.
-            email = getattr(request.state, "email", None)
-            return {"username": email or "dev", "nama": email or "Mode Development",
-                    "peran": "admin", "mode": cfg.mode}
+            # Login dimatikan (mode pengembangan): semua boleh, tanpa sesi.
+            return {"username": "dev", "nama": "Mode Development",
+                    "peran": "admin", "mode": "nonaktif"}
         klaim = info_pengguna(request)
         p = session.get(Pengguna, klaim["sub"]) if klaim else None
         if p is None or not p.aktif:

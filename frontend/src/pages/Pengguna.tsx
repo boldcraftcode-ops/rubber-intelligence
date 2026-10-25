@@ -54,14 +54,14 @@ export default function Pengguna({ saya }: { saya: string }) {
              keterangan="Kelola akun login aplikasi. Peran 'admin' boleh mengelola pengguna dan modul Database; 'pengguna' hanya memakai aplikasi."
              anak={
         <>
-          {q.isLoading && <p className="text-sm text-slate-400">Memuat…</p>}
+          {q.isLoading && <p className="text-sm text-[#64676C]">Memuat…</p>}
           {q.error && <Pesan jenis="error" teks={(q.error as Error).message} />}
 
           {q.data && (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="text-left text-xs text-slate-400 border-b border-violet-500/20">
+                  <tr className="text-left text-xs text-[#64676C] border-b border-[#E4E5E8]">
                     <th className="py-2 pr-3">Username</th>
                     <th className="py-2 pr-3">Nama</th>
                     <th className="py-2 pr-3">Peran</th>
@@ -72,24 +72,24 @@ export default function Pengguna({ saya }: { saya: string }) {
                 </thead>
                 <tbody>
                   {q.data.map((p) => (
-                    <tr key={p.username} className="border-b border-violet-500/10">
-                      <td className="py-2 pr-3 font-semibold text-slate-100">
+                    <tr key={p.username} className="border-b border-[#EDEFF2]">
+                      <td className="py-2 pr-3 font-semibold text-[#1D2434]">
                         {p.username}{p.username === saya && (
-                          <span className="ml-1.5 text-[10px] text-violet-300">(Anda)</span>)}
+                          <span className="ml-1.5 text-[10px] text-[#FF1313]">(Anda)</span>)}
                       </td>
-                      <td className="py-2 pr-3 text-slate-300">{p.nama}</td>
+                      <td className="py-2 pr-3 text-[#1D2434]">{p.nama}</td>
                       <td className="py-2 pr-3">
-                        <span className={`rounded-full px-2 py-0.5 text-xs ${
+                        <span className={`rounded-sm px-2 py-0.5 text-xs font-semibold ${
                           p.peran === "admin"
-                            ? "bg-violet-600/30 text-violet-200 border border-violet-400/40"
-                            : "bg-white/10 text-slate-300"}`}>{p.peran}</span>
+                            ? "bg-[#1D2434] text-white"
+                            : "bg-[#F1F2F4] text-[#64676C]"}`}>{p.peran}</span>
                       </td>
                       <td className="py-2 pr-3">
-                        <span className={p.aktif ? "text-emerald-300" : "text-red-300"}>
+                        <span className={p.aktif ? "text-[#15803D]" : "text-[#B91C1C]"}>
                           {p.aktif ? "aktif" : "nonaktif"}
                         </span>
                       </td>
-                      <td className="py-2 pr-3 text-xs text-slate-400">
+                      <td className="py-2 pr-3 text-xs text-[#64676C]">
                         {p.login_terakhir
                           ? `${fmtTanggal(p.login_terakhir.slice(0, 10))} ${p.login_terakhir.slice(11, 16)}`
                           : "belum pernah"}
@@ -126,8 +126,8 @@ export default function Pengguna({ saya }: { saya: string }) {
           {pesan && <Pesan jenis={pesan.jenis} teks={pesan.teks} />}
 
           {/* ---- tambah pengguna ---- */}
-          <div className="mt-6 rounded-lg border border-violet-500/20 bg-white/5 p-4">
-            <p className="font-semibold text-slate-200 text-sm mb-3">➕ Tambah pengguna</p>
+          <div className="mt-6 rounded-sm border border-[#E4E5E8] bg-[#F8F8F8] p-4">
+            <p className="font-semibold text-[#1D2434] text-sm mb-3">➕ Tambah pengguna</p>
             <div className="grid sm:grid-cols-4 gap-3">
               <div>
                 <label className={kelasLabel}>Username</label>

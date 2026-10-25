@@ -256,7 +256,7 @@ class HargaGrade(Base):
 
 
 class Pengguna(Base):
-    """Akun login aplikasi (mode AUTH_MODE=lokal). Sandi disimpan sebagai
+    """Akun login aplikasi (login username + sandi). Sandi disimpan sebagai
     hash PBKDF2-SHA256 (tidak pernah plain text)."""
 
     __tablename__ = "pengguna"

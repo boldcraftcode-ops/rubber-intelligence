@@ -81,18 +81,18 @@ function KartuPenerimaan() {
         <div className="flex gap-1 flex-wrap mb-2">
           {["vendor", "provinsi", "kabupaten", "kecamatan", "desa"].map((d) => (
             <button key={d}
-              className={`rounded-md px-2.5 py-1 text-xs ${d === dimensi && jejak.length === 0
-                ? "bg-violet-600 text-white" : "bg-white/10 text-slate-300 hover:bg-white/20"}`}
+              className={`rounded-sm px-2.5 py-1 text-xs ${d === dimensi && jejak.length === 0
+                ? "bg-[#FF1313] text-white" : "bg-[#F1F2F4] text-[#1D2434] hover:bg-[#E8E9EC]"}`}
               onClick={() => mulaiUlang(d)}>
               {d}
             </button>
           ))}
-          <span className="mx-2 border-l border-violet-500/20" />
+          <span className="mx-2 border-l border-[#E4E5E8]" />
           {([["semua", "Semua grade"], ["eudr", "Hanya EUDR"], ["biasa", "Hanya biasa"]] as const)
             .map(([id, label]) => (
             <button key={id}
-              className={`rounded-md px-2.5 py-1 text-xs ${modeEudr === id
-                ? "bg-emerald-600 text-white" : "bg-white/10 text-slate-300 hover:bg-white/20"}`}
+              className={`rounded-sm px-2.5 py-1 text-xs ${modeEudr === id
+                ? "bg-emerald-600 text-white" : "bg-[#F1F2F4] text-[#1D2434] hover:bg-[#E8E9EC]"}`}
               onClick={() => setModeEudr(id)}>
               {label}
             </button>
@@ -101,18 +101,18 @@ function KartuPenerimaan() {
 
         <div className="flex flex-wrap items-end gap-3 mb-3 text-xs">
           <div>
-            <label className="block text-slate-400 mb-1">Dari bulan</label>
-            <input type="month" className="rounded-md border border-violet-400/30 bg-[#0b0a26]/80 px-2 py-1.5 text-slate-100"
+            <label className="block text-[#64676C] mb-1">Dari bulan</label>
+            <input type="month" className="rounded-sm border border-[#E4E5E8] bg-white px-2 py-1.5 text-[#1D2434]"
                    value={dari} onChange={(e) => setDari(e.target.value)} />
           </div>
           <div>
-            <label className="block text-slate-400 mb-1">Sampai bulan</label>
-            <input type="month" className="rounded-md border border-violet-400/30 bg-[#0b0a26]/80 px-2 py-1.5 text-slate-100"
+            <label className="block text-[#64676C] mb-1">Sampai bulan</label>
+            <input type="month" className="rounded-sm border border-[#E4E5E8] bg-white px-2 py-1.5 text-[#1D2434]"
                    value={sampai} onChange={(e) => setSampai(e.target.value)} />
           </div>
           {dimensi !== "vendor" && (
             <div>
-              <label className="block text-slate-400 mb-1">
+              <label className="block text-[#64676C] mb-1">
                 Vendor {modeEudr === "eudr" ? "(pemasok EUDR)" : ""}
               </label>
               <select className={kelasInput + " max-w-56"} value={vendorFilter}
@@ -133,7 +133,7 @@ function KartuPenerimaan() {
         </div>
 
         {jejak.length > 0 && (
-          <p className="mb-2 text-xs text-slate-400">
+          <p className="mb-2 text-xs text-[#64676C]">
             Jejak: {jejak.map((j) => `${j.dim} = ${j.nilai}`).join(" → ")} →{" "}
             <b>{dimensi}</b>{" "}
             <button className={kelasTombolKecil} onClick={() => mulaiUlang("provinsi")}>
@@ -153,13 +153,13 @@ function KartuPenerimaan() {
                 <YAxis type="category" dataKey="nama" width={170} fontSize={10} />
                 <Tooltip formatter={(v: any, nama: any) => [fmtAngka(v as number, 0) + " kg", nama]} />
                 <Legend />
-                <Bar dataKey="Grade biasa (kg)" stackId="kg" fill="#818cf8" />
-                <Bar dataKey="Grade EUDR (kg)" stackId="kg" fill="#34d399" />
+                <Bar dataKey="Grade biasa (kg)" stackId="kg" fill="#1D2434" />
+                <Bar dataKey="Grade EUDR (kg)" stackId="kg" fill="#FF1313" />
               </BarChart>
             </ResponsiveContainer>
           </div>
         ) : (
-          <p className="rounded-md bg-white/5 border border-violet-500/20 px-3 py-4 text-sm text-slate-400">
+          <p className="rounded-sm bg-[#F8F8F8] border border-[#E4E5E8] px-3 py-4 text-sm text-[#64676C]">
             Tidak ada data tiket untuk filter ini. Grafik akan terisi setelah
             ekspor "Master Data" tiket diunggah di tab Unggah Data.
           </p>
@@ -170,7 +170,7 @@ function KartuPenerimaan() {
             <div className="mt-3 max-h-64 overflow-y-auto">
               <table className="w-full text-xs">
                 <thead>
-                  <tr className="text-left text-slate-400 border-b">
+                  <tr className="text-left text-[#64676C] border-b">
                     <th className="py-1">{dimensi}</th>
                     <th className="text-right">Kg biasa</th>
                     <th className="text-right">Kg EUDR</th>
@@ -182,12 +182,12 @@ function KartuPenerimaan() {
                 <tbody>
                   {q.data.baris.map((b: any) => (
                     <tr key={b.kunci}
-                        className={`border-b border-white/5 ${q.data.drill_berikutnya
-                          ? "cursor-pointer hover:bg-violet-500/10" : ""}`}
+                        className={`border-b border-[#EDEFF2] ${q.data.drill_berikutnya
+                          ? "cursor-pointer hover:bg-[#FFF1F1]" : ""}`}
                         onClick={() => drill(b)}>
                       <td className="py-1">{b.label}</td>
                       <td className="text-right font-mono">{fmtAngka(b.kg_biasa, 0)}</td>
-                      <td className="text-right font-mono text-emerald-400">{fmtAngka(b.kg_eudr, 0)}</td>
+                      <td className="text-right font-mono text-[#15803D]">{fmtAngka(b.kg_eudr, 0)}</td>
                       <td className="text-right font-mono font-semibold">{fmtAngka(b.kg_total, 0)}</td>
                       <td className="text-right font-mono">
                         {b.porsi !== null ? fmtAngka(b.porsi * 100, 1) + "%" : "–"}
@@ -198,10 +198,10 @@ function KartuPenerimaan() {
                 </tbody>
               </table>
             </div>
-            <p className="mt-2 text-xs text-slate-500">
+            <p className="mt-2 text-xs text-[#64676C]">
               Total {fmtAngka(q.data.total_kg, 0)} kg — biasa{" "}
               {fmtAngka(q.data.total_kg_biasa, 0)} kg · EUDR{" "}
-              <span className="text-emerald-400">{fmtAngka(q.data.total_kg_eudr, 0)} kg
+              <span className="text-[#15803D]">{fmtAngka(q.data.total_kg_eudr, 0)} kg
               ({q.data.total_kg ? fmtAngka(q.data.total_kg_eudr / q.data.total_kg * 100, 1) : 0}%)</span>
               {" "}· sumber: {q.data.sumber}
             </p>
@@ -244,8 +244,8 @@ function KartuTonase() {
         <div className="flex gap-1 flex-wrap mb-2">
           {["vendor", "grade", "provinsi", "kabupaten", "kecamatan", "desa"].map((d) => (
             <button key={d}
-              className={`rounded-md px-2.5 py-1 text-xs ${d === dimensi && jejak.length === 0
-                ? "bg-violet-600 text-white" : "bg-white/10 text-slate-300 hover:bg-white/20"}`}
+              className={`rounded-sm px-2.5 py-1 text-xs ${d === dimensi && jejak.length === 0
+                ? "bg-[#FF1313] text-white" : "bg-[#F1F2F4] text-[#1D2434] hover:bg-[#E8E9EC]"}`}
               onClick={() => mulaiUlang(d)}>
               {d}
             </button>
@@ -253,7 +253,7 @@ function KartuTonase() {
         </div>
         <PilihPeriode tahun={tahun} setTahun={setTahun} bulan={bulan} setBulan={setBulan} />
         {jejak.length > 0 && (
-          <p className="mb-2 text-xs text-slate-400">
+          <p className="mb-2 text-xs text-[#64676C]">
             Jejak: {jejak.map((j) => `${j.dim} = ${j.nilai}`).join(" → ")} →{" "}
             <b>{dimensi}</b>{" "}
             <button className={kelasTombolKecil} onClick={() => mulaiUlang("provinsi")}>
@@ -263,7 +263,7 @@ function KartuTonase() {
         )}
         <table className="w-full text-xs">
           <thead>
-            <tr className="text-left text-slate-400 border-b">
+            <tr className="text-left text-[#64676C] border-b">
               <th className="py-1">{dimensi}</th><th className="text-right">Ton kering</th>
               <th className="text-right">Porsi</th><th className="text-right">Tiket</th>
             </tr>
@@ -271,8 +271,8 @@ function KartuTonase() {
           <tbody>
             {q.data?.baris.map((b: any) => (
               <tr key={b.kunci}
-                  className={`border-b border-white/5 ${q.data.drill_berikutnya
-                    ? "cursor-pointer hover:bg-violet-500/10" : ""}`}
+                  className={`border-b border-[#EDEFF2] ${q.data.drill_berikutnya
+                    ? "cursor-pointer hover:bg-[#FFF1F1]" : ""}`}
                   onClick={() => drill(b)}>
                 <td className="py-1">{b.label}</td>
                 <td className="text-right font-mono">{fmtAngka(b.ton, 3)}</td>
@@ -283,13 +283,13 @@ function KartuTonase() {
               </tr>
             ))}
             {q.data?.baris.length === 0 && (
-              <tr><td colSpan={4} className="py-2 text-slate-500">
+              <tr><td colSpan={4} className="py-2 text-[#64676C]">
                 Tidak ada data tiket untuk filter ini.</td></tr>
             )}
           </tbody>
         </table>
         {q.data && (
-          <p className="mt-2 text-xs text-slate-400">
+          <p className="mt-2 text-xs text-[#64676C]">
             Total: <b>{fmtAngka(q.data.total_ton, 3)}</b> ton kering · sumber {q.data.sumber}
           </p>
         )}
@@ -312,22 +312,22 @@ function KartuKonsentrasi() {
         <div className="flex gap-2 mb-3">
           {[5, 10].map((n) => (
             <button key={n}
-              className={`rounded-md px-3 py-1 text-xs ${top === n
-                ? "bg-violet-600 text-white" : "bg-white/10 text-slate-300"}`}
+              className={`rounded-sm px-3 py-1 text-xs ${top === n
+                ? "bg-[#FF1313] text-white" : "bg-[#F1F2F4] text-[#1D2434]"}`}
               onClick={() => setTop(n)}>Top {n}</button>
           ))}
           <PilihPeriode tahun={tahun} setTahun={setTahun} />
         </div>
         <table className="w-full text-xs">
           <thead>
-            <tr className="text-left text-slate-400 border-b">
+            <tr className="text-left text-[#64676C] border-b">
               <th className="py-1">Vendor</th><th className="text-right">Ton</th>
               <th className="text-right">Porsi</th>
             </tr>
           </thead>
           <tbody>
             {q.data?.baris.map((b: any) => (
-              <tr key={b.kunci} className="border-b border-white/5">
+              <tr key={b.kunci} className="border-b border-[#EDEFF2]">
                 <td className="py-1">{b.kunci} — {b.label}</td>
                 <td className="text-right font-mono">{fmtAngka(b.ton, 3)}</td>
                 <td className="text-right font-mono">{fmtAngka((b.porsi ?? 0) * 100, 1)}%</td>
@@ -336,7 +336,7 @@ function KartuKonsentrasi() {
           </tbody>
         </table>
         {q.data && (
-          <p className="mt-2 text-xs text-slate-400">
+          <p className="mt-2 text-xs text-[#64676C]">
             Porsi top {top}: <b>{fmtAngka(q.data.porsi_top * 100, 1)}%</b> dari{" "}
             {fmtAngka(q.data.total_ton, 3)} ton.
           </p>
@@ -359,17 +359,17 @@ function KartuGrade() {
         <PilihPeriode tahun={tahun} setTahun={setTahun} />
         <table className="w-full text-xs">
           <thead>
-            <tr className="text-left text-slate-400 border-b">
+            <tr className="text-left text-[#64676C] border-b">
               <th className="py-1">Grade</th><th>EUDR</th>
               <th className="text-right">Ton</th><th className="text-right">Porsi</th>
             </tr>
           </thead>
           <tbody>
             {q.data?.baris.map((b: any) => (
-              <tr key={b.kunci} className="border-b border-white/5">
+              <tr key={b.kunci} className="border-b border-[#EDEFF2]">
                 <td className="py-1">{b.kunci}</td>
                 <td>{b.eudr
-                  ? <span className="rounded bg-emerald-500/20 text-emerald-400 px-1.5 py-0.5">EUDR</span>
+                  ? <span className="rounded bg-[#DCFCE7] text-[#15803D] px-1.5 py-0.5">EUDR</span>
                   : "–"}</td>
                 <td className="text-right font-mono">{fmtAngka(b.ton, 3)}</td>
                 <td className="text-right font-mono">{fmtAngka((b.porsi ?? 0) * 100, 1)}%</td>
@@ -378,7 +378,7 @@ function KartuGrade() {
           </tbody>
         </table>
         {q.data && (
-          <p className="mt-2 text-xs text-slate-400">
+          <p className="mt-2 text-xs text-[#64676C]">
             Porsi EUDR (TTSR): <b>{fmtAngka(q.data.porsi_eudr * 100, 1)}%</b>
           </p>
         )}
@@ -407,14 +407,14 @@ function KartuReject() {
         )}
         <table className="w-full text-xs">
           <thead>
-            <tr className="text-left text-slate-400 border-b">
+            <tr className="text-left text-[#64676C] border-b">
               <th className="py-1">Bulan</th><th className="text-right">Wet ton</th>
               <th className="text-right">Reject ton</th><th className="text-right">Reject %</th>
             </tr>
           </thead>
           <tbody>
             {q.data?.baris.map((b: any) => (
-              <tr key={`${b.tahun}-${b.bulan}`} className="border-b border-white/5">
+              <tr key={`${b.tahun}-${b.bulan}`} className="border-b border-[#EDEFF2]">
                 <td className="py-1">{NAMA_BULAN[b.bulan]} {b.tahun}</td>
                 <td className="text-right font-mono">{fmtAngka(b.wet_ton, 3)}</td>
                 <td className="text-right font-mono">{fmtAngka(b.reject_ton, 3)}</td>
@@ -422,13 +422,13 @@ function KartuReject() {
               </tr>
             ))}
             {q.data?.baris.length === 0 && (
-              <tr><td colSpan={4} className="py-2 text-slate-500">
+              <tr><td colSpan={4} className="py-2 text-[#64676C]">
                 Belum ada data tiket untuk periode ini.</td></tr>
             )}
           </tbody>
         </table>
         {q.data && (
-          <p className="mt-2 rounded-md bg-amber-400/10 border border-amber-400/30 px-3 py-2 text-xs text-amber-300">
+          <p className="mt-2 rounded-sm bg-[#FFFBEB] border border-[#FDE68A] px-3 py-2 text-xs text-[#B45309]">
             {q.data.kpi.asumsi}
           </p>
         )}
@@ -463,7 +463,7 @@ function KartuMarginHarian() {
         <div className="max-h-72 overflow-y-auto">
           <table className="w-full text-xs">
             <thead>
-              <tr className="text-left text-slate-400 border-b">
+              <tr className="text-left text-[#64676C] border-b">
                 <th className="py-1">Tanggal</th><th className="text-right">Qty kg</th>
                 <th className="text-right">Rp/kg</th><th className="text-right">US¢/kg</th>
                 <th className="text-right">SICOM</th><th className="text-right">Margin</th>
@@ -471,7 +471,7 @@ function KartuMarginHarian() {
             </thead>
             <tbody>
               {q.data?.baris.map((b: any) => (
-                <tr key={b.tanggal} className="border-b border-white/5">
+                <tr key={b.tanggal} className="border-b border-[#EDEFF2]">
                   <td className="py-1">{b.tanggal.slice(8, 10)}/{b.tanggal.slice(5, 7)}</td>
                   <td className="text-right font-mono">{fmtAngka(b.qty_kg, 0)}</td>
                   <td className="text-right font-mono">{fmtAngka(b.harga_rp_per_kg, 2)}</td>
@@ -503,8 +503,8 @@ function KartuMarginPer() {
         <div className="flex gap-2 mb-3">
           {(["grade", "vendor"] as const).map((d) => (
             <button key={d}
-              className={`rounded-md px-3 py-1 text-xs ${dimensi === d
-                ? "bg-violet-600 text-white" : "bg-white/10 text-slate-300"}`}
+              className={`rounded-sm px-3 py-1 text-xs ${dimensi === d
+                ? "bg-[#FF1313] text-white" : "bg-[#F1F2F4] text-[#1D2434]"}`}
               onClick={() => setDimensi(d)}>per {d}</button>
           ))}
           <select className={kelasInput + " max-w-32"} value={tahun}
@@ -514,13 +514,13 @@ function KartuMarginPer() {
           </select>
         </div>
         {q.data?.status === "data harga belum tersedia" ? (
-          <p className="rounded-md bg-white/5 border border-violet-500/20 px-3 py-4 text-sm text-slate-300">
+          <p className="rounded-sm bg-[#F8F8F8] border border-[#E4E5E8] px-3 py-4 text-sm text-[#1D2434]">
             <b>Data harga belum tersedia.</b> {q.data.pesan}
           </p>
         ) : (
           <table className="w-full text-xs">
             <thead>
-              <tr className="text-left text-slate-400 border-b">
+              <tr className="text-left text-[#64676C] border-b">
                 <th className="py-1">{dimensi}</th><th className="text-right">Ton</th>
                 <th className="text-right">SICOM</th><th className="text-right">OP Price</th>
                 <th className="text-right">OP Margin</th>
@@ -528,7 +528,7 @@ function KartuMarginPer() {
             </thead>
             <tbody>
               {q.data?.baris.map((b: any) => (
-                <tr key={b.kunci} className="border-b border-white/5">
+                <tr key={b.kunci} className="border-b border-[#EDEFF2]">
                   <td className="py-1">{b.kunci}</td>
                   <td className="text-right font-mono">{fmtAngka(b.ton, 3)}</td>
                   <td className="text-right font-mono">{fmtAngka(b.sicom)}</td>
@@ -554,22 +554,22 @@ export default function Analisis() {
 
   return (
     <div className="grid gap-6 lg:grid-cols-2">
-      <div className="lg:col-span-2 rounded-xl bg-[#15143a]/90 border border-violet-500/20 shadow-lg shadow-black/30 px-5 py-3 flex flex-wrap items-end gap-3">
+      <div className="lg:col-span-2 rounded-sm bg-white border border-[#E4E5E8] shadow-sm px-5 py-3 flex flex-wrap items-end gap-3">
         <div className="mr-auto">
-          <h2 className="text-base font-semibold text-slate-100">Analisa halaman ini (5W1H)</h2>
-          <p className="text-xs text-slate-400">
+          <h2 className="text-base font-semibold text-[#1D2434]">Analisa halaman ini (5W1H)</h2>
+          <p className="text-xs text-[#64676C]">
             Merangkum seluruh data di halaman ini: penerimaan, konsentrasi vendor,
             bauran grade & EUDR, reject%, dan margin — pada periode terpilih.
           </p>
         </div>
         <div>
-          <label className="block text-xs text-slate-400 mb-1">Dari bulan</label>
-          <input type="month" className="rounded-md border border-violet-400/30 bg-[#0b0a26]/80 px-2 py-1.5 text-xs text-slate-100"
+          <label className="block text-xs text-[#64676C] mb-1">Dari bulan</label>
+          <input type="month" className="rounded-sm border border-[#E4E5E8] bg-white px-2 py-1.5 text-xs text-[#1D2434]"
                  value={dariA} onChange={(e) => setDariA(e.target.value)} />
         </div>
         <div>
-          <label className="block text-xs text-slate-400 mb-1">Sampai bulan</label>
-          <input type="month" className="rounded-md border border-violet-400/30 bg-[#0b0a26]/80 px-2 py-1.5 text-xs text-slate-100"
+          <label className="block text-xs text-[#64676C] mb-1">Sampai bulan</label>
+          <input type="month" className="rounded-sm border border-[#E4E5E8] bg-white px-2 py-1.5 text-xs text-[#1D2434]"
                  value={sampaiA} onChange={(e) => setSampaiA(e.target.value)} />
         </div>
         <button className={kelasTombolAnalisa} onClick={() => setBukaAnalisa(true)}>
@@ -588,7 +588,7 @@ export default function Analisis() {
       <KartuReject />
       <KartuMarginHarian />
       <KartuMarginPer />
-      <p className="lg:col-span-2 text-xs text-slate-500">
+      <p className="lg:col-span-2 text-xs text-[#64676C]">
         Kartu tonase/grade/reject memakai data tiket; data tiket historis penuh belum
         diunggah (template hanya berisi contoh), jadi angka akan terisi setelah ekspor
         "Master Data" diunggah. Filter terbatas pada dimensi berdaftar-putih — tidak ada

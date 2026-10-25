@@ -61,7 +61,9 @@ metrics:
     satuan: USc/kg
     default_tahun: 4 tahun terakhir
 
-# Teks "Cara dihitung" untuk setiap kartu di layar (Fase 3).
+# Rujukan teknis tiap kartu. Di layar tombolnya bernama "Jelaskan ke saya":
+# narasi (jawaban dulu) dibuat oleh /api/jelaskan/{kartu}; teks cara_dihitung
+# di bawah ini menjadi LAPISAN KEDUA yang hanya dibuka bila ditanyakan.
 kartu:
   ringkasan:
     judul: Ringkasan OP Margin per tahun
@@ -112,12 +114,74 @@ kartu:
       putus-putus = target yang berlaku bulan itu. Tampilan "Banding antar
       tahun" - garis pola Jan-Des untuk tahun-tahun yang dipilih (bawaan
       2 tahun terakhir) untuk melihat pola musiman.
+      Kartu memakai filter periode (dari/sampai bulan): tren hanya menampilkan
+      bulan dalam periode itu, dan mode banding hanya membandingkan bulan-bulan
+      dalam periode yang sama antar tahun (mis. Mar-Sep 2024 vs Mar-Sep 2025).
+      Bila filter kosong, seluruh data ditampilkan.
+
+      Cara membaca & penyajian:
+      - Satuan sumbu: US¢/kg (sen dolar AS per kg, BUKAN dolar). Tersedia
+        toggle Rp/kg memakai kurs efektif bulanan (K = SUM(Amount)/SUM(Amount/kurs));
+        Rp/kg = US¢/kg x K / 100.
+      - Target digambar sebagai segmen pendek pada tiap batang (bukan garis
+        tangga), supaya tidak terbaca sebagai target bulan lain.
+      - Angka margin dan selisih dicetak di atas batang (mis. 10,1 (-1,9)).
+      - Status: 'di atas target' (selisih >= 1 US¢/kg, biru, ikon centang),
+        'tipis' (0 s.d. < 1 US¢/kg di atas target, kuning, ikon tilde), dan
+        'di bawah target' (oranye, ikon seru). Ikon + angka dipakai agar tetap
+        terbaca oleh penglihatan buta warna; garis target berwarna putih.
+      - Judul kartu berupa kesimpulan otomatis, mis. 'Margin di bawah target
+        3 bulan berturut-turut sejak Okt-26'.
+      - Panel selisih di bawah grafik menunjukkan bulan mana yang minus.
+      - Anotasi singkat ditambahkan pada titik penting (SICOM turun tajam,
+        perubahan target, selisih terburuk).
   margin_per:
     judul: Margin per grade / vendor
     cara_dihitung: >
       Hanya dihitung bila Amount pembelian tersedia pada tingkat itu.
       Bila Amount hanya total per hari, kartu menampilkan "data harga belum
       tersedia" - sistem TIDAK mengalokasikan harga diam-diam.
+  margin_bridge:
+    judul: Margin Bridge - analisa grafik RM Stock, Intake vs Pricing
+    cara_dihitung: >
+      Analisa pada kartu 'RM Stock - Intake vs Pricing' (tombol Margin Bridge).
+      Dua penyebab saja: delta M = delta SICOM - delta OP Price.
+      SICOM = harga acuan pasar (di luar kendali); OP Price = harga beli kita
+      (keputusan). SICOM turun menekan margin, OP Price turun justru menolong.
+      Kontribusi SICOM = +delta SICOM; kontribusi OP Price = -delta OP Price.
+      Angka SICOM/OP Price/margin = angka resmi bulanan, jadi ujung bridge
+      selalu sama dengan ringkasan OP Margin dan tertutup persis.
+      Pass-through = delta OP Price / delta SICOM: berapa persen penurunan
+      SICOM yang diikuti harga beli; sisanya ditanggung margin.
+      Bridge per bulan menandai penyebab: 'dipicu pasar' bila pergerakan SICOM
+      dominan, 'dipicu keputusan' bila OP Price bergerak lebih besar atau
+      SICOM nyaris tidak berubah.
+      Rincian opsional: delta OP Price dipecah menjadi efek harga beli (Rp/kg)
+      dan efek kurs; kedua efek berjumlah sama dengan -delta OP Price.
+      Periode: pilihan periode awal dan periode akhir (bulan), bawaannya
+      mengikuti filter kartu sehingga sama dengan bulan/tahun di grafik.
+      Setiap komponen diberi narasi kenapa menekan/menolong (beserta angkanya),
+      dan setiap bulan dalam rentang diberi penjelasan penyebab. Ringkasan
+      "kenapa naik, kenapa turun" menyebut penekan/penolong terbesar, porsi
+      pass-through, bulan penurunan/kenaikan terbesar, dan berapa bulan yang
+      ditentukan keputusan vs pasar.
+  days_of_cover:
+    judul: Days of Cover - analisa grafik RM Stock, Intake vs Pricing
+    cara_dihitung: >
+      Analisa pada kartu 'RM Stock - Intake vs Pricing' (tombol Days of Cover).
+      Pemakaian tidak ada di data, jadi dihitung dari neraca stok:
+      pemakaian = stok awal + intake - stok akhir;
+      DoC = stok akhir / (pemakaian / jumlah hari bulan itu).
+      Intake memakai kuantitas kering pembelian (mart). Susut, transfer, dan
+      penyesuaian stok ikut terhitung sebagai pemakaian - bulan dengan
+      pemakaian negatif atau tanpa intake ditandai "perlu dicek".
+      Safety dibandingkan dalam HARI: safety (hari) = safety ton / pemakaian
+      harian bulan itu. Safety dinamis = 21,5 hari x pemakaian harian
+      (angka 21,5 berasal dari safety 2.795 ton pada pemakaian 130 ton/hari).
+      DoC lebih adil daripada tonase karena menyesuaikan pemakaian; safety
+      tetap dalam ton tidak berubah walau pemakaian naik/turun.
+      Bulan pertama tidak bisa dihitung bila stok akhir bulan sebelumnya tidak
+      ada di data (mis. Januari butuh stok Desember tahun lalu).
   rekonsiliasi:
     judul: Rekonsiliasi tonase
     cara_dihitung: >

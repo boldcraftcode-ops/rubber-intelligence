@@ -14,7 +14,7 @@ export default function Rekonsiliasi() {
         <>
           <table className="w-full text-sm">
             <thead>
-              <tr className="text-left text-slate-400 border-b">
+              <tr className="text-left text-[#64676C] border-b">
                 <th className="py-1">Periode</th>
                 <th className="text-right">Tiket (ton)</th>
                 <th className="text-right">Excel lama (ton)</th>
@@ -24,20 +24,20 @@ export default function Rekonsiliasi() {
             </thead>
             <tbody>
               {q.data?.diketahui.map((d: any) => (
-                <tr key={d.periode} className="border-b border-white/5">
+                <tr key={d.periode} className="border-b border-[#EDEFF2]">
                   <td className="py-1.5 font-medium">{d.periode}</td>
                   <td className="text-right font-mono">{fmtAngka(d.tiket_ton, 3)}</td>
                   <td className="text-right font-mono">{fmtAngka(d.excel_ton, 3)}</td>
-                  <td className="text-right font-mono font-semibold text-amber-400">
+                  <td className="text-right font-mono font-semibold text-[#B45309]">
                     {fmtAngka(d.selisih_ton, 3)}
                   </td>
-                  <td className="pl-3 text-xs text-slate-400">{d.status}</td>
+                  <td className="pl-3 text-xs text-[#64676C]">{d.status}</td>
                 </tr>
               ))}
             </tbody>
           </table>
           {q.data?.catatan.map((c: string, i: number) => (
-            <p key={i} className="mt-2 rounded-md bg-white/5 border border-violet-500/20 px-3 py-2 text-xs text-slate-300">
+            <p key={i} className="mt-2 rounded-sm bg-[#F8F8F8] border border-[#E4E5E8] px-3 py-2 text-xs text-[#1D2434]">
               {c}
             </p>
           ))}
@@ -48,22 +48,22 @@ export default function Rekonsiliasi() {
              keterangan="Jumlah Dry tiket per tanggal dibandingkan Quantity pembelian (hanya tanggal yang punya data tiket)."
              anak={
         q.data?.harian.length === 0 ? (
-          <p className="text-sm text-slate-500">
+          <p className="text-sm text-[#64676C]">
             Belum ada data tiket historis untuk dibandingkan — unggah ekspor
             "Master Data" terlebih dahulu.
           </p>
         ) : (
           <>
-            <p className="mb-2 text-sm text-slate-300">
+            <p className="mb-2 text-sm text-[#1D2434]">
               {q.data?.harian.length} tanggal diperiksa ·{" "}
-              <b className={takCocok.length ? "text-amber-400" : "text-emerald-400"}>
+              <b className={takCocok.length ? "text-[#B45309]" : "text-[#15803D]"}>
                 {takCocok.length} tidak cocok
               </b> (toleransi 1 kg)
             </p>
             <div className="max-h-80 overflow-y-auto">
               <table className="w-full text-xs">
                 <thead>
-                  <tr className="text-left text-slate-400 border-b">
+                  <tr className="text-left text-[#64676C] border-b">
                     <th className="py-1">Tanggal</th>
                     <th className="text-right">Dry tiket (kg)</th>
                     <th className="text-right">Qty pembelian (kg)</th>
@@ -73,7 +73,7 @@ export default function Rekonsiliasi() {
                 <tbody>
                   {q.data?.harian.map((h: any) => (
                     <tr key={h.tanggal}
-                        className={`border-b border-white/5 ${h.cocok ? "" : "bg-amber-400/10"}`}>
+                        className={`border-b border-[#EDEFF2] ${h.cocok ? "" : "bg-[#FFFBEB]"}`}>
                       <td className="py-1">{fmtTanggal(h.tanggal)}</td>
                       <td className="text-right font-mono">{fmtAngka(h.dry_tiket_kg, 0)}</td>
                       <td className="text-right font-mono">{fmtAngka(h.qty_pembelian_kg, 0)}</td>

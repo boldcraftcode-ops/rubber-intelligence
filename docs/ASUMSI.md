@@ -51,7 +51,7 @@ teknis yang saya pilih dan bisa diubah kapan saja.
 15. **Baris catatan** di sheet template (hanya teks panjang di kolom pertama,
     mis. baris 10 Parameter_Pabrik) dilewati tanpa error.
 16. **Keamanan**: halaman input Fase 2 belum memakai login/peran (menyusul di
-    fase keamanan dengan Cloudflare Access). Backend hanya mendengarkan
+    login username+sandi; Cloudflare Access sudah dihapus). Backend hanya mendengarkan
     127.0.0.1; browser memanggil lewat proxy satu-origin (URL relatif /api).
 
 ## Default teknis Fase 3

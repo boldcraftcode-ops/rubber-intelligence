@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+*.egg-info/
+
+# Database lokal (dibuat oleh `python -m app.cli init-db`)
+backend/opmargin.db
+backend/opmargin.db-journal
+backend/opmargin.db-wal
+backend/opmargin.db-shm
+
+# Node / frontend
+node_modules/
+frontend/dist/
+frontend/tsconfig.tsbuildinfo
+
+# Environment & OS
+.env
+.DS_Store
+Thumbs.db
