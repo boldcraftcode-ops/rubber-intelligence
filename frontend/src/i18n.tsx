@@ -10,6 +10,7 @@ const KAMUS: Record<string, string> = {
   "Margin Performance": "Margin Performance",
   "Analisis": "Analytics",
   "Intake Analisis": "Intake Analytics",
+  "Master Vendor": "Vendor Master",
   "Stok": "Stock",
   "Stok vs Margin": "Stock vs Margin",
   "Aturan Harga": "Pricing Rules",

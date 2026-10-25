@@ -9,7 +9,7 @@ Kalau Anda hanya punya 15 menit, baca bagian **1 (Status)**, **3 (Cara
 menjalankan)**, dan **7 (Aturan yang tidak boleh dilanggar)**. Selebihnya bisa
 dibaca saat mengerjakan tugas pertama.
 
-Terakhir diperbarui: **2026-10-25**, versi kode **0.8.2**.
+Terakhir diperbarui: **2026-10-25**, versi kode **0.9.0**.
 
 ---
 
@@ -36,11 +36,11 @@ ini setiap hari untuk memutuskan **harga beli maksimum** yang masih aman.
 
 | Hal | Nilai |
 |---|---|
-| Versi kode | **0.8.2** (`VERSI.txt`, `backend/app/versi.py`, `frontend/src/versi.ts`) |
+| Versi kode | **0.9.0** (`VERSI.txt`, `backend/app/versi.py`, `frontend/src/versi.ts`) |
 | Branch kerja | `arena/18670644-rubber-intelligence` |
 | Pull request | **#1 masih terbuka** — https://github.com/boldcraftcode-ops/rubber-intelligence/pull/1 |
 | Branch `main` | belum memuat pekerjaan v0.7.x–v0.8.x |
-| Unit test | **244 lulus** (`cd backend && .venv/bin/python -m pytest -q`) |
+| Unit test | **270 lulus** (`cd backend && .venv/bin/python -m pytest -q`) |
 | Build frontend | bersih, ±3,3 detik (`cd frontend && npm run build`) |
 | Database | SQLite `backend/opmargin.db` (tidak masuk Git) |
 
@@ -102,7 +102,7 @@ Login awal: **`admin` / `admin123`** (dari `ADMIN_SANDI_AWAL` di
 
 ```bash
 cd backend
-.venv/bin/python -m pytest -q                                  # 244 tes
+.venv/bin/python -m pytest -q                                  # 270 tes
 .venv/bin/python -m app.cli diagnosa                            # laporan kesehatan
 .venv/bin/python -m app.cli reset-sandi admin                   # lupa sandi
 .venv/bin/python -m app.cli atur-login-lokal                    # pastikan mode login benar
@@ -136,6 +136,7 @@ rubber-intelligence/
 │   │   ├── api_analisis.py     analisa, kartu, bridge, DoC, kualitas, ekspor
 │   │   ├── api_fase4.py        stok, aturan harga, simulasi, rencana, alarm
 │   │   ├── api_grade.py        master grade & harga per grade
+│   │   ├── api_vendor.py       master vendor: CRUD + template + impor massal
 │   │   ├── api_unggah.py       unggah Excel lewat web
 │   │   ├── api_database.py     info/kosongkan/ekspor/impor database
 │   │   ├── api_jelaskan.py     penyusun teks "Jelaskan ke saya" (What/So what/Now what)
@@ -153,12 +154,12 @@ rubber-intelligence/
 │   │       ├── kualitas.py     deteksi data terlambat/aneh
 │   │       └── alarm.py        evaluasi alarm + audit
 │   ├── semantic/metrics.yaml   definisi metrik (rujukan, dibaca fase API)
-│   ├── tests/                  244 tes, termasuk kasus emas Excel lama
+│   ├── tests/                  270 tes, termasuk kasus emas Excel lama
 │   ├── unggahan/               berkas Excel yang diunggah lewat web
 │   └── .env.example            contoh setelan (JANGAN commit .env asli)
 └── frontend/
     ├── src/App.tsx             kerangka: sidebar, header, daftar menu (TAB)
-    ├── src/pages/*.tsx         16 halaman
+    ├── src/pages/*.tsx         17 halaman (termasuk MasterVendor.tsx)
     ├── src/bersama.tsx         gaya bersama: Kartu, tombol, input, modal, 5W1H
     ├── src/i18n.tsx            kamus ID→EN; teks di kode ditulis Bahasa Indonesia
     ├── src/index.css           tema (palet, .galaxy, .kartu-aksen, aturan Recharts)
@@ -229,7 +230,7 @@ tetesan lateks merah + simpul data, dibuat manual sebagai SVG
 **Jangan memakai font/CDN/gambar eksternal.** Aplikasi harus jalan di jaringan
 tertutup pabrik; semua aset lokal.
 
-### Periode tampilan menu Stok (v0.8.2)
+### Periode tampilan menu Stok (v0.9.0)
 
 Menu **Stok** kini punya pemilih periode di bagian paling atas, dengan isi
 bawaan **1 Januari tahun berjalan s.d. bulan berjalan** (dibuka Oktober 2026 →
@@ -254,7 +255,7 @@ Pemilih periode ini dipakai bersama oleh menu Stok dan Intake Analisis
 (`PilihRentangBulan` di `frontend/src/bersama.tsx`), supaya bentuk, warna, dan
 perilakunya tidak bercabang.
 
-### Daftar intake terakhir & batas 12 bulan KPI Reject (v0.8.2)
+### Daftar intake terakhir & batas 12 bulan KPI Reject (v0.9.0)
 
 **Kartu "Daftar intake terakhir"** (paling bawah halaman Intake Analisis, setelah
 kartu margin) menjawab
@@ -283,6 +284,32 @@ seluruh riwayat 2020–2026:
 - endpoint `GET /api/kartu/reject?bulan=12` (`bulan=0` = semua bulan,
   `bulan` di luar 0–120 → 422). Filter tahun tetap jalan dan dihitung setelah
   filter itu.
+
+### Master Vendor — CRUD & bulk import (v0.9.0)
+
+Menu baru **Master Vendor** (sidebar, di atas Grade & Harga) merawat daftar
+vendor: daftar + cari + saring status, tambah, ubah, hapus, dan impor massal
+dari Excel. Sebelumnya vendor hanya bisa masuk lewat unggah template tahunan,
+sehingga salah ketik kode baru terlihat setelah tonase hilang dari laporan.
+
+| Kemampuan | Perilaku |
+|---|---|
+| **Daftar** | kode, nama baku, varian nama, kategori, status; plus **jumlah tiket, ton kering, dan tanggal intake terakhir** per vendor — jadi langsung kelihatan kode mana yang benar-benar dipakai |
+| **Cari & saring** | mencari di kode/nama/varian/kategori; saring status aktif/nonaktif/diblokir |
+| **Tambah** | kode dibakukan HURUF BESAR; hanya huruf, angka, dan `- . _ /` (maks 20) karena kode harus sama persis dengan di tiket |
+| **Ubah** | nama, varian, kategori, status. **Kode tidak bisa diubah** — kode berbeda = vendor berbeda |
+| **Hapus** | dua langkah (klik Hapus → “ya, hapus”) dan **ditolak server** bila vendor sudah dipakai tiket/pembelian, dengan pesan yang menyebut jumlah pemakaian; jalur yang disarankan: ubah status menjadi `nonaktif`. Hapus paksa tetap tersedia dan tercatat di audit |
+| **Template** | `Master_Vendor_template.xlsx`: sheet `Master_Vendor` (kolom `Kode_Vendor, Nama_Baku, Varian_Nama, Kategori, Status`) berisi seluruh vendor yang ada + sheet `Petunjuk` |
+| **Bulk import** | unggah `.xlsx` langsung dari menu ini (juga tetap bisa lewat tab Unggah Data): kode lama **diperbarui**, kode baru ditambah, baris rusak dilaporkan per baris tanpa membatalkan baris lain; kode ganda di dalam file ditolak baris keduanya |
+
+Endpoint: `GET/POST /api/vendor`, `PUT/DELETE /api/vendor/{kode}`,
+`GET /api/vendor/template`, `POST /api/vendor/impor`.
+Hapus: `DELETE /api/vendor/{kode}?paksa=true`.
+
+Catatan penting: status lama di database yang tertulis “Aktif” ditampilkan
+sebagai `aktif` (dibakukan huruf kecil) supaya cocok dengan pilihan di layar.
+CORS kini mengizinkan `PUT` dan `DELETE` — tanpa itu tombol ubah/hapus gagal
+bila tampilan web dan API berada di domain berbeda (deploy tunnel).
 
 ---
 
@@ -416,7 +443,7 @@ Semua ini lahir dari kegagalan nyata, bukan kehati-hatian berlebihan.
    kode salah. Perbaikannya: `hentikan-api.bat` lalu `start-web.bat`.
 6. **Selalu jalankan `npm run build` (bukan hanya `vite build`)** — skrip npm
    memakai `tsc -b`, jadi error tipe ikut tertangkap.
-7. **244 tes harus tetap lulus.** Tes "kasus emas"
+7. **270 tes harus tetap lulus.** Tes "kasus emas"
    (`tests/test_data_awal.py`, `tests/test_bridge_doc.py`) mencocokkan hasil
    dengan Excel lama sampai beberapa desimal. Kalau tes emas gagal, hampir pasti rumus
    yang diubah, bukan tesnya.
@@ -508,13 +535,13 @@ pernah membuat label dan ikon tertukar; ganti blok utuhnya.
 ### Rilis versi baru (prosedur yang sudah terbukti)
 ```bash
 # 1. pastikan bersih
-cd backend && .venv/bin/python -m pytest -q          # 244 passed
+cd backend && .venv/bin/python -m pytest -q          # 270 passed
 cd ../frontend && npm run build                       # bersih
 
 # 2. naikkan versi di 6 berkas (isi dua variabel, sisanya otomatis)
 cd ..
 LAMA=$(tr -d '\r\n' < VERSI.txt)     # versi yang masih terpakai
-BARU=0.8.2                            # <- tulis versi baru di sini
+BARU=0.9.0                            # <- tulis versi baru di sini
 for f in VERSI.txt backend/app/versi.py frontend/src/versi.ts \
          docs/CARA_MENJALANKAN.md diagnosa.bat hentikan-api.bat; do
   sed -i "s/$LAMA/$BARU/g" "$f"

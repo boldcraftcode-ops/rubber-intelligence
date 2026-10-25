@@ -121,7 +121,7 @@ def buat_app(engine: Engine | None = None) -> FastAPI:
     if origins:
         app.add_middleware(CORSMiddleware, allow_origins=origins,
                            allow_credentials=True,
-                           allow_methods=["GET", "POST"],
+                           allow_methods=["GET", "POST", "PUT", "DELETE"],
                            allow_headers=["Content-Type"])
 
     # --- login: username + sandi (satu-satunya cara masuk) -------------------
@@ -157,6 +157,10 @@ def buat_app(engine: Engine | None = None) -> FastAPI:
     # Rute Fase 7 (master grade & harga per grade)
     from .api_grade import pasang_router_grade
     pasang_router_grade(app, ambil_session)
+
+    # Rute Fase 8 (master vendor: CRUD + template + impor massal)
+    from .api_vendor import pasang_router_vendor
+    pasang_router_vendor(app, ambil_session)
 
     # Rute modul Database (info, kosongkan, ekspor, impor)
     from .api_database import pasang_router_database

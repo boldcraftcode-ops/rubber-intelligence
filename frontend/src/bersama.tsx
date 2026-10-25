@@ -119,6 +119,30 @@ export async function kirimJson(url: string, body: unknown) {
   return data;
 }
 
+/* Kirim dengan metode bebas (POST/PUT/DELETE) — dipakai menu Master Vendor.
+   `body` objek dikirim sebagai JSON; FormData/Blob dikirim apa adanya. */
+export async function kirimMetode(url: string, metode: "POST" | "PUT" | "DELETE",
+                                  body?: unknown) {
+  const kep: Record<string, string> = { ...kepalaSesi() };
+  let isi: BodyInit | undefined;
+  if (body instanceof FormData || body instanceof Blob) {
+    isi = body;                      // biarkan browser menyetel Content-Type
+  } else if (body !== undefined) {
+    kep["Content-Type"] = "application/json";
+    isi = JSON.stringify(body);
+  }
+  const r = await fetch(urlApi(url), {
+    method: metode, credentials: "include", headers: kep, body: isi,
+  });
+  let data: any = null;
+  try { data = await r.json(); } catch { /* jawaban tanpa isi */ }
+  if (!r.ok) {
+    if (r.status === 401) simpanToken(null);
+    throw galatApi(data?.detail ?? "Gagal menyimpan.", r.status);
+  }
+  return data;
+}
+
 /* ---------- gaya (tema korporat: navy, merah, putih) ---------- */
 export const NAVY = "#1D2434";
 export const MERAH = "#FF1313";
