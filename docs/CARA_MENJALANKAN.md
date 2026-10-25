@@ -131,12 +131,39 @@ Aturan penting:
 - setiap simpanan tercatat (siapa, kapan) dan langsung memperbarui OP Margin,
   Days of Cover, dan alarm.
 
-## 4. Mengimpor data (tiket, stok, pembelian, dll.)
+## 3f. Mengunggah Excel: pratinjau dulu, baru disimpan
 
-Cara termudah: tab **Unggah Data** di aplikasi web — tarik & lepas file .xlsx
-(ekspor Master Data atau file format template, boleh hanya sebagian sheet,
-mis. hanya Stok_Harian). Hasil impor, baris ditolak, dan peringatan langsung
-tampil. Alternatif lewat terminal:
+Tab **Unggah Data** sekarang bekerja dalam **tiga langkah**. Tidak ada satu
+baris pun yang masuk database sebelum Anda menekan tombol konfirmasi.
+
+1. **Pilih file** — tarik & lepas file .xlsx (atau klik untuk memilih). Bisa
+   ekspor *Master Data* tiket, bisa juga file format template — boleh hanya
+   sebagian sheet, mis. hanya `Stok_Harian`.
+2. **Periksa pratinjau** — muncul dua angka: berapa baris **siap disimpan**
+   dan berapa baris **bermasalah**. Di bawahnya ada tabel per sheet + nomor
+   baris + alasannya.
+   * Baris bermasalah dikumpulkan sebagai **data mismatch**. Tekan
+     **⬇ Unduh Excel data mismatch** untuk mengunduhnya: isinya baris asli
+     (utuh), ditambah tiga kolom di kanan — `KODE_MASALAH`,
+     `ALASAN_DITOLAK`, `BARIS_DI_FILE_ASLI`. Perbaiki nilainya, hapus ketiga
+     kolom itu, lalu unggah ulang file tersebut. Baris yang sudah benar tidak
+     perlu diulang.
+   * Ada juga bagian **catatan pemeriksaan** (mis. vendor tak dikenal, Dry
+     tidak cocok) — baris seperti ini **tetap dimuat**, hanya perlu dicek.
+3. **Konfirmasi simpan ke database** — baru di sini data ditulis, OP Margin /
+   Days of Cover / alarm dihitung ulang, dan unggahan tercatat (siapa, kapan,
+   file apa). Tombol **Batalkan, jangan simpan** membuang pratinjau tanpa
+   mengubah apa pun.
+
+**Progress bar.** Selama proses berjalan muncul bilah merah + tulisan tahap
+(*Mengunggah file… 45%* → *Memeriksa isi file (validasi)…* → *Menyimpan ke
+database…*). Biarkan halaman terbuka sampai bilah penuh.
+
+Pratinjau berlaku **60 menit**. Kalau kedaluwarsa, cukup unggah ulang filenya
+(tidak ada data yang perlu dibereskan). Mengonfirmasi pratinjau yang sama dua
+kali ditolak — data tidak akan tergandakan.
+
+Alternatif lewat terminal (langsung impor, tanpa pratinjau):
 
 ```powershell
 python -m app.cli import-tiket "C:\folder\Master Data 2026.xlsx" --pengunggah nama_anda
@@ -196,7 +223,7 @@ kode akan membuat tonase historis kehilangan pemiliknya di laporan.
 python -m pytest
 ```
 
-Harus tertulis `172 passed`. Pengujian mencakup semua kasus uji emas:
+Harus tertulis `357 passed`. Pengujian mencakup semua kasus uji emas:
 harian 3 Jan 2026, bulan Jan/Feb 2026, Jan 2023, Mar 2020 (kurs berubah
 tengah bulan), Apr 2022 (koreksi salah ketik Excel), Days/rasio stok,
 dan perencanaan Jan 2027.
@@ -363,7 +390,7 @@ Bacanya:
 
 | Yang tertulis | Artinya | Tindakan |
 |---|---|---|
-| `mode login : lokal (username-sandi)` dan API menjawab `0.9.7` + `lokal` | sudah benar | login dengan akun Anda (Ctrl+F5 dulu) |
+| `mode login : lokal (username-sandi)` dan API menjawab `0.9.8` + `lokal` | sudah benar | login dengan akun Anda (Ctrl+F5 dulu) |
 | API menjawab `mode: nonaktif` | `AUTH_DISABLED=true` masih ada di `.env` | hapus baris itu, lalu jalankan `start-web.bat` lagi |
 | API tidak menjawab / `404` di `/api/auth/mode` | prosesnya **kode lama** | tutup jendela API lama, jalankan `start-web.bat` lagi |
 | bagian [2] tidak ada akun, atau sandi lupa | akun belum dibuat / sandi salah | `python -m app.cli reset-sandi admin` (dari folder `backend`) |
@@ -389,11 +416,11 @@ Perbaikan:
    melaporkan apakah **port 8000 dan 5173 sudah BEBAS**. Kalau ada yang gagal
    ditutup, skrip mengatakannya (tidak diam-diam).
 2. Jalankan **`start-web.bat`** dari folder aplikasi yang benar — folder yang
-   `VERSI.txt`-nya berisi `0.9.7`. Tunggu tulisan **`API siap: kode 0.9.7`**.
+   `VERSI.txt`-nya berisi `0.9.8`. Tunggu tulisan **`API siap: kode 0.9.8`**.
 3. Buka `http://localhost:5173`, tekan **Ctrl+F5**.
 
 Cek cepat kapan saja: `http://localhost:8000/api/health` — nilai `versi` dan
-`kode` harus `0.9.7`, dan `folder` harus menunjuk folder aplikasi Anda.
+`kode` harus `0.9.8`, dan `folder` harus menunjuk folder aplikasi Anda.
 
 ## Cara tercepat membereskan: `perbaiki.bat`
 
@@ -450,7 +477,7 @@ berkas ini dari folder lama ke folder baru **sebelum** menjalankan
 - `backend\.env` — setelan login (opsional; bila tidak ada, dibuat otomatis)
 
 Cara memastikan folder baru benar-benar versi terbaru: lihat **`VERSI.txt`** di
-akar folder (versi terbaru saat dokumen ini ditulis: **0.9.7**), atau buka
+akar folder (versi terbaru saat dokumen ini ditulis: **0.9.8**), atau buka
 `http://localhost:8000/api/health` dan periksa `"versi"` serta `"kode"`.
 
 ## Login berhasil tetapi kembali ke form login lagi

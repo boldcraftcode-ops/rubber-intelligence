@@ -244,6 +244,7 @@ def buat_app(engine: Engine | None = None) -> FastAPI:
                     "penerimaan-tren", "penerimaan-komposisi",
                     "alarm-tindakan", "stok-margin-panduan",
                     "input-harian", "input-stok", "input-pembelian",
+                    "unggah-pratinjau", "unggah-mismatch-xlsx",
                 ],
                 # versi kode ikut dilaporkan supaya mudah membandingkan
                 # folder yang dijalankan dengan kode terbaru di repo
