@@ -109,6 +109,62 @@ def _filter_tiket(q, tahun=None, bulan=None, vendor=None, grade=None, eudr=None,
     return q
 
 
+def _agregat_bridge(baris) -> dict | None:
+    """Agregasi satu periode memakai rumus persis mart bulanan, plus pasangan
+    (E, K) untuk dekomposisi bridge:
+
+        E = SUM(amount) / SUM(qty)              -- harga beli Rp/kg tertimbang
+        K = SUM(amount) / SUM(amount/kurs)      -- kurs efektif tertimbang
+
+    Sehingga harga USc/kg = 100 x E/K secara identik, dan selisih harga
+    antar periode terurai PERSIS (tanpa sisa) menjadi:
+
+        efek harga Rp  = 100 x (E_B - E_A) / K_A
+        efek kurs      = 100 x E_B x (1/K_B - 1/K_A)
+
+    Syarat baris sama dengan agregat_bulanan: qty > 0, kurs ada, sicom ada.
+    Mengembalikan None bila periode tidak punya hari pembelian.
+    """
+    aktif = [b for b in baris
+             if b.qty_kering_kg and b.qty_kering_kg > 0
+             and b.kurs and b.sicom_usc is not None]
+    if not aktif:
+        return None
+    qty = sum(b.qty_kering_kg for b in aktif)
+    if qty <= 0:
+        return None
+    rp = sum(float(b.amount_rp or 0.0) for b in aktif)
+    usd = sum(float(b.amount_rp or 0.0) / b.kurs for b in aktif)
+    if usd <= 0:
+        return None
+    sicom = sum(b.qty_kering_kg * b.sicom_usc for b in aktif) / qty
+    harga = 100.0 * usd / qty
+    return {
+        "sicom": sicom,
+        "harga": harga,
+        "margin": sicom - harga,
+        "qty_ton": qty / 1000.0,
+        "hari_pembelian": len(aktif),
+        "e_rp_kg": rp / qty,
+        "kurs_efektif": rp / usd,
+    }
+
+
+def _baris_periode_bulanan(session: Session, tahun: int, bulan: int):
+    """Baris mart harian satu bulan (dipakai margin bridge)."""
+    awal, akhir = _rentang(tahun, bulan)
+    return list(session.scalars(select(MartHarian).where(
+        MartHarian.tanggal >= awal, MartHarian.tanggal <= akhir)))
+
+
+def _baris_periode_tahunan(session: Session, tahun: int, bulan_umum: list[int]):
+    """Baris mart harian satu tahun, hanya pada bulan-bulan yang diminta."""
+    return [h for h in session.scalars(select(MartHarian).where(
+            MartHarian.tanggal >= dt.date(tahun, 1, 1),
+            MartHarian.tanggal <= dt.date(tahun, 12, 31)))
+            if h.tanggal.month in bulan_umum]
+
+
 def _unggahan_info(session: Session, unggahan_id: int | None) -> dict | None:
     if unggahan_id is None:
         return None
@@ -173,6 +229,209 @@ def pasang_router(app, ambil_session):
                         hasil["avg_ytd_tertimbang"]])
             return respon_xlsx(f"ringkasan_{tahun}.xlsx", judul, isi)
         return hasil
+
+    # ------------------------------------------------------------ margin bridge
+    @router.get("/margin-bridge")
+    def margin_bridge(basis: str = "bulanan", tahun: int | None = None,
+                      bulan: int | None = None, format: str | None = None,
+                      session: Session = dep):
+        """Jembatan OP Margin periode A -> periode B (waterfall).
+
+        awal + ΔSICOM + efek harga Rp + efek kurs = akhir, tertutup persis
+        (selisih hanya pembulatan float). Basis 'bulanan': B = (tahun, bulan),
+        A = bulan sebelumnya. Basis 'tahunan': B = tahun, A = tahun-1, hanya
+        bulan-bulan yang berdata di kedua tahun (bandingkan apples-to-apples).
+        """
+        if basis not in ("bulanan", "tahunan"):
+            raise HTTPException(422, "basis harus 'bulanan' atau 'tahunan'.")
+        if bulan is not None and not 1 <= bulan <= 12:
+            raise HTTPException(422, "bulan harus antara 1 dan 12.")
+
+        terakhir = session.scalars(
+            select(MartBulanan).order_by(MartBulanan.tahun.desc(),
+                                         MartBulanan.bulan.desc()).limit(1)).first()
+        if terakhir is None:
+            raise HTTPException(404, "Belum ada data mart bulanan. "
+                                     "Jalankan import-template dulu.")
+        if tahun is None:
+            tahun = terakhir.tahun
+
+        if basis == "bulanan":
+            if bulan is None:
+                m = session.scalars(select(MartBulanan).where(
+                    MartBulanan.tahun == tahun).order_by(
+                    MartBulanan.bulan.desc()).limit(1)).first()
+                if m is None:
+                    raise HTTPException(404, f"Belum ada data untuk tahun {tahun}.")
+                bulan = m.bulan
+            thn_a, bln_a = (tahun - 1, 12) if bulan == 1 else (tahun, bulan - 1)
+            baris_a = _baris_periode_bulanan(session, thn_a, bln_a)
+            baris_b = _baris_periode_bulanan(session, tahun, bulan)
+            periode_a = {"tahun": thn_a, "bulan": bln_a}
+            periode_b = {"tahun": tahun, "bulan": bulan}
+        else:
+            ada_a = {b.bulan for b in session.scalars(select(MartBulanan).where(
+                MartBulanan.tahun == tahun - 1))}
+            ada_b = {b.bulan for b in session.scalars(select(MartBulanan).where(
+                MartBulanan.tahun == tahun))}
+            umum = sorted(ada_a & ada_b)
+            if not umum:
+                raise HTTPException(
+                    404, f"Tidak ada bulan berdata bersama antara "
+                         f"{tahun - 1} dan {tahun} — tidak bisa dijembatani.")
+            baris_a = _baris_periode_tahunan(session, tahun - 1, umum)
+            baris_b = _baris_periode_tahunan(session, tahun, umum)
+            periode_a = {"tahun": tahun - 1, "bulan_pertama": umum[0],
+                         "bulan_terakhir": umum[-1], "bulan_list": umum}
+            periode_b = {"tahun": tahun, "bulan_pertama": umum[0],
+                         "bulan_terakhir": umum[-1], "bulan_list": umum}
+
+        a = _agregat_bridge(baris_a)
+        b = _agregat_bridge(baris_b)
+        if a is None or b is None:
+            raise HTTPException(
+                404, "Salah satu periode belum punya hari pembelian "
+                     "(qty > 0 dengan kurs & SICOM) — bridge tidak bisa dihitung.")
+
+        d_sicom = b["sicom"] - a["sicom"]
+        efek_harga = 100.0 * (b["e_rp_kg"] - a["e_rp_kg"]) / a["kurs_efektif"]
+        efek_kurs = 100.0 * b["e_rp_kg"] * (1.0 / b["kurs_efektif"]
+                                             - 1.0 / a["kurs_efektif"])
+        langkah = [
+            {"kode": "sicom", "label": "Δ SICOM", "nilai": d_sicom},
+            {"kode": "harga_rp", "label": "Δ harga beli (Rp/kg)", "nilai": -efek_harga},
+            {"kode": "kurs", "label": "Δ kurs", "nilai": -efek_kurs},
+        ]
+        awal = a["margin"]
+        akhir = b["margin"]
+        hasil = {
+            "basis": basis,
+            "periode_a": periode_a,
+            "periode_b": periode_b,
+            "awal": awal,
+            "langkah": langkah,
+            "akhir": akhir,
+            "penutupan_selisih": round(awal + sum(l["nilai"] for l in langkah)
+                                       - akhir, 12),
+            "detail": {
+                "sicom_a": a["sicom"], "sicom_b": b["sicom"],
+                "harga_a": a["harga"], "harga_b": b["harga"],
+                "margin_a": awal, "margin_b": akhir,
+                "e_a": a["e_rp_kg"], "e_b": b["e_rp_kg"],
+                "kurs_a": a["kurs_efektif"], "kurs_b": b["kurs_efektif"],
+                "qty_a": a["qty_ton"], "qty_b": b["qty_ton"],
+                "hari_a": a["hari_pembelian"], "hari_b": b["hari_pembelian"],
+            },
+            "catatan": [
+                "OP Margin = SICOM − OP Price; bridge = penyusunan selisih "
+                "periode A → periode B menjadi kontribusi yang tertutup persis.",
+                "Kurs efektif K = ΣAmount / Σ(Amount/kurs) (tertimbang nilai "
+                "transaksi); harga USc/kg = 100 × (Rp/kg tertimbang) / K.",
+                "Basis tahunan memakai irisan bulan berdata kedua tahun "
+                "supaya perbandingan adil (mis. Jan–Okt vs Jan–Okt).",
+            ],
+        }
+        if format == "xlsx":
+            judul = ["Komponen", "Nilai (USc/kg)"]
+            isi = [[f"OP Margin awal — {periode_a}", awal]]
+            isi += [[l["label"], l["nilai"]] for l in langkah]
+            isi.append([f"OP Margin akhir — {periode_b}", akhir])
+            isi.append(["Selisih penutupan (harus ~0)", hasil["penutupan_selisih"]])
+            d = hasil["detail"]
+            isi += [
+                [], ["Detail", "Periode A", "Periode B"],
+                ["SICOM (USc/kg)", d["sicom_a"], d["sicom_b"]],
+                ["OP Price (USc/kg)", d["harga_a"], d["harga_b"]],
+                ["Harga beli (Rp/kg, tertimbang)", d["e_a"], d["e_b"]],
+                ["Kurs efektif (Rp/USD)", d["kurs_a"], d["kurs_b"]],
+                ["Qty kering (ton)", d["qty_a"], d["qty_b"]],
+                ["Hari pembelian", d["hari_a"], d["hari_b"]],
+            ]
+            nama = f"margin_bridge_{basis}_{tahun}.xlsx"
+            return respon_xlsx(nama, judul, isi)
+        return hasil
+
+    # ------------------------------------------------------------ days of cover
+    @router.get("/days-of-cover")
+    def days_of_cover(dari: dt.date | None = None, sampai: dt.date | None = None,
+                      format: str | None = None, session: Session = dep):
+        """Cadangan hari olah dari stok (days of cover) + tren harian.
+
+        days = stok_ton / kapasitas_ton_per_hari (parameter berversi tanggal).
+        Bila tidak ada filter, memakai 180 hari data stok terakhir.
+        """
+        q = select(MartHarian).where(MartHarian.stok_ton != None)  # noqa: E711
+        semua = list(session.scalars(q.order_by(MartHarian.tanggal)))
+        if not semua:
+            raise HTTPException(404, "Belum ada data stok harian di mart.")
+        if dari is None and sampai is None:
+            sampai = semua[-1].tanggal
+            dari = sampai - dt.timedelta(days=179)
+        baris = [h for h in semua
+                 if (dari is None or h.tanggal >= dari)
+                 and (sampai is None or h.tanggal <= sampai)]
+        if not baris:
+            raise HTTPException(404, f"Tidak ada data stok antara "
+                                     f"{dari} dan {sampai}.")
+
+        seri = [{
+            "tanggal": h.tanggal.isoformat(),
+            "stok_ton": round(h.stok_ton, 3),
+            "kapasitas_ton": h.kapasitas_ton,
+            "safety_ton": h.safety_ton,
+            "days": round(h.days, 3) if h.days is not None else None,
+            "safety_days": (round(h.safety_ton / h.kapasitas_ton, 3)
+                            if h.safety_ton is not None and h.kapasitas_ton
+                            else None),
+            "rasio_stok": round(h.rasio_stok, 4) if h.rasio_stok is not None else None,
+        } for h in baris]
+
+        terkini = seri[-1]
+        if terkini["rasio_stok"] is None:
+            status = "tanpa safety"
+        else:
+            status = "di bawah safety" if terkini["rasio_stok"] < 1 else "aman"
+        n30 = [s["days"] for s in seri[-30:] if s["days"] is not None]
+        berhari = [s for s in seri if s["days"] is not None]
+        terendah = min(berhari, key=lambda s: s["days"]) if berhari else None
+        tertinggi = max(berhari, key=lambda s: s["days"]) if berhari else None
+        bawah = [s for s in seri
+                 if s["rasio_stok"] is not None and s["rasio_stok"] < 1]
+
+        hasil = {
+            "dari": baris[0].tanggal.isoformat(),
+            "sampai": baris[-1].tanggal.isoformat(),
+            "terkini": {**terkini, "status": status},
+            "rerata_30_hari": round(sum(n30) / len(n30), 3) if n30 else None,
+            "terendah": terendah,
+            "tertinggi": tertinggi,
+            "jumlah_hari": len(seri),
+            "jumlah_hari_di_bawah_safety": len(bawah),
+            "seri": seri,
+            "catatan": [
+                "Days of cover = stok ton ÷ kapasitas olah (ton/hari): berapa "
+                "hari olah tersisa bila laju olah tetap. Angka terkini memakai "
+                "parameter (kapasitas & safety) yang berlaku pada tanggal itu.",
+                "Garis kuning putus-putus = safety stock pada hari yang sama "
+                "(safety ton ÷ kapasitas), bukan ambang konstan.",
+            ],
+        }
+        if format == "xlsx":
+            judul = ["Tanggal", "Stok (ton)", "Kapasitas (ton/hari)",
+                     "Safety (ton)", "Days of cover", "Safety (hari)", "Rasio stok"]
+            isi = [[s["tanggal"], s["stok_ton"], s["kapasitas_ton"], s["safety_ton"],
+                    s["days"], s["safety_days"], s["rasio_stok"]] for s in seri]
+            isi += [
+                [], ["Ringkas", "Nilai"],
+                ["Rerata 30 hari data terakhir", hasil["rerata_30_hari"]],
+                ["Terendah (hari)", terendah["days"] if terendah else None],
+                ["Tertinggi (hari)", tertinggi["days"] if tertinggi else None],
+                ["Hari di bawah safety", hasil["jumlah_hari_di_bawah_safety"]],
+            ]
+            return respon_xlsx(f"days_of_cover_{hasil['dari']}_{hasil['sampai']}.xlsx",
+                               judul, isi)
+        return hasil
+
 
     @router.get("/ringkasan-elemen")
     def ringkasan_elemen(dari: str | None = None, sampai: str | None = None,

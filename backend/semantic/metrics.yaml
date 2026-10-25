@@ -118,6 +118,35 @@ kartu:
       Hanya dihitung bila Amount pembelian tersedia pada tingkat itu.
       Bila Amount hanya total per hari, kartu menampilkan "data harga belum
       tersedia" - sistem TIDAK mengalokasikan harga diam-diam.
+  margin_bridge:
+    judul: Margin bridge (jembatan OP Margin)
+    cara_dihitung: >
+      Waterfall dari OP Margin periode A ke periode B. Komponen:
+      + delta SICOM = SICOM_B - SICOM_A;
+      - efek harga beli Rp/kg = 100 x (E_B - E_A) / K_A;
+      - efek kurs = 100 x E_B x (1/K_B - 1/K_A);
+      dengan E = SUM(Amount)/SUM(qty) (Rp/kg tertimbang) dan
+      K = SUM(Amount)/SUM(Amount/kurs) (kurs efektif tertimbang), sehingga
+      OP Price = 100 x E/K persis. SICOM, OP Price, dan margin memakai rumus
+      resmi bagian 6 (bobot tonase kering, hanya hari pembelian). Bridge
+      tertutup persis: awal + jumlah komponen = akhir (sisa hanya pembulatan
+      desimal, ditampilkan sebagai "selisih penutupan").
+      Basis bulanan: B = bulan terpilih, A = bulan sebelumnya.
+      Basis tahunan: B = tahun terpilih, A = tahun sebelumnya, dihitung hanya
+      pada bulan yang berdata di KEDUA tahun (mis. Jan-Okt vs Jan-Okt) supaya
+      perbandingan adil.
+  days_of_cover:
+    judul: Days of cover (cadangan hari olah)
+    cara_dihitung: >
+      Days of cover = stok ton / kapasitas olah (ton/hari) pada tanggal itu:
+      berapa hari olah tersisa bila laju olah tetap. Stok dan kapasitas
+      memakai nilai mart harian; kapasitas & safety mengikuti parameter yang
+      berlaku pada tanggal tersebut (parameter berversi), jadi garis safety
+      bukan ambang konstan. Grafik menampilkan days of cover harian (garis
+      ungu) dan safety stock dalam hari = safety ton / kapasitas (garis kuning
+      putus-putus). Ringkasan: angka terkini, rerata 30 data terakhir,
+      terendah/tertinggi dalam rentang, dan jumlah hari di bawah safety
+      (rasio stok < 1).
   rekonsiliasi:
     judul: Rekonsiliasi tonase
     cara_dihitung: >

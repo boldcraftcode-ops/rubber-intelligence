@@ -76,6 +76,50 @@ const KAMUS: Record<string, string> = {
     "Purchase days composing this month (click a date to continue)",
   "Baris pembelian & tiket pada": "Purchase & ticket rows on",
   "unggahan asal": "source upload",
+  // ---- margin bridge
+  "Margin bridge OP Margin": "OP Margin bridge",
+  "Menjembatani OP Margin periode A ke periode B: kontribusi Δ SICOM, Δ harga beli (Rp/kg), dan Δ kurs — jumlahnya tertutup persis.":
+    "Bridges OP Margin from period A to period B: contributions from Δ SICOM, Δ purchase price (Rp/kg) and Δ FX — the sum closes exactly.",
+  "Margin awal": "Opening margin",
+  "Margin akhir": "Closing margin",
+  "Bulanan": "Monthly",
+  "Tahunan": "Yearly",
+  "Tahun": "Year",
+  "Bulan (periode akhir)": "Month (end period)",
+  "Tahun ini belum punya data bulanan — pilih tahun lain.":
+    "This year has no monthly data yet — pick another year.",
+  "Dibandingkan dengan tahun sebelumnya, hanya bulan yang berdata di kedua tahun.":
+    "Compared with the previous year, using only months with data in both years.",
+  "Memuat…": "Loading…",
+  "Harga beli (Rp/kg)": "Purchase price (Rp/kg)",
+  "Kurs efektif": "Effective FX rate",
+  "Qty kering (ton)": "Dry qty (tonnes)",
+  "Hari pembelian": "Purchase days",
+  "Selisih penutupan (awal + komponen − akhir):": "Closing gap (opening + components − closing):",
+  "— praktis nol, jadi bridge tertutup persis.": "— practically zero, so the bridge closes exactly.",
+  "Hijau = menambah margin, merah = mengurangi margin. Arahkan kursor ke batang untuk nilai persisnya.":
+    "Green = adds margin, red = reduces margin. Hover a bar for the exact value.",
+  // ---- days of cover
+  "Days of cover (cadangan hari olah)": "Days of cover",
+  "Berapa hari olah tersisa dari stok bila laju olah tetap: stok ÷ kapasitas olah. Garis kuning = safety stock pada hari yang sama.":
+    "How many processing days remain in stock at the current rate: stock ÷ processing capacity. Yellow line = safety stock on the same day.",
+  "hari": "days",
+  "per": "as of",
+  "stok": "stock",
+  "kapasitas": "capacity",
+  "dari safety": "of safety",
+  "Rerata 30 hari terakhir:": "Average of last 30 days:",
+  "Terendah:": "Lowest:",
+  "Tertinggi:": "Highest:",
+  "Hari di bawah safety:": "Days below safety:",
+  "Days of cover": "Days of cover",
+  "Safety (hari)": "Safety (days)",
+  "Rentang ditampilkan:": "Range shown:",
+  "(180 hari data terakhir; ubah lewat ekspor/parameter API bila perlu rentang lain).":
+    "(last 180 days of data; change via export/API parameters for another range).",
+  "di bawah safety": "below safety",
+  "aman": "safe",
+  "tanpa safety": "no safety stock",
 };
 
 let bahasaAktif: Bahasa =

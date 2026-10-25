@@ -24,6 +24,24 @@ yang mudah dibaca manusia.
 | harga_beli_maks_usc | SICOM hari ini − target_efektif | US¢/kg | Ditampilkan beserta alasannya |
 | harga_beli_maks_rp | harga_beli_maks_usc × kurs / 100 | Rp/kg | |
 | net_margin rencana | rata-rata margin bulan sama (tahun terpilih) + penyesuaian manual + effort | US¢/kg | Pengganti sheet Y27; default 4 tahun terakhir |
+| E (harga beli Rp tertimbang) | ΣAmount / Σqty | Rp/kg | Dipakai margin bridge; dasar dekomposisi |
+| K (kurs efektif tertimbang) | ΣAmount / Σ(Amount/kurs) | Rp/USD | OP Price = 100 × E / K **persis** (identitas) |
+| efek harga Rp (bridge) | 100 × (E_B − E_A) / K_A | US¢/kg | Kontribusi ke margin = −efek ini |
+| efek kurs (bridge) | 100 × E_B × (1/K_B − 1/K_A) | US¢/kg | Kontribusi ke margin = −efek ini |
+| penutupan bridge | awal + ΔSICOM − efek harga − efek kurs − akhir | US¢/kg | Harus ~0: bridge tertutup persis |
+| days of cover | stok_ton / kapasitas_ton_per_hari | hari | Sama dengan `days`; kapasitas & safety ikut parameter yang berlaku pada tanggal itu |
+| safety (hari) | safety_ton / kapasitas_ton_per_hari | hari | Pembanding days of cover (bukan ambang konstan) |
+
+**Margin bridge** (`/api/margin-bridge`): OP Margin periode A → B diurai menjadi
+ΔSICOM, efek harga beli Rp/kg, dan efek kurs. Basis `bulanan` (B = bulan terpilih,
+A = bulan sebelumnya) atau `tahunan` (B = tahun terpilih, A = tahun sebelumnya,
+hanya bulan yang berdata di **kedua** tahun agar adil). SICOM/OP Price/margin
+memakai rumus resmi di atas, sehingga ujung bridge = angka ringkasan resmi.
+
+**Days of cover** (`/api/days-of-cover`): cadangan hari olah dari stok, dengan
+tren harian, safety stock dalam hari, rerata 30 data terakhir, dan hitungan hari
+di bawah safety. Bawaan 180 hari data terakhir; bisa difilter `dari`/`sampai`
+dan diekspor ke Excel (`format=xlsx`) seperti kartu lain.
 
 Catatan hubungan stok–margin (halaman analisis, fase berikutnya): korelasi
 historis ±0,43 adalah **asosiasi, bukan bukti sebab-akibat** — wajib ditulis

@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
-  Bar, CartesianGrid, Cell, ComposedChart, Legend, Line, LineChart,
+  Bar, BarChart, CartesianGrid, Cell, ComposedChart, Legend, Line, LineChart,
   ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from "recharts";
 import { Kartu, NAMA_BULAN, Panel5W1H, ambilJson, fmtAngka, fmtTanggal, kelasTombolAnalisa, kelasTombolKecil } from "../bersama";
@@ -412,6 +412,301 @@ function KartuGrafikMargin() {
   );
 }
 
+/* ---------- margin bridge: jembatan OP Margin periode A -> periode B ---------- */
+function TipBridge({ active, payload }: any) {
+  if (!active || !payload?.length) return null;
+  const isi = payload.find((p: any) => p.dataKey === "nilai") ?? payload[0];
+  const d = isi?.payload;
+  if (!d) return null;
+  return (
+    <div className="rounded-md border border-violet-500/40 bg-[#1a1844] px-3 py-2 text-xs shadow-xl">
+      <div className="font-semibold text-slate-100 mb-1">{d.label}</div>
+      <div className={d.delta >= 0 ? "text-emerald-300" : "text-rose-300"}>
+        {d.delta >= 0 ? "+" : ""}{fmtAngka(d.delta, 2)} US¢/kg
+      </div>
+      {d.langkah && (
+        <div className="text-slate-400 mt-0.5">
+          {fmtAngka(d.sebelum, 2)} → {fmtAngka(d.sesudah, 2)}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function KartuMarginBridge() {
+  const { t } = useBahasa();
+  const [basis, setBasis] = useState<"bulanan" | "tahunan">("bulanan");
+  const [tahun, setTahun] = useState<number | null>(null);
+  const [bulan, setBulan] = useState<number | null>(null);
+
+  const tahunQ = useQuery({ queryKey: ["tahun"], queryFn: () => ambilJson("/api/tahun"),
+                            staleTime: Infinity });
+  const thn = tahun ?? (tahunQ.data ? tahunQ.data[tahunQ.data.length - 1] : null);
+  // kunci query sama dengan tabel ringkasan -> data bulan berdata dipakai bersama
+  const bulanQ = useQuery({
+    queryKey: ["ringkasan", thn],
+    queryFn: () => ambilJson(`/api/ringkasan/${thn}`),
+    enabled: thn !== null,
+  });
+  const bulanBerdata: number[] = (bulanQ.data?.bulan ?? []).map((b: any) => b.bulan);
+  const bln = bulan ?? (bulanBerdata.length ? bulanBerdata[bulanBerdata.length - 1] : null);
+
+  const params = new URLSearchParams({ basis });
+  if (thn !== null) params.set("tahun", String(thn));
+  if (basis === "bulanan" && bln !== null) params.set("bulan", String(bln));
+  const url = `/api/margin-bridge?${params.toString()}`;
+
+  const q = useQuery({
+    queryKey: ["margin-bridge", url],
+    queryFn: () => ambilJson(url),
+    enabled: thn !== null && (basis === "tahunan" || bln !== null),
+    retry: false,
+  });
+
+  const labelPeriode = (p: any) => {
+    if (!p) return "";
+    if (p.bulan) return `${NAMA_BULAN[p.bulan]} ${p.tahun}`;
+    return `${NAMA_BULAN[p.bulan_pertama]}–${NAMA_BULAN[p.bulan_terakhir]} ${p.tahun}`;
+  };
+
+  const d = q.data;
+  const titik: any[] = [];
+  if (d) {
+    titik.push({ label: `${t("Margin awal")} ${labelPeriode(d.periode_a)}`,
+                 dasar: Math.min(0, d.awal), nilai: Math.abs(d.awal),
+                 delta: d.awal, total: true });
+    let kum = d.awal;
+    for (const l of d.langkah) {
+      const sebelum = kum;
+      kum += l.nilai;
+      titik.push({ label: l.label, dasar: Math.min(sebelum, kum),
+                   nilai: Math.abs(l.nilai), delta: l.nilai,
+                   sebelum, sesudah: kum, langkah: true });
+    }
+    titik.push({ label: `${t("Margin akhir")} ${labelPeriode(d.periode_b)}`,
+                 dasar: Math.min(0, kum), nilai: Math.abs(kum),
+                 delta: kum, total: true });
+  }
+  const warna = (x: any) => (x.total ? "#8b5cf6" : x.delta >= 0 ? "#34d399" : "#f87171");
+
+  const barisDetail: [string, string, number][] = d ? [
+    ["SICOM", "sicom", 4],
+    [t("OP Price"), "harga", 4],
+    [t("Harga beli (Rp/kg)"), "e", 0],
+    [t("Kurs efektif"), "kurs", 0],
+    [t("Qty kering (ton)"), "qty", 3],
+    [t("Hari pembelian"), "hari", 0],
+    [t("OP Margin"), "margin", 4],
+  ] : [];
+
+  return (
+    <Kartu idMetrik="margin_bridge" judul={t("Margin bridge OP Margin")} urlEkspor={url}
+           keterangan={t("Menjembatani OP Margin periode A ke periode B: kontribusi Δ SICOM, Δ harga beli (Rp/kg), dan Δ kurs — jumlahnya tertutup persis.")}
+           anak={
+      <>
+        <div className="flex flex-wrap items-end gap-3 mb-3 text-xs">
+          <div className="flex rounded-md overflow-hidden border border-violet-400/30">
+            {(["bulanan", "tahunan"] as const).map((b) => (
+              <button key={b}
+                className={`px-2.5 py-1 ${basis === b ? "bg-violet-600 text-white"
+                  : "bg-white/5 text-slate-300 hover:bg-white/10"}`}
+                onClick={() => setBasis(b)}>
+                {b === "bulanan" ? t("Bulanan") : t("Tahunan")}
+              </button>
+            ))}
+          </div>
+          <div>
+            <label className="block text-slate-400 mb-1">{t("Tahun")}</label>
+            <div className="flex gap-1 flex-wrap">
+              {tahunQ.data?.map((th: number) => (
+                <button key={th}
+                  className={`rounded px-2 py-0.5 ${th === thn ? "bg-violet-600 text-white"
+                    : "bg-white/10 text-slate-300 hover:bg-white/20"}`}
+                  onClick={() => { setTahun(th); setBulan(null); }}>
+                  {th}
+                </button>
+              ))}
+            </div>
+          </div>
+          {basis === "bulanan" && (
+            <div>
+              <label className="block text-slate-400 mb-1">{t("Bulan (periode akhir)")}</label>
+              <select className={kelasTombolKecil} value={bln ?? ""}
+                      onChange={(e) => setBulan(Number(e.target.value))}>
+                {bulanBerdata.map((b) => (
+                  <option key={b} value={b}>{NAMA_BULAN[b]}</option>
+                ))}
+              </select>
+            </div>
+          )}
+          {basis === "tahunan" && (
+            <p className="text-slate-400">{t("Dibandingkan dengan tahun sebelumnya, hanya bulan yang berdata di kedua tahun.")}</p>
+          )}
+        </div>
+
+        {bulanQ.error && (
+          <p className="rounded-md bg-amber-400/10 border border-amber-400/30 px-3 py-2 text-sm text-amber-300">
+            {t("Tahun ini belum punya data bulanan — pilih tahun lain.")}
+          </p>
+        )}
+        {q.isLoading && <p className="text-sm text-slate-400">{t("Memuat…")}</p>}
+        {q.error && !bulanQ.error && (
+          <p className="rounded-md bg-red-500/10 border border-red-400/30 px-3 py-2 text-sm text-red-300">
+            {(q.error as Error).message}
+          </p>
+        )}
+
+        {d && (
+          <>
+            <div className="h-72">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={titik} margin={{ top: 10, right: 10, bottom: 5, left: -10 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,.08)" />
+                  <XAxis dataKey="label" tick={{ fill: "#cbd5e1", fontSize: 10 }}
+                         interval={0} height={48} angle={-12} textAnchor="end" />
+                  <YAxis tick={{ fill: "#cbd5e1", fontSize: 11 }}
+                         label={{ value: "US¢/kg", angle: -90, position: "insideLeft",
+                                  fill: "#94a3b8", fontSize: 11 }} />
+                  <Tooltip content={<TipBridge />} />
+                  <Bar dataKey="dasar" stackId="a" fill="transparent" isAnimationActive={false} />
+                  <Bar dataKey="nilai" stackId="a" isAnimationActive={false}>
+                    {titik.map((x, i) => <Cell key={i} fill={warna(x)} />)}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+
+            <div className="overflow-x-auto mt-3">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="text-left text-slate-400 border-b">
+                    <th className="py-1 pr-2"> </th>
+                    <th className="text-right px-1">{labelPeriode(d.periode_a)}</th>
+                    <th className="text-right px-1">{labelPeriode(d.periode_b)}</th>
+                    <th className="text-right px-1">Δ</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {barisDetail.map(([nama, kunci, des]) => {
+                    const a = d.detail[`${kunci}_a`];
+                    const b = d.detail[`${kunci}_b`];
+                    return (
+                      <tr key={kunci} className="border-b border-white/5">
+                        <td className="py-1 pr-2 text-slate-300">{nama}</td>
+                        <td className="text-right px-1 font-mono">{fmtAngka(a, des)}</td>
+                        <td className="text-right px-1 font-mono">{fmtAngka(b, des)}</td>
+                        <td className={`text-right px-1 font-mono ${
+                          b - a >= 0 ? "text-emerald-300" : "text-rose-300"}`}>
+                          {b - a >= 0 ? "+" : ""}{fmtAngka(b - a, des)}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            <p className="mt-2 text-xs text-slate-400">
+              {t("Selisih penutupan (awal + komponen − akhir):")}{" "}
+              <span className="font-mono">{fmtAngka(d.penutupan_selisih, 8)}</span>{" "}
+              {t("— praktis nol, jadi bridge tertutup persis.")}
+            </p>
+            <p className="mt-1 text-xs text-slate-500">
+              {t("Hijau = menambah margin, merah = mengurangi margin. Arahkan kursor ke batang untuk nilai persisnya.")}
+            </p>
+          </>
+        )}
+      </>
+    } />
+  );
+}
+
+/* ---------- days of cover: cadangan hari olah dari stok ---------- */
+function KartuDaysOfCover() {
+  const { t } = useBahasa();
+  const q = useQuery({ queryKey: ["days-of-cover"], queryFn: () => ambilJson("/api/days-of-cover") });
+  const d = q.data;
+  const seri = (d?.seri ?? []).map((s: any) => ({
+    ...s, label: `${NAMA_BULAN[Number(s.tanggal.slice(5, 7))]} ${s.tanggal.slice(8, 10)}`,
+  }));
+  const t0 = d?.terkini;
+  const warnaStatus = t0?.status === "aman" ? "text-emerald-300 border-emerald-400/40 bg-emerald-500/10"
+    : t0?.status === "di bawah safety" ? "text-rose-300 border-rose-400/40 bg-rose-500/10"
+    : "text-slate-300 border-slate-400/40 bg-white/5";
+
+  return (
+    <Kartu idMetrik="days_of_cover" judul={t("Days of cover (cadangan hari olah)")}
+           urlEkspor="/api/days-of-cover"
+           keterangan={t("Berapa hari olah tersisa dari stok bila laju olah tetap: stok ÷ kapasitas olah. Garis kuning = safety stock pada hari yang sama.")}
+           anak={
+      <>
+        {q.isLoading && <p className="text-sm text-slate-400">{t("Memuat…")}</p>}
+        {q.error && (
+          <p className="rounded-md bg-red-500/10 border border-red-400/30 px-3 py-2 text-sm text-red-300">
+            {(q.error as Error).message}
+          </p>
+        )}
+        {t0 && (
+          <>
+            <div className="flex flex-wrap items-end gap-6">
+              <div>
+                <div className="text-4xl font-bold font-mono text-violet-300">
+                  {fmtAngka(t0.days, 1)} <span className="text-base text-slate-400">{t("hari")}</span>
+                </div>
+                <div className="text-xs text-slate-400 mt-1">
+                  {t("per")} {fmtTanggal(t0.tanggal)} · {t("stok")}{" "}
+                  {fmtAngka(t0.stok_ton, 0)} ton · {t("kapasitas")}{" "}
+                  {fmtAngka(t0.kapasitas_ton, 2)} ton/{t("hari")}
+                </div>
+              </div>
+              <span className={`rounded-full border px-3 py-1 text-xs font-medium ${warnaStatus}`}>
+                {t(t0.status)}
+                {t0.rasio_stok !== null && ` · ${fmtAngka(t0.rasio_stok * 100, 1)}% ${t("dari safety")}`}
+              </span>
+              <div className="text-xs text-slate-400">
+                <div>{t("Rerata 30 hari terakhir:")} <b className="text-slate-200 font-mono">{fmtAngka(d.rerata_30_hari, 2)}</b> {t("hari")}</div>
+                <div>{t("Terendah:")} <b className="text-rose-300 font-mono">{fmtAngka(d.terendah?.days, 2)}</b>{" "}
+                  ({d.terendah ? fmtTanggal(d.terendah.tanggal) : "–"}) · {t("Tertinggi:")}{" "}
+                  <b className="text-emerald-300 font-mono">{fmtAngka(d.tertinggi?.days, 2)}</b></div>
+                <div>{t("Hari di bawah safety:")} <b className="text-slate-200 font-mono">{d.jumlah_hari_di_bawah_safety}</b>{" "}
+                  {t("dari")} {d.jumlah_hari}</div>
+              </div>
+            </div>
+
+            <div className="h-64 mt-4">
+              <ResponsiveContainer width="100%" height="100%">
+                <LineChart data={seri} margin={{ top: 10, right: 10, bottom: 5, left: -15 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,.08)" />
+                  <XAxis dataKey="label" tick={{ fill: "#cbd5e1", fontSize: 10 }}
+                         minTickGap={28} />
+                  <YAxis tick={{ fill: "#cbd5e1", fontSize: 11 }}
+                         label={{ value: t("hari"), angle: -90, position: "insideLeft",
+                                  fill: "#94a3b8", fontSize: 11 }} />
+                  <Tooltip contentStyle={{ background: "#1a1844", border: "1px solid #7c3aed66",
+                                           borderRadius: 8, fontSize: 12 }}
+                           formatter={(v: any, _nama: any, p: any) =>
+                             [fmtAngka(v, 2), p?.dataKey === "days"
+                               ? t("Days of cover") : t("Safety (hari)")]} />
+                  <Legend wrapperStyle={{ fontSize: 12 }} />
+                  <Line type="monotone" dataKey="days" name={t("Days of cover")}
+                        stroke="#a78bfa" strokeWidth={2} dot={false} />
+                  <Line type="monotone" dataKey="safety_days" name={t("Safety (hari)")}
+                        stroke="#fbbf24" strokeWidth={1.5} strokeDasharray="5 4" dot={false} />
+                </LineChart>
+              </ResponsiveContainer>
+            </div>
+
+            <p className="mt-2 text-xs text-slate-500">
+              {t("Rentang ditampilkan:")} {fmtTanggal(d.dari)} – {fmtTanggal(d.sampai)}{" "}
+              {t("(180 hari data terakhir; ubah lewat ekspor/parameter API bila perlu rentang lain).")}
+            </p>
+          </>
+        )}
+      </>
+    } />
+  );
+}
+
 /* ---------- halaman ---------- */
 export default function Ringkasan() {
   const { t } = useBahasa();
@@ -500,6 +795,10 @@ export default function Ringkasan() {
       } />
 
       <KartuGrafikMargin />
+
+      <KartuMarginBridge />
+
+      <KartuDaysOfCover />
 
       <KartuElemen />
 
