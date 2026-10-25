@@ -144,15 +144,34 @@ Di situ ada daftar `fitur`. Kalau daftar itu **tidak** memuat
 Cara memperbaiki:
 
 1. Tutup jendela hitam berjudul **"OP Margin - API"** (atau tekan `Ctrl+C` di
-   jendela itu).
-2. Jalankan `start-web.bat` lagi. Skrip ini sekarang memeriksa port 8000 dan
-   5173 lebih dulu, menawarkan menutup proses lama, menjalankan API dengan
-   `--reload`, lalu memverifikasi daftar `fitur` — kalau masih versi lama,
-   akan muncul peringatan **API VERSI LAMA**.
+   jendela itu). Kalau lupa mana, jalankan saja `start-web.bat` — skrip itu
+   akan menanyakan sendiri: `Tutup proses itu sekarang? [Y] ya / [N] biarkan`.
+   Jawab `Y` lalu Enter.
+2. Jalankan `start-web.bat` lagi. Skrip ini memeriksa port 8000 dan 5173 lebih
+   dulu, menjalankan API dengan `--reload`, lalu memverifikasi daftar `fitur`:
+   kalau masih versi lama akan muncul peringatan **API VERSI LAMA**, bukan
+   diam-diam membuka aplikasi setengah jalan.
 3. Di browser, muat ulang dengan **Ctrl+F5** (agar berkas lama tidak dipakai).
 
-Kalau `start-web.bat` melaporkan port 8000 dipakai program lain, tutup program
-itu dulu atau jalankan ulang skrip dan pilih opsi menutup prosesnya.
+`start-web.bat` kini juga **menyiapkan sendiri** apa pun yang belum ada:
+ruang kerja Python (`backend\.venv`), database + data awal, dan pustaka
+tampilan web. Jadi pesan *"GAGAL: jalankan dulu start.bat"* tidak muncul lagi
+— skrip langsung mengerjakannya.
+
+### Kalau muncul pesan aneh seperti `'f' is not recognized`
+
+Itu bukan salah Python atau data Anda: itu cmd.exe salah membaca baris skrip
+versi lama. Versi `start-web.bat` sekarang sudah bebas dari penyebabnya
+(tanpa blok kurung berlapis, tanpa `for /f`, ASCII saja, akhir baris CRLF).
+
+Yang perlu Anda pastikan: berkas yang dijalankan memang versi terbaru —
+
+```powershell
+git pull
+```
+
+lalu jalankan `start-web.bat` lagi. Kalau masih muncul, hapus berkas
+`start-web.bat` di folder itu dan `git checkout -- start-web.bat`.
 
 ## Deploy ke internet (Fase 5)
 Panduan lengkap ada di folder `deploy/`: mulai dari `deploy/install-windows.md`

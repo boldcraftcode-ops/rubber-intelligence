@@ -2,110 +2,232 @@
 rem ============================================================
 rem  OP Margin - start-web.bat (Fase 2+)
 rem  Menjalankan API + tampilan web.
-rem  Syarat: sudah pernah menjalankan start.bat (untuk Python + data),
-rem  dan Node.js terpasang (https://nodejs.org, versi LTS).
+rem  Skrip ini MENYIAPKAN SENDIRI ruang kerja Python, database,
+rem  dan pustaka web bila belum ada - jadi tidak akan berhenti
+rem  dengan pesan "jalankan dulu start.bat".
 rem
-rem  PENTING: skrip ini memeriksa apakah port 8000/5173 masih dipakai
-rem  proses lama. Bila ya, skrip menawarkan menutupnya — karena proses
-rem  API lama akan membuat fitur baru (Margin Bridge, Days of Cover,
-rem  Jelaskan ke saya) tampak "tidak jalan" (404) walau kodenya sudah baru.
+rem  Catatan teknis: berkas ini sengaja memakai ASCII saja, tanpa
+rem  blok "( ... )" berlapis dan tanpa "for /f", agar tidak salah
+rem  dibaca cmd.exe. Bila Anda mengeditnya, pertahankan gaya itu
+rem  dan simpan dengan akhir baris CRLF (Windows).
 rem ============================================================
-setlocal enabledelayedexpansion
-chcp 65001 >nul
+setlocal
+chcp 65001 >nul 2>nul
 cd /d "%~dp0"
 
-if not exist "backend\.venv\Scripts\python.exe" (
-    echo GAGAL: jalankan dulu start.bat untuk menyiapkan Python dan data.
-    pause & exit /b 1
-)
-where node >nul 2>nul
-if errorlevel 1 (
-    echo GAGAL: Node.js tidak ditemukan. Pasang dulu dari https://nodejs.org
-    echo (pilih versi LTS, cukup klik Next sampai selesai), lalu jalankan lagi.
-    pause & exit /b 1
-)
+set "VPY=backend\.venv\Scripts\python.exe"
+set "TMPH=%TEMP%\opmargin_health.json"
+set "TMPP=%TEMP%\opmargin_port.txt"
+set "PUNDUH=curl"
+where curl >nul 2>nul
+if not errorlevel 1 goto :punya_curl
+set "PUNDUH=powershell"
+:punya_curl
 
-rem ---------- 1. Periksa port yang mungkin masih dipakai sesi sebelumnya ----
+echo ============================================================
+echo  OP Margin - menyiapkan dan menjalankan aplikasi
+echo  Folder: %~dp0
+echo ============================================================
+echo.
+
+rem ------------------------------------------------------------
+rem  1. Ruang kerja Python (.venv)
+rem ------------------------------------------------------------
+if exist "%VPY%" goto :punya_python
+
+echo Ruang kerja Python belum ada. Menyiapkan sekarang (sekali saja).
+where py >nul 2>nul
+if not errorlevel 1 goto :pakai_py
+where python >nul 2>nul
+if errorlevel 1 goto :tanpa_python
+set "PY=python"
+goto :buat_venv
+
+:pakai_py
+set "PY=py -3"
+
+:buat_venv
+pushd backend
+%PY% -m venv .venv
+if errorlevel 1 goto :venv_gagal
+".venv\Scripts\python.exe" -m pip install --quiet --disable-pip-version-check -r requirements.txt
+if errorlevel 1 goto :venv_gagal
+popd
+goto :punya_python
+
+:venv_gagal
+popd
+echo.
+echo GAGAL: tidak berhasil menyiapkan Python di folder backend\.venv
+echo Coba jalankan start.bat sekali (klik dua kali), lalu ulangi start-web.bat.
+goto :berhenti
+
+:tanpa_python
+echo.
+echo GAGAL: Python tidak ditemukan di PATH komputer ini.
+echo Pasang Python dari https://www.python.org/downloads/
+echo Saat memasang, centang "Add Python to PATH", lalu jalankan lagi.
+goto :berhenti
+
+rem ------------------------------------------------------------
+rem  2. Database + data awal
+rem ------------------------------------------------------------
+:punya_python
+if exist "backend\opmargin.db" goto :punya_db
+echo Database belum ada. Membuat dan memuat data awal dari template.
+pushd backend
+".venv\Scripts\python.exe" -m app.cli init-db
+if errorlevel 1 goto :db_gagal
+".venv\Scripts\python.exe" -m app.cli import-template "..\sample_data\Template_dan_Data_Awal_OP_Margin_v3.xlsx" --pengunggah "%USERNAME%"
+if errorlevel 1 goto :db_gagal
+popd
+goto :punya_db
+
+:db_gagal
+popd
+echo.
+echo GAGAL: database belum berhasil dibuat.
+echo Jalankan start.bat sekali, lihat pesan errornya, lalu ulangi start-web.bat.
+goto :berhenti
+
+rem ------------------------------------------------------------
+rem  3. Node.js + pustaka tampilan web
+rem ------------------------------------------------------------
+:punya_db
+where node >nul 2>nul
+if errorlevel 1 goto :tanpa_node
+
+if exist "frontend\node_modules" goto :punya_web
+echo Memasang pustaka tampilan web (hanya pertama kali, mohon tunggu).
+pushd frontend
+call npm install
+if errorlevel 1 goto :npm_gagal
+popd
+goto :punya_web
+
+:npm_gagal
+popd
+echo.
+echo GAGAL saat "npm install". Periksa pesan di atas, lalu coba lagi.
+goto :berhenti
+
+:tanpa_node
+echo.
+echo GAGAL: Node.js tidak ditemukan.
+echo Pasang dari https://nodejs.org (pilih versi LTS, klik Next sampai selesai),
+echo tutup jendela ini, buka lagi, lalu jalankan start-web.bat.
+goto :berhenti
+
+rem ------------------------------------------------------------
+rem  4. Port yang mungkin masih dipakai sesi sebelumnya
+rem     (proses API lama = kode lama = fitur baru 404)
+rem ------------------------------------------------------------
+:punya_web
 call :cek_port 8000 "API"
 call :cek_port 5173 "tampilan web"
 
-if exist "frontend\node_modules" goto :lanjut
-echo Memasang pustaka tampilan web (hanya pertama kali, mohon tunggu)...
-pushd frontend
-call npm install || (echo GAGAL saat npm install & pause & exit /b 1)
-popd
-
-:lanjut
-echo Menjalankan backend (API) di jendela terpisah -- dengan auto-reload...
-start "OP Margin - API" cmd /k "cd /d %~dp0backend && .venv\Scripts\python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload"
-
-echo Menjalankan tampilan web di jendela terpisah...
-start "OP Margin - Web" cmd /k "cd /d %~dp0frontend && npm run dev"
+rem ------------------------------------------------------------
+rem  5. Jalankan API + web di jendela terpisah
+rem ------------------------------------------------------------
+echo.
+echo Menjalankan API di jendela "OP Margin - API" (dengan auto-reload).
+start "OP Margin - API" /D "%~dp0backend" cmd /k ".venv\Scripts\python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload"
+echo Menjalankan tampilan web di jendela "OP Margin - Web".
+start "OP Margin - Web" /D "%~dp0frontend" cmd /k "npm run dev"
 
 echo.
-echo Menunggu API siap...
-set "SIAP="
-for /l %%i in (1,1,20) do (
-    if not defined SIAP (
-        timeout /t 1 >nul
-        curl -s -o "%TEMP%\opmargin_health.json" http://127.0.0.1:8000/api/health >nul 2>nul
-        if not errorlevel 1 set "SIAP=1"
-    )
-)
+echo Menunggu API siap (maksimal 30 detik).
+set /a NCOBA=0
 
-if not defined SIAP (
-    echo PERINGATAN: API belum merespons di http://127.0.0.1:8000
-    echo Buka jendela "OP Margin - API" dan lihat pesan errornya.
-    goto :buka
-)
+:menu_health
+set /a NCOBA+=1
+timeout /t 1 >nul 2>nul
+call :ambil_health
+if not errorlevel 1 goto :health_ok
+if %NCOBA% GEQ 30 goto :health_lambat
+goto :menu_health
 
-rem ---------- 2. Verifikasi proses API yang menjawab adalah kode TERBARU ----
-findstr /c:"margin-bridge" "%TEMP%\opmargin_health.json" >nul 2>nul
-if errorlevel 1 (
-    echo.
-    echo ============================================================
-    echo PERINGATAN: API yang menjawab di port 8000 adalah VERSI LAMA.
-    echo Fitur "Margin Bridge" dan "Days of Cover" tidak dikenali proses itu,
-    echo jadi tombolnya akan gagal walau kode di folder ini sudah baru.
-    echo.
-    echo Perbaikan: tutup jendela "OP Margin - API" yang lama
-    echo ^(atau matikan semua proses python/uvicorn^), lalu jalankan lagi
-    echo start-web.bat ini.
-    echo ============================================================
-) else (
-    echo API siap dan sudah memuat fitur terbaru ^(margin-bridge, days-of-cover^).
-)
+:health_lambat
+echo.
+echo PERINGATAN: API belum menjawab di http://127.0.0.1:8000
+echo Buka jendela "OP Margin - API" dan baca pesan errornya (paling bawah).
+goto :buka
 
+:health_ok
+rem  Pastikan proses yang menjawab memang kode TERBARU.
+findstr /c:"margin-bridge" "%TMPH%" >nul 2>nul
+if errorlevel 1 goto :versi_lama
+echo API siap: kode terbaru (margin-bridge, days-of-cover, jelaskan ada).
+goto :buka
+
+:versi_lama
+echo.
+echo ============================================================
+echo PERINGATAN: API di port 8000 masih VERSI LAMA.
+echo Fitur "Margin Bridge" dan "Days of Cover" tidak dikenali proses
+echo itu, jadi tombolnya akan gagal walau kode di folder ini sudah baru.
+echo.
+echo Perbaikan: tutup jendela "OP Margin - API" yang lama, lalu
+echo jalankan start-web.bat ini sekali lagi.
+echo ============================================================
+goto :buka
+
+rem ------------------------------------------------------------
+rem  6. Buka browser
+rem ------------------------------------------------------------
 :buka
 echo.
-echo Tunggu beberapa detik, lalu buka browser ke:  http://localhost:5173
-echo Untuk berhenti: tutup kedua jendela "OP Margin - API" dan "OP Margin - Web".
-timeout /t 4 >nul
+echo Buka browser ke:  http://localhost:5173
+echo Untuk berhenti: tutup jendela "OP Margin - API" dan "OP Margin - Web".
+timeout /t 3 >nul 2>nul
 start http://localhost:5173
+
+:berhenti
+echo.
+pause
 endlocal
 exit /b 0
 
 rem ============================================================
 rem  :cek_port PORT NAMA
-rem  Bila port dipakai, tanyakan apakah proses lama ditutup.
+rem  Bila port sedang dipakai, tawarkan menutup proses lamanya.
 rem ============================================================
 :cek_port
 set "PORT=%~1"
 set "NAMA=%~2"
-netstat -ano | findstr /r /c:"LISTENING" | findstr /c:":%PORT% " >nul 2>nul
-if errorlevel 1 goto :eof
+if exist "%TMPP%" del "%TMPP%" >nul 2>nul
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$x = netstat -ano | Select-String 'LISTENING' | Select-String ':%PORT% '; if ($x) { (($x[0].ToString().Trim() -split '\s+')[-1]) }" > "%TMPP%" 2>nul
+set "PID="
+if not exist "%TMPP%" goto :eof
+< "%TMPP%" set /p PID=
+if not defined PID goto :eof
+
 echo.
-echo Port %PORT% (%NAMA%) masih dipakai proses lain — kemungkinan jendela
-echo "%NAMA%" dari sesi sebelumnya yang belum ditutup.
-echo Proses lama itu memakai KODE LAMA, sehingga fitur baru tidak akan muncul.
-choice /c YN /n /m "Tutup proses lama itu sekarang? [Y/T]=Ya  [N]=Biarkan: "
-if errorlevel 2 (
-    echo Dibiarkan. Fitur baru bisa gagal selama proses lama masih hidup.
-    goto :eof
-)
-for /f "tokens=5" %%p in ('netstat -ano ^| findstr /r /c:"LISTENING" ^| findstr /c:":%PORT% "') do (
-    taskkill /f /pid %%p >nul 2>nul
-)
+echo Port %PORT% (%NAMA%) masih dipakai proses lain, PID %PID%.
+echo Kemungkinan itu jendela "%NAMA%" dari sesi sebelumnya yang belum
+echo ditutup. Proses lama memakai kode lama, jadi fitur baru bisa gagal.
+set "JAWAB="
+set /p "JAWAB=Tutup proses itu sekarang? [Y] ya / [N] biarkan (lalu Enter): "
+if /i "%JAWAB%"=="Y" goto :tutup_port
+if /i "%JAWAB%"=="T" goto :tutup_port
+if /i "%JAWAB%"=="YA" goto :tutup_port
+echo Dibiarkan. Fitur baru bisa gagal selama proses lama masih hidup.
+goto :eof
+
+:tutup_port
+taskkill /f /pid %PID% >nul 2>nul
 echo Proses lama di port %PORT% sudah ditutup.
-timeout /t 1 >nul
+timeout /t 1 >nul 2>nul
+goto :eof
+
+rem ============================================================
+rem  :ambil_health  - ambil http://127.0.0.1:8000/api/health
+rem ============================================================
+:ambil_health
+if /i "%PUNDUH%"=="curl" goto :ambil_curl
+powershell -NoProfile -ExecutionPolicy Bypass -Command "try { (Invoke-WebRequest -UseBasicParsing -TimeoutSec 3 http://127.0.0.1:8000/api/health).Content | Out-File -Encoding ascii '%TMPH%'; exit 0 } catch { exit 1 }"
+goto :eof
+
+:ambil_curl
+curl -s -f -o "%TMPH%" http://127.0.0.1:8000/api/health >nul 2>nul
 goto :eof
