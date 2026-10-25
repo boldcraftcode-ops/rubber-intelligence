@@ -84,6 +84,24 @@ Tabel di bawah grafik menjawab tiga hal dengan angka: margin rata-rata per
 kelompok stok (tipis/sedang/tebal), jumlah bulan di tiap kelompok, dan korelasi
 per tahun. **Ekspor Excel** menghasilkan dua sheet: Data bulanan dan Ringkasan.
 
+## 3d. Membereskan alarm
+
+Menu **Alarm** sekarang menunjukkan **ke mana harus pergi**. Tiap alarm punya
+tombol **"Buka <halaman> →"** dan 2–3 langkah perbaikan.
+
+| Kelompok | Contoh | Perbaikan ada di |
+|---|---|---|
+| Stok & operasional | stok di bawah safety | **Stok & Days** (atau perbarui stok lewat Unggah Data) |
+| Data belum masuk | SICOM/kurs/stok/tiket terlambat | **Input Harian** (SICOM & kurs) · **Unggah Data** (stok & tiket) |
+| Selisih angka | tiket vs pembelian / vs Excel lama | **Rekonsiliasi** |
+| Harga beli | harga aktual di atas maksimum | **Aturan Harga** |
+| Margin vs target | margin bulan berjalan di bawah target | **Margin Performance** (lalu Margin Bridge) |
+
+Alarm **padam sendiri** setelah datanya benar dan evaluasi ulang dijalankan —
+tidak ada tombol "hapus alarm". Kalau data memang belum tersedia (mis. terbitan
+SICOM belum keluar), jangan mengisi angka kira-kira; pertimbangkan mengubah
+**ambang** alarm di kartu "Pengaturan alarm (admin)".
+
 ## 4. Mengimpor data (tiket, stok, pembelian, dll.)
 
 Cara termudah: tab **Unggah Data** di aplikasi web — tarik & lepas file .xlsx
@@ -316,7 +334,7 @@ Bacanya:
 
 | Yang tertulis | Artinya | Tindakan |
 |---|---|---|
-| `mode login : lokal (username-sandi)` dan API menjawab `0.9.5` + `lokal` | sudah benar | login dengan akun Anda (Ctrl+F5 dulu) |
+| `mode login : lokal (username-sandi)` dan API menjawab `0.9.6` + `lokal` | sudah benar | login dengan akun Anda (Ctrl+F5 dulu) |
 | API menjawab `mode: nonaktif` | `AUTH_DISABLED=true` masih ada di `.env` | hapus baris itu, lalu jalankan `start-web.bat` lagi |
 | API tidak menjawab / `404` di `/api/auth/mode` | prosesnya **kode lama** | tutup jendela API lama, jalankan `start-web.bat` lagi |
 | bagian [2] tidak ada akun, atau sandi lupa | akun belum dibuat / sandi salah | `python -m app.cli reset-sandi admin` (dari folder `backend`) |
@@ -342,11 +360,11 @@ Perbaikan:
    melaporkan apakah **port 8000 dan 5173 sudah BEBAS**. Kalau ada yang gagal
    ditutup, skrip mengatakannya (tidak diam-diam).
 2. Jalankan **`start-web.bat`** dari folder aplikasi yang benar — folder yang
-   `VERSI.txt`-nya berisi `0.9.5`. Tunggu tulisan **`API siap: kode 0.9.5`**.
+   `VERSI.txt`-nya berisi `0.9.6`. Tunggu tulisan **`API siap: kode 0.9.6`**.
 3. Buka `http://localhost:5173`, tekan **Ctrl+F5**.
 
 Cek cepat kapan saja: `http://localhost:8000/api/health` — nilai `versi` dan
-`kode` harus `0.9.5`, dan `folder` harus menunjuk folder aplikasi Anda.
+`kode` harus `0.9.6`, dan `folder` harus menunjuk folder aplikasi Anda.
 
 ## Cara tercepat membereskan: `perbaiki.bat`
 
@@ -403,7 +421,7 @@ berkas ini dari folder lama ke folder baru **sebelum** menjalankan
 - `backend\.env` — setelan login (opsional; bila tidak ada, dibuat otomatis)
 
 Cara memastikan folder baru benar-benar versi terbaru: lihat **`VERSI.txt`** di
-akar folder (versi terbaru saat dokumen ini ditulis: **0.9.5**), atau buka
+akar folder (versi terbaru saat dokumen ini ditulis: **0.9.6**), atau buka
 `http://localhost:8000/api/health` dan periksa `"versi"` serta `"kode"`.
 
 ## Login berhasil tetapi kembali ke form login lagi

@@ -218,6 +218,7 @@ def buat_app(engine: Engine | None = None) -> FastAPI:
                     "margin-bridge", "days-of-cover", "jelaskan",
                     "margin-bulanan-periode", "ekspor-xlsx",
                     "penerimaan-tren", "penerimaan-komposisi",
+                    "alarm-tindakan", "stok-margin-panduan",
                 ],
                 # versi kode ikut dilaporkan supaya mudah membandingkan
                 # folder yang dijalankan dengan kode terbaru di repo

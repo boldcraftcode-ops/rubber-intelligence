@@ -9,7 +9,7 @@ Kalau Anda hanya punya 15 menit, baca bagian **1 (Status)**, **3 (Cara
 menjalankan)**, dan **7 (Aturan yang tidak boleh dilanggar)**. Selebihnya bisa
 dibaca saat mengerjakan tugas pertama.
 
-Terakhir diperbarui: **2026-10-25**, versi kode **0.9.5**.
+Terakhir diperbarui: **2026-10-25**, versi kode **0.9.6**.
 
 ---
 
@@ -36,11 +36,11 @@ ini setiap hari untuk memutuskan **harga beli maksimum** yang masih aman.
 
 | Hal | Nilai |
 |---|---|
-| Versi kode | **0.9.5** (`VERSI.txt`, `backend/app/versi.py`, `frontend/src/versi.ts`) |
+| Versi kode | **0.9.6** (`VERSI.txt`, `backend/app/versi.py`, `frontend/src/versi.ts`) |
 | Branch kerja | `arena/18670644-rubber-intelligence` |
 | Pull request | **#1 masih terbuka** — https://github.com/boldcraftcode-ops/rubber-intelligence/pull/1 |
 | Branch `main` | belum memuat pekerjaan v0.7.x–v0.8.x |
-| Unit test | **316 lulus** (`cd backend && .venv/bin/python -m pytest -q`) |
+| Unit test | **330 lulus** (`cd backend && .venv/bin/python -m pytest -q`) |
 | Build frontend | bersih, ±3,3 detik (`cd frontend && npm run build`) |
 | Database | SQLite `backend/opmargin.db` (tidak masuk Git) |
 
@@ -102,7 +102,7 @@ Login awal: **`admin` / `admin123`** (dari `ADMIN_SANDI_AWAL` di
 
 ```bash
 cd backend
-.venv/bin/python -m pytest -q                                  # 316 tes
+.venv/bin/python -m pytest -q                                  # 330 tes
 .venv/bin/python -m app.cli diagnosa                            # laporan kesehatan
 .venv/bin/python -m app.cli reset-sandi admin                   # lupa sandi
 .venv/bin/python -m app.cli atur-login-lokal                    # pastikan mode login benar
@@ -154,7 +154,7 @@ rubber-intelligence/
 │   │       ├── kualitas.py     deteksi data terlambat/aneh
 │   │       └── alarm.py        evaluasi alarm + audit
 │   ├── semantic/metrics.yaml   definisi metrik (rujukan, dibaca fase API)
-│   ├── tests/                  316 tes, termasuk kasus emas Excel lama
+│   ├── tests/                  330 tes, termasuk kasus emas Excel lama
 │   ├── unggahan/               berkas Excel yang diunggah lewat web
 │   └── .env.example            contoh setelan (JANGAN commit .env asli)
 └── frontend/
@@ -514,6 +514,50 @@ sekarang menampilkan peringatan: *"Hubungan ini TIDAK stabil antar tahun …
 jangan dipakai sebagai aturan."* — dan halaman ini tetap berstatus **informasi,
 bukan aturan**, sama seperti teks `catatan` yang diwajibkan.
 
+### Alarm: tombol tindak lanjut + langkah perbaikan (v0.9.6)
+
+Keluhan pemilik: alarm berbunyi tetapi tidak menjelaskan **dari mana** data
+harus dibetulkan. Sekarang tiap alarm membawa petunjuk kerja sendiri.
+
+**Di layar (`frontend/src/pages/AlarmPage.tsx`)**
+- alarm dikelompokkan menurut sifatnya: **Stok & operasional**, **Data belum
+  masuk**, **Selisih angka**, **Harga beli**, **Margin vs target** — tiap
+  kelompok berisi jumlah alarm;
+- tiap kartu alarm punya tombol navy **"Buka <halaman> →"** yang langsung
+  membuka menu yang berkaitan (Stok & Days, Input Harian, Unggah Data,
+  Rekonsiliasi, Aturan Harga, Margin Performance);
+- di bawah tombol ada **2–3 langkah perbaikan** yang menyebut tanggal/periode
+  dari alarm itu sendiri (mis. *"cari baris 08/09/2026"*);
+- halaman diberi pengantar singkat: alarm padam sendiri setelah data benar dan
+  evaluasi ulang dijalankan.
+
+**Di API (`backend/app/core/tindakan_alarm.py`)** — `GET /api/alarm` kini
+mengirim `kategori` dan `tindakan` per alarm:
+
+```
+"tindakan": {
+  "kategori": "data", "halaman": "unggah", "halaman_label": "Unggah Data",
+  "judul": "Unggah posisi stok terbaru",
+  "langkah": ["...", "...", "..."]
+}
+```
+
+Pemetaan yang dipakai:
+
+| Alarm | Tombol menuju | Inti langkahnya |
+|---|---|---|
+| STOK_DI_BAWAH_SAFETY | Stok & Days | putuskan stok memang tipis atau datanya belum diperbarui, lalu unggah/ajukan pembelian |
+| MARGIN_DI_BAWAH_TARGET | Margin Performance | buka Margin Bridge bulan itu (ΔSICOM, ΔOP Price); target hanya diubah kalau targetnya yang keliru |
+| SICOM_TERLAMBAT / KURS_TERLAMBAT | Input Harian | isi angka terbaru; **jangan menebak** kalau terbitan pasar belum keluar |
+| STOK_TERLAMBAT / TIKET_TERLAMBAT | Unggah Data | unggah sheet terkait, lalu cek tanggal terakhir |
+| SELISIH_REKONSILIASI (periode) | Rekonsiliasi | putuskan angka mana yang dipakai (tiket = sumber resmi), catat keputusan |
+| SELISIH_REKONSILIASI (harian) | Rekonsiliasi | telusuri tanggal berselisih besar, perbaiki data sumbernya |
+| HARGA_DI_ATAS_MAKS | Aturan Harga | bandingkan dengan baris aturan yang berlaku; aturan CONTOH belum final |
+
+Keamanan: `halaman` wajib salah satu id menu yang benar-benar ada di
+`frontend/src/App.tsx` (dijaga tes). Di `App.tsx`, id dari API divalidasi lagi
+sebelum dipakai — id tak dikenal tidak akan membuat layar kosong.
+
 ---
 
 ## 6b. Deploy lewat Cloudflare Tunnel (masih hidup, penting)
@@ -646,7 +690,7 @@ Semua ini lahir dari kegagalan nyata, bukan kehati-hatian berlebihan.
    kode salah. Perbaikannya: `hentikan-api.bat` lalu `start-web.bat`.
 6. **Selalu jalankan `npm run build` (bukan hanya `vite build`)** — skrip npm
    memakai `tsc -b`, jadi error tipe ikut tertangkap.
-7. **316 tes harus tetap lulus.** Tes "kasus emas"
+7. **330 tes harus tetap lulus.** Tes "kasus emas"
    (`tests/test_data_awal.py`, `tests/test_bridge_doc.py`) mencocokkan hasil
    dengan Excel lama sampai beberapa desimal. Kalau tes emas gagal, hampir pasti rumus
    yang diubah, bukan tesnya.
@@ -738,13 +782,13 @@ pernah membuat label dan ikon tertukar; ganti blok utuhnya.
 ### Rilis versi baru (prosedur yang sudah terbukti)
 ```bash
 # 1. pastikan bersih
-cd backend && .venv/bin/python -m pytest -q          # 316 passed
+cd backend && .venv/bin/python -m pytest -q          # 330 passed
 cd ../frontend && npm run build                       # bersih
 
 # 2. naikkan versi di 6 berkas (isi dua variabel, sisanya otomatis)
 cd ..
 LAMA=$(tr -d '\r\n' < VERSI.txt)     # versi yang masih terpakai
-BARU=0.9.5                            # <- tulis versi baru di sini
+BARU=0.9.6                            # <- tulis versi baru di sini
 for f in VERSI.txt backend/app/versi.py frontend/src/versi.ts \
          docs/CARA_MENJALANKAN.md diagnosa.bat hentikan-api.bat; do
   sed -i "s/$LAMA/$BARU/g" "$f"

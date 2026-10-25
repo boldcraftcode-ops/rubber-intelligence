@@ -373,7 +373,12 @@ export default function App() {
           {tab === "aturan" && <AturanHarga />}
           {tab === "simulasi" && <Simulasi />}
           {tab === "rencana" && <Perencanaan />}
-          {tab === "alarm" && <AlarmPage />}
+          {tab === "alarm" && (
+            <AlarmPage ke={(x) => setTab(
+              // id dari API divalidasi: menu yang tidak dikenal diabaikan,
+              // supaya layar tidak pernah kosong karena tautan alarm.
+              (TAB.some((tb: any) => tb.id === x) ? x : "alarm") as TabId)} />
+          )}
           {tab === "rekonsiliasi" && <Rekonsiliasi />}
           {tab === "kualitas" && <Kualitas />}
           {tab === "vendor" && <MasterVendor />}

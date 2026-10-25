@@ -18,6 +18,7 @@ from .core.lookup import kurs_pada, parameter_pada, sicom_pada
 from .core.perencanaan import hitung_rencana
 from .core.rekomendasi import rekomendasi_harga
 from .core.stok_margin import analisis_stok_margin
+from .core.tindakan_alarm import tindakan_untuk
 from .mart import bangun_mart
 from .models import (
     Alarm,
@@ -414,12 +415,19 @@ def pasang_router_fase4(app, ambil_session):
     def daftar_alarm(session: Session = dep):
         pastikan_pengaturan(session)
         session.commit()
-        return {
-            "alarm": [{
+        # `tindakan` = ke halaman mana alarm ini dibereskan + langkahnya, supaya
+        # pengguna tidak menebak dari mana membetulkan datanya.
+        daftar = []
+        for a in session.scalars(select(Alarm).order_by(Alarm.kode)):
+            t = tindakan_untuk(a.kode, a.tanggal_data, a.pesan)
+            daftar.append({
                 "kode": a.kode, "pesan": a.pesan,
                 "tanggal_data": a.tanggal_data.isoformat() if a.tanggal_data else None,
                 "dievaluasi_pada": a.dievaluasi_pada.isoformat(timespec="seconds"),
-            } for a in session.scalars(select(Alarm).order_by(Alarm.kode))],
+                "kategori": t["kategori"], "tindakan": t,
+            })
+        return {
+            "alarm": daftar,
             "pengaturan": [{
                 "kode": p.kode, "aktif": p.aktif, "ambang": p.ambang,
                 "satuan": p.satuan, "keterangan": p.keterangan,
