@@ -150,6 +150,41 @@ def _agregat_bridge(baris) -> dict | None:
     }
 
 
+def _bulan_ym(teks: str | None, nama: str) -> tuple[int, int] | None:
+    """Parse periode 'YYYY-MM' (format filter kartu RM Stock - Intake vs Pricing)."""
+    if not teks:
+        return None
+    try:
+        th, bl = teks.split("-")[:2]
+        th, bl = int(th), int(bl)
+        if not 1 <= bl <= 12:
+            raise ValueError
+        return th, bl
+    except Exception:
+        raise HTTPException(422, f"Parameter '{nama}' harus format YYYY-MM "
+                                 f"(contoh: 2026-08), bukan '{teks}'.")
+
+
+def _bulan_sebelum(th: int, bl: int) -> tuple[int, int]:
+    return (th - 1, 12) if bl == 1 else (th, bl - 1)
+
+
+def _tanggal_teks(teks: str | None, nama: str, akhir_bulan: bool = False):
+    """Parse 'YYYY-MM' (jadi tanggal 1 / akhir bulan) atau 'YYYY-MM-DD'."""
+    if not teks:
+        return None
+    try:
+        if len(teks) == 7:  # YYYY-MM
+            th, bl = _bulan_ym(teks, nama)
+            return _rentang(th, bl)[1] if akhir_bulan else dt.date(th, bl, 1)
+        return dt.date.fromisoformat(teks)
+    except HTTPException:
+        raise
+    except Exception:
+        raise HTTPException(422, f"Parameter '{nama}' harus format YYYY-MM atau "
+                                 f"YYYY-MM-DD, bukan '{teks}'.")
+
+
 def _baris_periode_bulanan(session: Session, tahun: int, bulan: int):
     """Baris mart harian satu bulan (dipakai margin bridge)."""
     awal, akhir = _rentang(tahun, bulan)
@@ -233,19 +268,35 @@ def pasang_router(app, ambil_session):
     # ------------------------------------------------------------ margin bridge
     @router.get("/margin-bridge")
     def margin_bridge(basis: str = "bulanan", tahun: int | None = None,
-                      bulan: int | None = None, format: str | None = None,
+                      bulan: int | None = None, dari: str | None = None,
+                      sampai: str | None = None, format: str | None = None,
                       session: Session = dep):
         """Jembatan OP Margin periode A -> periode B (waterfall).
 
         awal + ΔSICOM + efek harga Rp + efek kurs = akhir, tertutup persis
-        (selisih hanya pembulatan float). Basis 'bulanan': B = (tahun, bulan),
-        A = bulan sebelumnya. Basis 'tahunan': B = tahun, A = tahun-1, hanya
-        bulan-bulan yang berdata di kedua tahun (bandingkan apples-to-apples).
+        (selisih hanya pembulatan float).
+
+        Dipakai sebagai analisa kartu 'RM Stock - Intake vs Pricing': bila
+        `dari`/`sampai` (YYYY-MM) dikirim, A = bulan `dari`, B = bulan
+        `sampai` — persis periode yang sedang dipilih di grafik. Bila keduanya
+        bulan yang sama (satu bulan), A = bulan sebelumnya.
+
+        Tanpa `dari`/`sampai`: basis 'bulanan' (B = tahun/bulan, A = bulan
+        sebelumnya) atau 'tahunan' (B = tahun, A = tahun-1, hanya bulan yang
+        berdata di kedua tahun).
         """
-        if basis not in ("bulanan", "tahunan"):
-            raise HTTPException(422, "basis harus 'bulanan' atau 'tahunan'.")
         if bulan is not None and not 1 <= bulan <= 12:
             raise HTTPException(422, "bulan harus antara 1 dan 12.")
+
+        periode_manual = None
+        if dari or sampai:
+            pb = _bulan_ym(sampai or dari, "sampai" if sampai else "dari")
+            pa = _bulan_ym(dari, "dari") or _bulan_sebelum(*pb)
+            if pa == pb:
+                pa = _bulan_sebelum(*pb)
+            periode_manual = (pa, pb)
+        if periode_manual is None and basis not in ("bulanan", "tahunan"):
+            raise HTTPException(422, "basis harus 'bulanan' atau 'tahunan'.")
 
         terakhir = session.scalars(
             select(MartBulanan).order_by(MartBulanan.tahun.desc(),
@@ -256,7 +307,14 @@ def pasang_router(app, ambil_session):
         if tahun is None:
             tahun = terakhir.tahun
 
-        if basis == "bulanan":
+        if periode_manual is not None:
+            (thn_a, bln_a), (thn_b, bln_b) = periode_manual
+            basis = "rentang"
+            baris_a = _baris_periode_bulanan(session, thn_a, bln_a)
+            baris_b = _baris_periode_bulanan(session, thn_b, bln_b)
+            periode_a = {"tahun": thn_a, "bulan": bln_a}
+            periode_b = {"tahun": thn_b, "bulan": bln_b}
+        elif basis == "bulanan":
             if bulan is None:
                 m = session.scalars(select(MartBulanan).where(
                     MartBulanan.tahun == tahun).order_by(
@@ -353,26 +411,30 @@ def pasang_router(app, ambil_session):
 
     # ------------------------------------------------------------ days of cover
     @router.get("/days-of-cover")
-    def days_of_cover(dari: dt.date | None = None, sampai: dt.date | None = None,
+    def days_of_cover(dari: str | None = None, sampai: str | None = None,
                       format: str | None = None, session: Session = dep):
         """Cadangan hari olah dari stok (days of cover) + tren harian.
 
         days = stok_ton / kapasitas_ton_per_hari (parameter berversi tanggal).
-        Bila tidak ada filter, memakai 180 hari data stok terakhir.
+        `dari`/`sampai` menerima YYYY-MM (periode kartu RM Stock - Intake vs
+        Pricing; `sampai` = akhir bulan) atau YYYY-MM-DD. Bila tidak ada
+        filter, memakai 180 hari data stok terakhir.
         """
+        dari_tgl = _tanggal_teks(dari, "dari")
+        sampai_tgl = _tanggal_teks(sampai, "sampai", akhir_bulan=True)
         q = select(MartHarian).where(MartHarian.stok_ton != None)  # noqa: E711
         semua = list(session.scalars(q.order_by(MartHarian.tanggal)))
         if not semua:
             raise HTTPException(404, "Belum ada data stok harian di mart.")
-        if dari is None and sampai is None:
-            sampai = semua[-1].tanggal
-            dari = sampai - dt.timedelta(days=179)
+        if dari_tgl is None and sampai_tgl is None:
+            sampai_tgl = semua[-1].tanggal
+            dari_tgl = sampai_tgl - dt.timedelta(days=179)
         baris = [h for h in semua
-                 if (dari is None or h.tanggal >= dari)
-                 and (sampai is None or h.tanggal <= sampai)]
+                 if (dari_tgl is None or h.tanggal >= dari_tgl)
+                 and (sampai_tgl is None or h.tanggal <= sampai_tgl)]
         if not baris:
             raise HTTPException(404, f"Tidak ada data stok antara "
-                                     f"{dari} dan {sampai}.")
+                                     f"{dari_tgl} dan {sampai_tgl}.")
 
         seri = [{
             "tanggal": h.tanggal.isoformat(),

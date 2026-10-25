@@ -8,13 +8,14 @@ US¢/kg, basis berat kering).
 - Asumsi & pertanyaan terbuka: `docs/ASUMSI.md`
 - Definisi metrik: `docs/KAMUS_METRIK.md`
 
-Status: **Fase 8** — menu ringkasan diperkaya kartu **Margin bridge**
-(jembatan OP Margin periode A→B: ΔSICOM, Δharga beli Rp/kg, Δkurs; tertutup
-persis) dan **Days of cover** (cadangan hari olah dari stok + safety dalam hari,
-tren 180 hari, ekspor Excel). Sudah ada API (FastAPI) dan aplikasi web
-(React + Vite): ringkasan, input harian SICOM/kurs, unggah data, rekonsiliasi,
-perencanaan, alarm, pengguna, dll. **112 unit test** — termasuk 19 kasus uji emas
-yang dicocokkan persis dengan perhitungan Excel lama.
+Status: **Fase 8** — kartu **RM Stock – Intake vs Pricing** (menu Ringkasan)
+punya tiga tombol analisa dengan periode mengikuti filter kartu:
+**5W1H**, **Margin Bridge** (jembatan OP Margin periode awal→akhir grafik:
+ΔSICOM, Δharga beli Rp/kg, Δkurs; tertutup persis), dan **Days of Cover**
+(cadangan hari olah + safety dalam hari, tren harian). Sudah ada API (FastAPI)
+dan aplikasi web (React + Vite): ringkasan, input harian SICOM/kurs, unggah
+data, rekonsiliasi, perencanaan, alarm, pengguna, dll. **117 unit test** —
+termasuk 19 kasus uji emas yang dicocokkan persis dengan perhitungan Excel lama.
 
 Struktur: `backend/` = API, rumus inti, importer, pengujian; `frontend/` =
 aplikasi web; `docs/` = panduan & asumsi; `deploy/` = panduan deployment;

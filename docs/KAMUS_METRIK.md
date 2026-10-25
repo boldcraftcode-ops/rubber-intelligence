@@ -32,16 +32,20 @@ yang mudah dibaca manusia.
 | days of cover | stok_ton / kapasitas_ton_per_hari | hari | Sama dengan `days`; kapasitas & safety ikut parameter yang berlaku pada tanggal itu |
 | safety (hari) | safety_ton / kapasitas_ton_per_hari | hari | Pembanding days of cover (bukan ambang konstan) |
 
-**Margin bridge** (`/api/margin-bridge`): OP Margin periode A → B diurai menjadi
-ΔSICOM, efek harga beli Rp/kg, dan efek kurs. Basis `bulanan` (B = bulan terpilih,
-A = bulan sebelumnya) atau `tahunan` (B = tahun terpilih, A = tahun sebelumnya,
-hanya bulan yang berdata di **kedua** tahun agar adil). SICOM/OP Price/margin
-memakai rumus resmi di atas, sehingga ujung bridge = angka ringkasan resmi.
+**Margin Bridge** (`/api/margin-bridge`) — tombol analisa pada kartu RM Stock –
+Intake vs Pricing: OP Margin periode A → B diurai menjadi ΔSICOM, efek harga
+beli Rp/kg, dan efek kurs. Periode mengikuti filter kartu (`dari`/`sampai`,
+format YYYY-MM): A = bulan `dari`, B = bulan `sampai`; bila satu bulan dipilih,
+A = bulan sebelumnya. Tanpa filter: default bulan terakhir vs sebelumnya
+(atau `basis=tahunan` untuk tahun vs tahun, hanya bulan berdata di kedua tahun).
+SICOM/OP Price/margin memakai rumus resmi di atas, sehingga ujung bridge =
+angka ringkasan resmi.
 
-**Days of cover** (`/api/days-of-cover`): cadangan hari olah dari stok, dengan
-tren harian, safety stock dalam hari, rerata 30 data terakhir, dan hitungan hari
-di bawah safety. Bawaan 180 hari data terakhir; bisa difilter `dari`/`sampai`
-dan diekspor ke Excel (`format=xlsx`) seperti kartu lain.
+**Days of Cover** (`/api/days-of-cover`) — tombol analisa pada kartu yang sama:
+cadangan hari olah dari stok, dengan tren harian, safety stock dalam hari,
+rerata 30 data terakhir, dan hitungan hari di bawah safety. `dari`/`sampai`
+menerima YYYY-MM (periode kartu; `sampai` = akhir bulan) atau YYYY-MM-DD;
+bawaannya 180 hari data terakhir. Bisa diekspor ke Excel (`format=xlsx`).
 
 Catatan hubungan stok–margin (halaman analisis, fase berikutnya): korelasi
 historis ±0,43 adalah **asosiasi, bukan bukti sebab-akibat** — wajib ditulis

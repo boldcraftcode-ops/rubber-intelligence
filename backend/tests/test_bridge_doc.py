@@ -70,6 +70,34 @@ def test_bridge_tahunan_tertutup(klien):
     assert jumlah == pytest.approx(d["akhir"], abs=1e-9)
 
 
+def test_bridge_memakai_periode_kartu_elemen(klien):
+    """dari/sampai (YYYY-MM) = periode grafik RM Stock - Intake vs Pricing."""
+    d = klien.get("/api/margin-bridge",
+                  params={"dari": "2026-01", "sampai": "2026-08"}).json()
+    assert d["basis"] == "rentang"
+    assert d["periode_a"] == {"tahun": 2026, "bulan": 1}
+    assert d["periode_b"] == {"tahun": 2026, "bulan": 8}
+    # ujung bridge = OP Margin resmi bulan awal & akhir kartu
+    ringkas = klien.get("/api/ringkasan/2026").json()
+    margin = {b["bulan"]: b["op_margin"] for b in ringkas["bulan"]}
+    assert d["awal"] == pytest.approx(margin[1], abs=1e-9)
+    assert d["akhir"] == pytest.approx(margin[8], abs=1e-9)
+    assert d["awal"] + sum(l["nilai"] for l in d["langkah"]) == pytest.approx(
+        d["akhir"], abs=1e-9)
+
+
+def test_bridge_satu_bulan_banding_bulan_sebelumnya(klien):
+    d = klien.get("/api/margin-bridge",
+                  params={"dari": "2026-08", "sampai": "2026-08"}).json()
+    assert d["periode_a"] == {"tahun": 2026, "bulan": 7}
+    assert d["periode_b"] == {"tahun": 2026, "bulan": 8}
+
+
+def test_bridge_format_bulan_salah_422(klien):
+    assert klien.get("/api/margin-bridge?dari=Agustus").status_code == 422
+    assert klien.get("/api/margin-bridge?sampai=2026-13").status_code == 422
+
+
 def test_bridge_tahun_tanpa_data_404(klien):
     r = klien.get("/api/margin-bridge?basis=bulanan&tahun=1999")
     assert r.status_code == 404
@@ -120,6 +148,20 @@ def test_doc_filter_rentang(klien):
     d = klien.get("/api/days-of-cover?dari=2025-01-01&sampai=2025-01-31").json()
     assert d["dari"] == "2025-01-01" and d["sampai"] == "2025-01-31"
     assert all("2025-01-01" <= s["tanggal"] <= "2025-01-31" for s in d["seri"])
+
+
+def test_doc_memakai_periode_kartu_elemen(klien):
+    """Filter bulan (YYYY-MM) dari kartu elemen = rentang yang dianalisa."""
+    d = klien.get("/api/days-of-cover",
+                  params={"dari": "2026-01", "sampai": "2026-03"}).json()
+    assert d["dari"] == "2026-01-01"
+    assert d["sampai"] == "2026-03-31"      # akhir bulan, bukan tanggal 1
+    assert all("2026-01-01" <= s["tanggal"] <= "2026-03-31" for s in d["seri"])
+    assert d["terkini"]["tanggal"] == max(s["tanggal"] for s in d["seri"])
+
+
+def test_doc_format_bulan_salah_422(klien):
+    assert klien.get("/api/days-of-cover?dari=2026-99").status_code == 422
 
 
 def test_doc_ekspor_xlsx(klien):

@@ -4,7 +4,7 @@ import {
   Bar, BarChart, CartesianGrid, Cell, ComposedChart, Legend, Line, LineChart,
   ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from "recharts";
-import { Kartu, NAMA_BULAN, Panel5W1H, ambilJson, fmtAngka, fmtTanggal, kelasTombolAnalisa, kelasTombolKecil } from "../bersama";
+import { Kartu, NAMA_BULAN, Panel5W1H, ambilJson, fmtAngka, fmtTanggal, kelasTombolAnalisa, kelasTombolKecil, urlApi } from "../bersama";
 import { useBahasa } from "../i18n";
 
 const WARNA = ["#60a5fa", "#fbbf24", "#34d399", "#f87171", "#c084fc",
@@ -138,11 +138,16 @@ function KartuElemen() {
   const { t } = useBahasa();
   const [dari, setDari] = useState("");
   const [sampai, setSampai] = useState("");
-  const [bukaAnalisa, setBukaAnalisa] = useState(false);
+  const [panel, setPanel] = useState<null | "5w1h" | "bridge" | "doc">(null);
   const params = new URLSearchParams();
   if (dari) params.set("dari", dari);
   if (sampai) params.set("sampai", sampai);
-  const url = `/api/ringkasan-elemen${params.size ? "?" + params.toString() : ""}`;
+  const qs = params.size ? "?" + params.toString() : "";
+  const url = `/api/ringkasan-elemen${qs}`;
+  const urlAnalisa = `/api/ringkasan-elemen/analisa${qs}`;
+  // kedua analisa memakai periode yang sama dengan grafik (dari/sampai kartu)
+  const urlBridge = `/api/margin-bridge${qs}`;
+  const urlDoc = `/api/days-of-cover${qs}`;
 
   const q = useQuery({
     queryKey: ["ringkasan-elemen", url],
@@ -175,15 +180,30 @@ function KartuElemen() {
           <span className="text-slate-500">
             {q.data ? `${q.data.baris.length} ${t("bulan ditampilkan")}` : ""}
           </span>
-          <button className={`ml-auto ${kelasTombolAnalisa}`}
-            onClick={() => setBukaAnalisa(true)}>
-            ✨ Analisa grafik ini
-          </button>
+          <div className="ml-auto flex flex-wrap gap-2">
+            <button className={kelasTombolAnalisa} onClick={() => setPanel("5w1h")}>
+              ✨ 5W1H
+            </button>
+            <button className={kelasTombolAnalisa} onClick={() => setPanel("bridge")}>
+              🌉 {t("Margin Bridge")}
+            </button>
+            <button className={kelasTombolAnalisa} onClick={() => setPanel("doc")}>
+              📦 {t("Days of Cover")}
+            </button>
+          </div>
         </div>
-        {bukaAnalisa && (
-          <Panel5W1H judul="Analisa grafik — 5W1H"
-                     url={`/api/ringkasan-elemen/analisa${params.size ? "?" + params.toString() : ""}`}
-                     tutup={() => setBukaAnalisa(false)} />
+        <p className="-mt-1 mb-2 text-xs text-slate-500">
+          {t("Tombol analisa memakai periode yang dipilih di atas — bulan/tahun yang dianalisa sama dengan grafik.")}
+        </p>
+        {panel === "5w1h" && (
+          <Panel5W1H judul={`${t("Analisa grafik")} — 5W1H`}
+                     url={urlAnalisa} tutup={() => setPanel(null)} />
+        )}
+        {panel === "bridge" && (
+          <PanelMarginBridge url={urlBridge} tutup={() => setPanel(null)} />
+        )}
+        {panel === "doc" && (
+          <PanelDaysOfCover url={urlDoc} tutup={() => setPanel(null)} />
         )}
         <div className="h-96">
           <ResponsiveContainer>
@@ -412,7 +432,30 @@ function KartuGrafikMargin() {
   );
 }
 
-/* ---------- margin bridge: jembatan OP Margin periode A -> periode B ---------- */
+/* ---------- panel analisa kartu RM Stock – Intake vs Pricing ----------
+   Ketiganya memakai periode (dari/sampai) yang sedang dipilih di kartu itu,
+   jadi bulan/tahun yang dianalisa selalu sama dengan yang ada di grafik. */
+function KepalaPanel({ judul, periode, url, tutup }: {
+  judul: string; periode?: string; url: string; tutup: () => void;
+}) {
+  const { t } = useBahasa();
+  return (
+    <div className="flex items-start justify-between gap-3">
+      <div>
+        <h3 className="text-lg font-semibold text-slate-100">{judul}</h3>
+        {periode && <p className="text-sm text-slate-400">{t("Periode")}: {periode}</p>}
+      </div>
+      <div className="flex gap-2 shrink-0">
+        <a className={kelasTombolKecil}
+           href={urlApi(`${url}${url.includes("?") ? "&" : "?"}format=xlsx`)}>
+          {t("Ekspor Excel")}
+        </a>
+        <button className={kelasTombolKecil} onClick={tutup}>{t("Tutup")}</button>
+      </div>
+    </div>
+  );
+}
+
 function TipBridge({ active, payload }: any) {
   if (!active || !payload?.length) return null;
   const isi = payload.find((p: any) => p.dataKey === "nilai") ?? payload[0];
@@ -433,35 +476,11 @@ function TipBridge({ active, payload }: any) {
   );
 }
 
-function KartuMarginBridge() {
+function PanelMarginBridge({ url, tutup }: { url: string; tutup: () => void }) {
   const { t } = useBahasa();
-  const [basis, setBasis] = useState<"bulanan" | "tahunan">("bulanan");
-  const [tahun, setTahun] = useState<number | null>(null);
-  const [bulan, setBulan] = useState<number | null>(null);
-
-  const tahunQ = useQuery({ queryKey: ["tahun"], queryFn: () => ambilJson("/api/tahun"),
-                            staleTime: Infinity });
-  const thn = tahun ?? (tahunQ.data ? tahunQ.data[tahunQ.data.length - 1] : null);
-  // kunci query sama dengan tabel ringkasan -> data bulan berdata dipakai bersama
-  const bulanQ = useQuery({
-    queryKey: ["ringkasan", thn],
-    queryFn: () => ambilJson(`/api/ringkasan/${thn}`),
-    enabled: thn !== null,
-  });
-  const bulanBerdata: number[] = (bulanQ.data?.bulan ?? []).map((b: any) => b.bulan);
-  const bln = bulan ?? (bulanBerdata.length ? bulanBerdata[bulanBerdata.length - 1] : null);
-
-  const params = new URLSearchParams({ basis });
-  if (thn !== null) params.set("tahun", String(thn));
-  if (basis === "bulanan" && bln !== null) params.set("bulan", String(bln));
-  const url = `/api/margin-bridge?${params.toString()}`;
-
-  const q = useQuery({
-    queryKey: ["margin-bridge", url],
-    queryFn: () => ambilJson(url),
-    enabled: thn !== null && (basis === "tahunan" || bln !== null),
-    retry: false,
-  });
+  const q = useQuery({ queryKey: ["margin-bridge", url],
+                       queryFn: () => ambilJson(url), retry: false });
+  const d = q.data;
 
   const labelPeriode = (p: any) => {
     if (!p) return "";
@@ -469,7 +488,6 @@ function KartuMarginBridge() {
     return `${NAMA_BULAN[p.bulan_pertama]}–${NAMA_BULAN[p.bulan_terakhir]} ${p.tahun}`;
   };
 
-  const d = q.data;
   const titik: any[] = [];
   if (d) {
     titik.push({ label: `${t("Margin awal")} ${labelPeriode(d.periode_a)}`,
@@ -491,74 +509,37 @@ function KartuMarginBridge() {
 
   const barisDetail: [string, string, number][] = d ? [
     ["SICOM", "sicom", 4],
-    [t("OP Price"), "harga", 4],
+    ["OP Price", "harga", 4],
     [t("Harga beli (Rp/kg)"), "e", 0],
     [t("Kurs efektif"), "kurs", 0],
     [t("Qty kering (ton)"), "qty", 3],
     [t("Hari pembelian"), "hari", 0],
-    [t("OP Margin"), "margin", 4],
+    ["OP Margin", "margin", 4],
   ] : [];
 
   return (
-    <Kartu idMetrik="margin_bridge" judul={t("Margin bridge OP Margin")} urlEkspor={url}
-           keterangan={t("Menjembatani OP Margin periode A ke periode B: kontribusi Δ SICOM, Δ harga beli (Rp/kg), dan Δ kurs — jumlahnya tertutup persis.")}
-           anak={
-      <>
-        <div className="flex flex-wrap items-end gap-3 mb-3 text-xs">
-          <div className="flex rounded-md overflow-hidden border border-violet-400/30">
-            {(["bulanan", "tahunan"] as const).map((b) => (
-              <button key={b}
-                className={`px-2.5 py-1 ${basis === b ? "bg-violet-600 text-white"
-                  : "bg-white/5 text-slate-300 hover:bg-white/10"}`}
-                onClick={() => setBasis(b)}>
-                {b === "bulanan" ? t("Bulanan") : t("Tahunan")}
-              </button>
-            ))}
-          </div>
-          <div>
-            <label className="block text-slate-400 mb-1">{t("Tahun")}</label>
-            <div className="flex gap-1 flex-wrap">
-              {tahunQ.data?.map((th: number) => (
-                <button key={th}
-                  className={`rounded px-2 py-0.5 ${th === thn ? "bg-violet-600 text-white"
-                    : "bg-white/10 text-slate-300 hover:bg-white/20"}`}
-                  onClick={() => { setTahun(th); setBulan(null); }}>
-                  {th}
-                </button>
-              ))}
-            </div>
-          </div>
-          {basis === "bulanan" && (
-            <div>
-              <label className="block text-slate-400 mb-1">{t("Bulan (periode akhir)")}</label>
-              <select className={kelasTombolKecil} value={bln ?? ""}
-                      onChange={(e) => setBulan(Number(e.target.value))}>
-                {bulanBerdata.map((b) => (
-                  <option key={b} value={b}>{NAMA_BULAN[b]}</option>
-                ))}
-              </select>
-            </div>
-          )}
-          {basis === "tahunan" && (
-            <p className="text-slate-400">{t("Dibandingkan dengan tahun sebelumnya, hanya bulan yang berdata di kedua tahun.")}</p>
-          )}
-        </div>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+         onClick={tutup}>
+      <div className="max-h-[90vh] w-full max-w-4xl overflow-y-auto rounded-xl bg-[#1a1844] border border-violet-500/30 p-6 shadow-2xl shadow-violet-950/50"
+           onClick={(e) => e.stopPropagation()}>
+        <KepalaPanel judul={t("Margin Bridge — analisa grafik")}
+                     periode={d ? `${labelPeriode(d.periode_a)} → ${labelPeriode(d.periode_b)}` : undefined}
+                     url={url} tutup={tutup} />
 
-        {bulanQ.error && (
-          <p className="rounded-md bg-amber-400/10 border border-amber-400/30 px-3 py-2 text-sm text-amber-300">
-            {t("Tahun ini belum punya data bulanan — pilih tahun lain.")}
-          </p>
-        )}
-        {q.isLoading && <p className="text-sm text-slate-400">{t("Memuat…")}</p>}
-        {q.error && !bulanQ.error && (
-          <p className="rounded-md bg-red-500/10 border border-red-400/30 px-3 py-2 text-sm text-red-300">
+        <p className="mt-2 text-sm text-slate-400">
+          {t("Menjembatani OP Margin periode awal ke periode akhir grafik: kontribusi Δ SICOM, Δ harga beli (Rp/kg), dan Δ kurs — jumlahnya tertutup persis.")}
+        </p>
+
+        {q.isLoading && <p className="mt-4 text-sm text-slate-400">{t("Memuat…")}</p>}
+        {q.error && (
+          <p className="mt-4 rounded-md bg-red-500/10 border border-red-400/30 px-3 py-2 text-sm text-red-300">
             {(q.error as Error).message}
           </p>
         )}
 
         {d && (
           <>
-            <div className="h-72">
+            <div className="h-72 mt-3">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={titik} margin={{ top: 10, right: 10, bottom: 5, left: -10 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,.08)" />
@@ -616,39 +597,49 @@ function KartuMarginBridge() {
             </p>
           </>
         )}
-      </>
-    } />
+      </div>
+    </div>
   );
 }
 
-/* ---------- days of cover: cadangan hari olah dari stok ---------- */
-function KartuDaysOfCover() {
+function PanelDaysOfCover({ url, tutup }: { url: string; tutup: () => void }) {
   const { t } = useBahasa();
-  const q = useQuery({ queryKey: ["days-of-cover"], queryFn: () => ambilJson("/api/days-of-cover") });
+  const q = useQuery({ queryKey: ["days-of-cover", url],
+                       queryFn: () => ambilJson(url), retry: false });
   const d = q.data;
   const seri = (d?.seri ?? []).map((s: any) => ({
     ...s, label: `${NAMA_BULAN[Number(s.tanggal.slice(5, 7))]} ${s.tanggal.slice(8, 10)}`,
   }));
   const t0 = d?.terkini;
-  const warnaStatus = t0?.status === "aman" ? "text-emerald-300 border-emerald-400/40 bg-emerald-500/10"
-    : t0?.status === "di bawah safety" ? "text-rose-300 border-rose-400/40 bg-rose-500/10"
-    : "text-slate-300 border-slate-400/40 bg-white/5";
+  const warnaStatus = t0?.status === "aman"
+    ? "text-emerald-300 border-emerald-400/40 bg-emerald-500/10"
+    : t0?.status === "di bawah safety"
+      ? "text-rose-300 border-rose-400/40 bg-rose-500/10"
+      : "text-slate-300 border-slate-400/40 bg-white/5";
 
   return (
-    <Kartu idMetrik="days_of_cover" judul={t("Days of cover (cadangan hari olah)")}
-           urlEkspor="/api/days-of-cover"
-           keterangan={t("Berapa hari olah tersisa dari stok bila laju olah tetap: stok ÷ kapasitas olah. Garis kuning = safety stock pada hari yang sama.")}
-           anak={
-      <>
-        {q.isLoading && <p className="text-sm text-slate-400">{t("Memuat…")}</p>}
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+         onClick={tutup}>
+      <div className="max-h-[90vh] w-full max-w-4xl overflow-y-auto rounded-xl bg-[#1a1844] border border-violet-500/30 p-6 shadow-2xl shadow-violet-950/50"
+           onClick={(e) => e.stopPropagation()}>
+        <KepalaPanel judul={t("Days of Cover — analisa grafik")}
+                     periode={d ? `${fmtTanggal(d.dari)} – ${fmtTanggal(d.sampai)}` : undefined}
+                     url={url} tutup={tutup} />
+
+        <p className="mt-2 text-sm text-slate-400">
+          {t("Berapa hari olah tersisa dari stok bila laju olah tetap: stok ÷ kapasitas olah. Garis kuning = safety stock pada hari yang sama.")}
+        </p>
+
+        {q.isLoading && <p className="mt-4 text-sm text-slate-400">{t("Memuat…")}</p>}
         {q.error && (
-          <p className="rounded-md bg-red-500/10 border border-red-400/30 px-3 py-2 text-sm text-red-300">
+          <p className="mt-4 rounded-md bg-red-500/10 border border-red-400/30 px-3 py-2 text-sm text-red-300">
             {(q.error as Error).message}
           </p>
         )}
+
         {t0 && (
           <>
-            <div className="flex flex-wrap items-end gap-6">
+            <div className="mt-4 flex flex-wrap items-end gap-6">
               <div>
                 <div className="text-4xl font-bold font-mono text-violet-300">
                   {fmtAngka(t0.days, 1)} <span className="text-base text-slate-400">{t("hari")}</span>
@@ -695,15 +686,10 @@ function KartuDaysOfCover() {
                 </LineChart>
               </ResponsiveContainer>
             </div>
-
-            <p className="mt-2 text-xs text-slate-500">
-              {t("Rentang ditampilkan:")} {fmtTanggal(d.dari)} – {fmtTanggal(d.sampai)}{" "}
-              {t("(180 hari data terakhir; ubah lewat ekspor/parameter API bila perlu rentang lain).")}
-            </p>
           </>
         )}
-      </>
-    } />
+      </div>
+    </div>
   );
 }
 
@@ -795,10 +781,6 @@ export default function Ringkasan() {
       } />
 
       <KartuGrafikMargin />
-
-      <KartuMarginBridge />
-
-      <KartuDaysOfCover />
 
       <KartuElemen />
 

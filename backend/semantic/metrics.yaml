@@ -119,8 +119,12 @@ kartu:
       Bila Amount hanya total per hari, kartu menampilkan "data harga belum
       tersedia" - sistem TIDAK mengalokasikan harga diam-diam.
   margin_bridge:
-    judul: Margin bridge (jembatan OP Margin)
+    judul: Margin Bridge - analisa grafik RM Stock, Intake vs Pricing
     cara_dihitung: >
+      Analisa pada kartu 'RM Stock - Intake vs Pricing' (tombol Margin Bridge).
+      Periode mengikuti filter kartu itu: bulan awal (dari) -> bulan akhir
+      (sampai) yang sedang ditampilkan di grafik; bila satu bulan dipilih,
+      dibandingkan dengan bulan sebelumnya.
       Waterfall dari OP Margin periode A ke periode B. Komponen:
       + delta SICOM = SICOM_B - SICOM_A;
       - efek harga beli Rp/kg = 100 x (E_B - E_A) / K_A;
@@ -136,8 +140,10 @@ kartu:
       pada bulan yang berdata di KEDUA tahun (mis. Jan-Okt vs Jan-Okt) supaya
       perbandingan adil.
   days_of_cover:
-    judul: Days of cover (cadangan hari olah)
+    judul: Days of Cover - analisa grafik RM Stock, Intake vs Pricing
     cara_dihitung: >
+      Analisa pada kartu 'RM Stock - Intake vs Pricing' (tombol Days of Cover).
+      Periode mengikuti filter kartu itu (dari/sampai, sampai = akhir bulan).
       Days of cover = stok ton / kapasitas olah (ton/hari) pada tanggal itu:
       berapa hari olah tersisa bila laju olah tetap. Stok dan kapasitas
       memakai nilai mart harian; kapasitas & safety mengikuti parameter yang
