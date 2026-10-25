@@ -8,6 +8,7 @@ export type Bahasa = "id" | "en";
 const KAMUS: Record<string, string> = {
   // ---- menu samping
   "Ringkasan": "Summary",
+  "Margin Performance": "Margin Performance",
   "Analisis": "Analytics",
   "Stok": "Stock",
   "Stok vs Margin": "Stock vs Margin",
@@ -32,6 +33,28 @@ const KAMUS: Record<string, string> = {
   "Cara dihitung": "How it's calculated",
   "Ekspor Excel": "Export to Excel",
   "Tutup": "Close",
+  // ---- halaman depan: angka kunci & perlu perhatian
+  "Perubahan vs": "Change vs",
+  "di atas": "above",
+  "di bawah": "below",
+  "target belum diisi": "target not set",
+  "rincian penyebab belum tersedia": "cause breakdown not available yet",
+  "harga acuan pasar, di luar kendali": "market reference price, outside our control",
+  "harga beli": "purchase price",
+  "belum bisa dihitung": "cannot be calculated yet",
+  "ton kering": "dry tonnes",
+  "hari pembelian": "purchase days",
+  "Lihat analisa lengkap": "See full analysis",
+  "Perlu perhatian hari ini": "Needs attention today",
+  "diurutkan dari yang paling mendesak": "most urgent first",
+  "Harga beli maksimum hari ini": "Maximum purchase price today",
+  "sesuai aturan stok → harga yang berlaku": "per the active stock → price rule",
+  "Rekomendasi harga beli belum bisa dihitung": "Purchase price recommendation not available",
+  "data belum lengkap": "data is incomplete",
+  "Ada data yang belum diperbarui": "Some data is out of date",
+  "temuan alarm": "alarm findings",
+  "Pada blok perubahan, SICOM dan OP Price adalah perubahan harga bulan itu (US¢/kg): SICOM naik menolong margin, OP Price naik menekan margin. Rincian angkanya ada di Margin Bridge pada kartu di bawah.":
+    "In the change block, SICOM and OP Price are that month's price changes (US¢/kg): a higher SICOM helps margin, a higher OP Price squeezes it. The numbers are broken down in Margin Bridge on the card below.",
   // ---- halaman ringkasan
   "Ringkasan OP Margin": "OP Margin Summary",
   "US¢/kg, basis berat kering — meniru Excel lama. Klik angka OP Margin untuk menelusuri asal angkanya.":

@@ -22,7 +22,7 @@ import { ambilJson, kirimJson, pesanGalat, kelasInput, kelasLabel,
 import { useBahasa } from "./i18n";
 
 const TAB = [
-  { id: "ringkasan", label: "Ringkasan", ikon: "◧" },
+  { id: "ringkasan", label: "Margin Performance", ikon: "◧" },
   { id: "analisis", label: "Analisis", ikon: "◨" },
   { id: "stok", label: "Stok", ikon: "▤" },
   { id: "stokmargin", label: "Stok vs Margin", ikon: "▥" },
@@ -262,7 +262,7 @@ export default function App() {
             <div className="flex items-end justify-between gap-4">
               <div>
                 <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#FF1313]">
-                  OP Margin
+                  Rubber Intelligence
                 </p>
                 <h1 className="mt-1 text-2xl font-bold text-[#1D2434]">
                   {t(TAB.find((tb) => tb.id === tab)?.label ?? "")}
@@ -274,7 +274,7 @@ export default function App() {
             </div>
           </header>
 
-          {tab === "ringkasan" && <Ringkasan />}
+          {tab === "ringkasan" && <Ringkasan ke={(x) => setTab(x as TabId)} />}
           {tab === "analisis" && <Analisis />}
           {tab === "stok" && <Stok />}
           {tab === "stokmargin" && <StokMargin />}

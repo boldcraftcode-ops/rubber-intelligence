@@ -1,4 +1,4 @@
-import { Fragment, useState } from "react";
+import { Fragment, ReactNode, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   Bar, BarChart, CartesianGrid, Cell, ComposedChart, LabelList, Legend, Line,
@@ -1230,8 +1230,251 @@ function PanelDaysOfCover({ url, tutup, awal, akhir, ubah }: {
   );
 }
 
+/* ==========================================================================
+   Halaman depan: angka kunci + "perlu perhatian".
+   Tujuan: pembaca tahu posisi margin dan apa yang harus dilakukan hari ini
+   tanpa membuka menu lain. Semua angka berasal dari endpoint yang sudah ada.
+   ========================================================================== */
+
+const tandaAngka = (n: number | null | undefined, des = 2) =>
+  n === null || n === undefined ? "–" : (n > 0 ? "+" : "") + fmtAngka(n, des);
+
+const potong = (s: string, n = 110) =>
+  s.length > n ? `${s.slice(0, n).trimEnd()}…` : s;
+
+function BlokAngka({ label, angka, satuan, bawah, arah, nada }: {
+  label: string;
+  angka: string;
+  satuan?: string;
+  bawah: ReactNode;
+  arah?: "naik" | "turun" | null;
+  nada?: "navy" | "merah";
+}) {
+  return (
+    <div className="border-l border-[#EDEFF2] px-4 py-3 first:border-l-0 first:pl-0">
+      <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[#64676C]">
+        {label}
+      </p>
+      <p className={`mt-1 flex items-baseline gap-1 font-mono text-2xl font-bold ${
+        nada === "merah" ? "text-[#FF1313]" : "text-[#1D2434]"}`}>
+        {angka}
+        {satuan && <span className="text-xs font-normal text-[#64676C]">{satuan}</span>}
+      </p>
+      <p className="mt-0.5 flex items-start gap-1 text-[11px] leading-snug text-[#64676C]">
+        {arah && (
+          <span aria-hidden className="mt-[1px] shrink-0">
+            {arah === "naik" ? "▲" : "▼"}
+          </span>
+        )}
+        <span>{bawah}</span>
+      </p>
+    </div>
+  );
+}
+
+const ymDariBulan = (thn: number, bln: number) =>
+  `${thn}-${String(bln).padStart(2, "0")}`;
+
+function StripAngkaKunci({ thn, data, ke }: {
+  thn: number | null;
+  data: any;
+  ke?: (tab: string) => void;
+}) {
+  const { t } = useBahasa();
+  const berdata: any[] = (data?.bulan ?? []).filter(
+    (b: any) => b.op_margin !== null && b.op_margin !== undefined);
+  const kini = berdata.length ? berdata[berdata.length - 1] : null;
+  const lalu = berdata.length > 1 ? berdata[berdata.length - 2] : null;
+
+  const doc = useQuery({
+    queryKey: ["doc-strip"],
+    queryFn: () => ambilJson("/api/days-of-cover"),
+  });
+  const qsBridge = kini && lalu && thn !== null
+    ? `?dari=${ymDariBulan(thn, lalu.bulan)}&sampai=${ymDariBulan(thn, kini.bulan)}`
+    : "";
+  const bridge = useQuery({
+    queryKey: ["bridge-strip", qsBridge],
+    queryFn: () => ambilJson(`/api/margin-bridge${qsBridge}`),
+  });
+
+  const langkahSicom = bridge.data?.langkah?.find((l: any) => l.kode === "sicom");
+  const langkahOp = bridge.data?.langkah?.find((l: any) => l.kode === "op_price");
+  const dSicom = langkahSicom?.perubahan_mentah ?? null;
+  const dOp = langkahOp?.perubahan_mentah ?? null;
+  const docKini = doc.data?.terkini ?? null;
+
+  if (!kini) return null;
+
+  const label = `${NAMA_BULAN[kini.bulan]}-${String(thn ?? "").slice(2)}`;
+  const diAtasTarget = (kini.vs_target ?? 0) >= 0;
+  const selisih = kini.op_margin != null && lalu?.op_margin != null
+    ? kini.op_margin - lalu.op_margin : null;
+  const diBawahSafety = docKini?.status === "di bawah safety";
+
+  return (
+    <section className="rounded-sm border border-[#E4E5E8] bg-white shadow-[0_1px_3px_rgba(29,36,52,0.08)]">
+      <div className="grid gap-0 px-5 py-1 sm:grid-cols-2 xl:grid-cols-5">
+        <BlokAngka
+          label={`${t("OP Margin")} · ${label}`}
+          angka={fmtAngka(kini.op_margin, 2)}
+          satuan="US¢/kg"
+          arah={diAtasTarget ? "naik" : "turun"}
+          nada={diAtasTarget ? "navy" : "merah"}
+          bawah={kini.target != null
+            ? `${diAtasTarget ? t("di atas") : t("di bawah")} ${t("target")} ` +
+              `${fmtAngka(Math.abs(kini.vs_target ?? 0), 2)} (${t("target")} ` +
+              `${fmtAngka(kini.target, 1)})`
+            : t("target belum diisi")}
+        />
+        <BlokAngka
+          label={`${t("Perubahan vs")} ${lalu ? `${NAMA_BULAN[lalu.bulan]}-${String(thn ?? "").slice(2)}` : "–"}`}
+          angka={tandaAngka(selisih)}
+          satuan="US¢/kg"
+          arah={selisih === null ? null : selisih >= 0 ? "naik" : "turun"}
+          nada={selisih !== null && selisih < 0 ? "merah" : "navy"}
+          bawah={dSicom !== null || dOp !== null
+            ? `${t("SICOM")} ${tandaAngka(dSicom)} · ${t("OP Price")} ${tandaAngka(dOp)}`
+            : t("rincian penyebab belum tersedia")}
+        />
+        <BlokAngka
+          label={`${t("SICOM")} · ${label}`}
+          angka={fmtAngka(kini.sicom, 2)}
+          satuan="US¢/kg"
+          bawah={t("harga acuan pasar, di luar kendali")}
+        />
+        <BlokAngka
+          label={`Days of Cover · ${docKini?.bulan ?? "–"}`}
+          angka={docKini?.doc_hari != null ? fmtAngka(docKini.doc_hari, 1) : "–"}
+          satuan={t("hari")}
+          nada={diBawahSafety ? "merah" : "navy"}
+          bawah={docKini?.safety_hari != null
+            ? `${t(docKini.status ?? "–")} · ${t("safety")} ${fmtAngka(docKini.safety_hari, 1)} ${t("hari")}`
+            : t("belum bisa dihitung")}
+        />
+        <BlokAngka
+          label={`${t("Intake")} · ${label}`}
+          angka={fmtAngka(kini.ton, 0)}
+          satuan={t("ton kering")}
+          bawah={`${kini.hari_pembelian ?? "–"} ${t("hari pembelian")}`}
+        />
+      </div>
+      <p className="border-t border-[#EDEFF2] px-5 py-2 text-[11px] text-[#9AA0A6]">
+        {t("Pada blok perubahan, SICOM dan OP Price adalah perubahan harga bulan itu (US¢/kg): SICOM naik menolong margin, OP Price naik menekan margin. Rincian angkanya ada di Margin Bridge pada kartu di bawah.")}
+        {ke && (
+          <>{" "}
+            <button className="font-semibold text-[#FF1313] underline"
+                    onClick={() => ke("analisis")}>
+              {t("Lihat analisa lengkap")}
+            </button>
+          </>
+        )}
+      </p>
+    </section>
+  );
+}
+
+type BarisPerhatian = {
+  kunci: string;
+  judul: string;
+  isi: string;
+  tab: string;
+  tautan: string;
+  nada: "merah" | "kuning" | "abu";
+};
+
+function PanelPerhatian({ ke }: { ke?: (tab: string) => void }) {
+  const { t } = useBahasa();
+  const alarm = useQuery({ queryKey: ["alarm-strip"], queryFn: () => ambilJson("/api/alarm") });
+  const kualitas = useQuery({ queryKey: ["kualitas-strip"], queryFn: () => ambilJson("/api/kualitas") });
+  const rekom = useQuery({ queryKey: ["rekomendasi-strip"], queryFn: () => ambilJson("/api/rekomendasi") });
+
+  const baris: BarisPerhatian[] = [];
+
+  const r = rekom.data;
+  if (r) {
+    if (r.status === "OK" && r.harga_beli_maks_rp_kg != null) {
+      baris.push({
+        kunci: "rekom",
+        judul: `${t("Harga beli maksimum hari ini")}: Rp ${fmtAngka(r.harga_beli_maks_rp_kg, 0)}/kg`,
+        isi: `${fmtAngka(r.harga_beli_maks_usc, 2)} US¢/kg · ` +
+             (r.alasan?.[0] ?? t("sesuai aturan stok → harga yang berlaku")),
+        tab: "aturan", tautan: t("Aturan Harga"), nada: "abu",
+      });
+    } else {
+      baris.push({
+        kunci: "rekom",
+        judul: t("Rekomendasi harga beli belum bisa dihitung"),
+        isi: `${r.alasan?.[0] ?? t("data belum lengkap")} ` +
+             (r.tanggal ? `(${fmtTanggal(r.tanggal)})` : ""),
+        tab: "aturan", tautan: t("Aturan Harga"), nada: "kuning",
+      });
+    }
+  }
+
+  const telat = (kualitas.data?.terlambat ?? []).filter((x: any) => x.terlambat);
+  if (telat.length) {
+    baris.push({
+      kunci: "telat",
+      judul: t("Ada data yang belum diperbarui"),
+      isi: telat.map((x: any) => `${x.sumber} ${x.umur_hari} ${t("hari")}`).join(" · "),
+      tab: "input", tautan: t("Input Harian"), nada: "kuning",
+    });
+  }
+
+  const daftarAlarm = alarm.data?.alarm ?? [];
+  if (daftarAlarm.length) {
+    baris.push({
+      kunci: "alarm",
+      judul: `${daftarAlarm.length} ${t("temuan alarm")}`,
+      isi: potong(daftarAlarm[0].pesan),
+      tab: "alarm", tautan: t("Alarm"), nada: "merah",
+    });
+  }
+
+  if (!baris.length) return null;
+  const urutan = { merah: 0, kuning: 1, abu: 2 };
+  baris.sort((a, b) => urutan[a.nada] - urutan[b.nada]);
+
+  const kelasNada = {
+    merah: "border-l-[#FF1313]",
+    kuning: "border-l-[#EAB308]",
+    abu: "border-l-[#1D2434]",
+  };
+
+  return (
+    <section className="rounded-sm border border-[#E4E5E8] bg-white shadow-[0_1px_3px_rgba(29,36,52,0.08)]">
+      <div className="flex items-baseline justify-between gap-3 border-b border-[#EDEFF2] px-5 pt-4 pb-2">
+        <h2 className="text-sm font-semibold uppercase tracking-[0.12em] text-[#1D2434]">
+          {t("Perlu perhatian hari ini")}
+        </h2>
+        <span className="text-[11px] text-[#9AA0A6]">
+          {t("diurutkan dari yang paling mendesak")}
+        </span>
+      </div>
+      <ul className="divide-y divide-[#EDEFF2]">
+        {baris.map((b) => (
+          <li key={b.kunci}
+              className={`flex items-start gap-3 border-l-2 px-5 py-2.5 ${kelasNada[b.nada]}`}>
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-semibold text-[#1D2434]">{b.judul}</p>
+              <p className="mt-0.5 text-xs leading-snug text-[#64676C]">{b.isi}</p>
+            </div>
+            {ke && (
+              <button className="shrink-0 text-xs font-semibold text-[#FF1313] underline"
+                      onClick={() => ke(b.tab)}>
+                {b.tautan} →
+              </button>
+            )}
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
 /* ---------- halaman ---------- */
-export default function Ringkasan() {
+export default function Ringkasan({ ke }: { ke?: (tab: string) => void }) {
   const { t } = useBahasa();
   const tahunQ = useQuery({ queryKey: ["tahun"], queryFn: () => ambilJson("/api/tahun") });
   const [tahun, setTahun] = useState<number | null>(null);
@@ -1252,6 +1495,10 @@ export default function Ringkasan() {
 
   return (
     <div className="grid gap-6">
+      <StripAngkaKunci thn={thn} data={ringkas.data} ke={ke} />
+
+      <PanelPerhatian ke={ke} />
+
       <Kartu idMetrik="ringkasan" judul={`${t("Ringkasan OP Margin")} ${thn ?? ""}`}
              keterangan={t("US¢/kg, basis berat kering — meniru Excel lama. Klik angka OP Margin untuk menelusuri asal angkanya.")}
              urlEkspor={thn ? `/api/ringkasan/${thn}` : undefined}
