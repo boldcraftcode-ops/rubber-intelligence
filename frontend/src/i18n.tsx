@@ -7,7 +7,6 @@ export type Bahasa = "id" | "en";
 
 const KAMUS: Record<string, string> = {
   // ---- menu samping
-  "Ringkasan": "Summary",
   "Margin Performance": "Margin Performance",
   "Analisis": "Analytics",
   "Stok": "Stock",
@@ -56,7 +55,7 @@ const KAMUS: Record<string, string> = {
   "Pada blok perubahan, SICOM dan OP Price adalah perubahan harga bulan itu (US¢/kg): SICOM naik menolong margin, OP Price naik menekan margin. Rincian angkanya ada di Margin Bridge pada kartu di bawah.":
     "In the change block, SICOM and OP Price are that month's price changes (US¢/kg): a higher SICOM helps margin, a higher OP Price squeezes it. The numbers are broken down in Margin Bridge on the card below.",
   // ---- halaman ringkasan
-  "Ringkasan OP Margin": "OP Margin Summary",
+  "OP Margin bulanan": "Monthly OP Margin",
   "US¢/kg, basis berat kering — meniru Excel lama. Klik angka OP Margin untuk menelusuri asal angkanya.":
     "US¢/kg, dry-weight basis — mirrors the legacy Excel. Click any OP Margin figure to trace its origin.",
   "SICOM": "SICOM",

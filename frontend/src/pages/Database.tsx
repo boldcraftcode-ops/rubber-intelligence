@@ -198,7 +198,7 @@ export default function Database() {
                 </tbody>
               </table>
               <p className="mt-3 text-xs text-[#64676C]">
-                Setelah data masuk, Ringkasan / Analisis / Stok / Alarm terisi
+                Setelah data masuk, Margin Performance / Analisis / Stok / Alarm terisi
                 otomatis — mart & alarm dihitung ulang setiap ada data baru.
               </p>
             </details>

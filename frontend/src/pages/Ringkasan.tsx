@@ -1499,7 +1499,7 @@ export default function Ringkasan({ ke }: { ke?: (tab: string) => void }) {
 
       <PanelPerhatian ke={ke} />
 
-      <Kartu idMetrik="ringkasan" judul={`${t("Ringkasan OP Margin")} ${thn ?? ""}`}
+      <Kartu idMetrik="ringkasan" judul={`${t("OP Margin bulanan")} — ${thn ?? ""}`}
              keterangan={t("US¢/kg, basis berat kering — meniru Excel lama. Klik angka OP Margin untuk menelusuri asal angkanya.")}
              urlEkspor={thn ? `/api/ringkasan/${thn}` : undefined}
              qsJelaskan={thn ? `?tahun=${thn}` : ""}
