@@ -1,13 +1,12 @@
 """Utilitas kecil: menyiapkan backend/.env untuk pemakaian di komputer sendiri.
 
-Masalah yang diselesaikan: bila `.env` berisi konfigurasi Cloudflare Access
-(CF_ACCESS_AUD), aplikasi memasang login Access. Access hanya bekerja lewat
-domain yang dilindungi Cloudflare, jadi di localhost SEMUA halaman akan
-menampilkan "Belum login ... Cloudflare Access" dan form username+sandi tidak
-akan pernah berhasil.
+Login Cloudflare Access sudah DIHAPUS: satu-satunya cara masuk adalah
+username + sandi. Fungsi di sini memastikan `.env` siap untuk itu:
 
-Fungsi di sini mengubah `.env` agar memakai login lokal (form username+sandi),
-sekaligus memastikan SECRET_KEY cukup panjang untuk menandatangani sesi.
+- AUTH_MODE=lokal (bila masih ada sisa setelan lama),
+- AUTH_DISABLED dibuang (kalau ada, login mati),
+- SECRET_KEY acak minimal 32 karakter,
+- sisa setelan CF_ACCESS_* dibuang agar tidak mengganggu.
 
 Dipakai oleh:
   python -m app.cli atur-login-lokal      (manual)
@@ -79,7 +78,12 @@ def atur_login_lokal(jalur: pathlib.Path | None = None) -> dict:
     baris = isi.splitlines()
     diubah: dict[str, str] = {}
 
-    _setel(baris, "AUTH_MODE", "lokal", diubah)
+    # Sisa setelan Cloudflare Access tidak dipakai lagi -> dibuang.
+    for sisa in ("AUTH_MODE", "CF_ACCESS_TEAM_DOMAIN", "CF_ACCESS_AUD",
+                 "CF_ACCESS_CERTS_URL"):
+        if _nilai(baris, sisa) is not None:
+            _hapus(baris, sisa, diubah)
+
     if _nilai(baris, "APP_ENV") is None:
         _setel(baris, "APP_ENV", "development", diubah)
     # AUTH_DISABLED=true mematikan login lokal, jadi tidak boleh ada.

@@ -201,16 +201,12 @@ def _cetak_diagnosa() -> None:
     if JALUR_ENV_BAKU.exists():
         baris = JALUR_ENV_BAKU.read_text(encoding="utf-8").splitlines()
         print(f".env            : ada ({JALUR_ENV_BAKU})")
-        for kunci in ("APP_ENV", "AUTH_MODE", "AUTH_DISABLED",
-                      "CF_ACCESS_AUD", "DATABASE_URL"):
+        for kunci in ("APP_ENV", "AUTH_DISABLED", "SECRET_KEY", "DATABASE_URL"):
             nilai = _nilai(baris, kunci)
-            if kunci == "CF_ACCESS_AUD" and nilai:
-                nilai = "(terisi - setelan Cloudflare Access)"
+            if kunci == "SECRET_KEY" and nilai:
+                nilai = f"ada ({len(nilai)} karakter)"
             print(f"  {kunci:<14}: {nilai if nilai is not None else '(tidak ada)'}")
-        secret = _nilai(baris, "SECRET_KEY") or ""
-        print(f"  {'SECRET_KEY':<14}: "
-              + (f"ada ({len(secret)} karakter)" if secret
-                 else "(tidak ada - dibuat otomatis saat API start)"))
+
     else:
         print(f".env            : TIDAK ADA ({JALUR_ENV_BAKU})")
         print("  -> jalankan: python -m app.cli atur-login-lokal")
@@ -218,8 +214,7 @@ def _cetak_diagnosa() -> None:
     # ---- mode yang benar-benar dipakai proses baru
     cfg = KonfigurasiAuth()
     info = info_mode(cfg)
-    print(f"mode login      : {info['mode']} ({info['cara']})"
-          + ("  [otomatis]" if info.get("mode_otomatis") else ""))
+    print(f"mode login      : {info['mode']} ({info['cara']})")
     print(f"APP_ENV         : {cfg.app_env}")
 
     # ---- database + akun
@@ -242,11 +237,7 @@ def _cetak_diagnosa() -> None:
         print("  -> jalankan: python -m app.cli init-db")
 
     print("-" * 62)
-    if info["mode"] == "access":
-        print("SIMPULAN: aplikasi memakai Cloudflare Access. Mode ini TIDAK")
-        print("bisa dipakai di localhost. Perbaiki dengan:")
-        print("  python -m app.cli atur-login-lokal")
-    elif info["mode"] == "lokal":
+    if info["mode"] == "lokal":
         print("SIMPULAN: login lokal (username + sandi) — cocok untuk localhost.")
         print("Bila sandi lupa:  python -m app.cli reset-sandi admin")
     else:

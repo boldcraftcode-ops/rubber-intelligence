@@ -65,7 +65,7 @@ peringatan (vendor tak dikenal, Dry tidak cocok, wilayah kosong, dst.).
 python -m pytest
 ```
 
-Harus tertulis `174 passed`. Pengujian mencakup semua kasus uji emas:
+Harus tertulis `170 passed`. Pengujian mencakup semua kasus uji emas:
 harian 3 Jan 2026, bulan Jan/Feb 2026, Jan 2023, Mar 2020 (kurs berubah
 tengah bulan), Apr 2022 (koreksi salah ketik Excel), Days/rasio stok,
 dan perencanaan Jan 2027.
@@ -173,38 +173,30 @@ git pull
 lalu jalankan `start-web.bat` lagi. Kalau masih muncul, hapus berkas
 `start-web.bat` di folder itu dan `git checkout -- start-web.bat`.
 
-## Kalau muncul "Belum login ... Cloudflare Access" padahal Anda di localhost
+## Login aplikasi: username + sandi
 
-Pesan itu berarti proses API menjalankan **mode login Cloudflare Access**.
-Access hanya bekerja lewat domain yang dilindungi Cloudflare, jadi di komputer
-sendiri pesan itu tidak akan pernah bisa dilewati — dan form username+sandi
-tidak bisa dipakai pada mode ini.
+Login **Cloudflare Access sudah DIHAPUS** (tidak dipakai lagi). Satu-satunya
+cara masuk adalah username + sandi yang tersimpan di tabel `pengguna`:
 
-Penyebab: `backend/.env` berisi setelan Access (`CF_ACCESS_AUD`) tanpa
-`AUTH_MODE=lokal`.
+- Akun pertama dibuat otomatis saat API pertama kali start: **`admin`**,
+  sandi dari `ADMIN_SANDI_AWAL` di `.env` (bawaan `admin123`).
+- Pengguna lain dibuat admin lewat menu **Pengguna**.
+- Lupa sandi / akun terkunci? Dari folder `backend`:
 
-Cara memperbaiki (pilih salah satu):
+  ```powershell
+  .venv\Scripts\python -m app.cli reset-sandi admin
+  ```
 
-1. Jalankan ulang `start-web.bat` — skrip ini mendeteksi setelan Access di
-   `.env`, lalu menawarkan mengubahnya ke login lokal. Jawab `Y`.
-2. Atau manual, dari folder `backend`:
+  Perintah itu mencetak sandi baru dan mengaktifkan kembali akunnya.
 
-   ```powershell
-   .venv\Scripts\python -m app.cli atur-login-lokal
-   ```
+Bila `.env` Anda masih menyimpan setelan lama (`AUTH_MODE=...`,
+`CF_ACCESS_TEAM_DOMAIN`, `CF_ACCESS_AUD`), semuanya **diabaikan** dan boleh
+dihapus. Untuk membersihkannya sekaligus menyiapkan `SECRET_KEY`:
 
-   Perintah ini menyetel `AUTH_MODE=lokal`, membuat `SECRET_KEY` acak yang
-   cukup panjang, dan tidak menghapus setelan lain (mis. `DATABASE_URL`).
-3. Tutup jendela **"OP Margin - API"**, jalankan `start-web.bat` lagi, lalu
-   muat ulang halaman (**Ctrl+F5**).
-
-Setelah itu halaman login memakai **username + sandi** (akun awal `admin` /
-`admin123` — segera ganti setelah masuk). Untuk melihat cara login yang
-sedang berlaku, buka `http://localhost:8000/api/auth/mode` atau
-`http://localhost:8000/api/health` (bagian `login`).
-
-Catatan: `backend/.env` tidak ikut Git (berisi rahasia). Contoh lengkapnya ada
-di `backend/.env.example`.
+```powershell
+cd backend
+.venv\Scripts\python -m app.cli atur-login-lokal
+```
 
 ### Kalau masih tidak bisa masuk: jalankan `diagnosa.bat`
 
@@ -219,18 +211,15 @@ Bacanya:
 
 | Yang tertulis | Artinya | Tindakan |
 |---|---|---|
-| `mode login : lokal (username-sandi)` dan API menjawab `0.6.1` + `lokal` | sudah benar | login `admin` / `admin123` (Ctrl+F5 dulu) |
-| API menjawab `mode: access` | proses API masih memakai setelan Access | tutup jendela `OP Margin - API`, jalankan `start-web.bat` lagi |
+| `mode login : lokal (username-sandi)` dan API menjawab `0.7.0` + `lokal` | sudah benar | login dengan akun Anda (Ctrl+F5 dulu) |
+| API menjawab `mode: nonaktif` | `AUTH_DISABLED=true` masih ada di `.env` | hapus baris itu, lalu jalankan `start-web.bat` lagi |
 | API tidak menjawab / `404` di `/api/auth/mode` | prosesnya **kode lama** | tutup jendela API lama, jalankan `start-web.bat` lagi |
 | bagian [2] tidak ada akun, atau sandi lupa | akun belum dibuat / sandi salah | `python -m app.cli reset-sandi admin` (dari folder `backend`) |
 
-Mulai versi ini aplikasi juga **menyembuhkan diri**: bila `AUTH_MODE` tidak
-ditulis di `.env` sedangkan setelan Cloudflare Access ada, dan `APP_ENV` bukan
-produksi, aplikasi otomatis memakai **login lokal** (bukan Access) dan membuat
-`SECRET_KEY` sementara — jadi tidak ada lagi halaman yang terjebak di pesan
-"Belum login ... Cloudflare Access". Skrip `start-web.bat` juga memaksa
-`AUTH_MODE=lokal` untuk jendela API-nya, karena skrip itu memang untuk
-komputer sendiri.
+Bila `SECRET_KEY` belum diisi, di luar produksi aplikasi membuat kunci
+sementara otomatis supaya login tetap bisa dipakai (sesi berakhir saat API
+dijalankan ulang). `start-web.bat` membuang `AUTH_DISABLED` untuk jendela
+API-nya, sehingga login selalu aktif saat dijalankan dari skrip itu.
 
 ## Kalau folder Anda hasil UNDUHAN ZIP (bukan `git clone`)
 
@@ -271,14 +260,15 @@ berkas ini dari folder lama ke folder baru **sebelum** menjalankan
 - `backend\.env` — setelan login (opsional; bila tidak ada, dibuat otomatis)
 
 Cara memastikan folder baru benar-benar versi terbaru: lihat **`VERSI.txt`** di
-akar folder (versi terbaru saat dokumen ini ditulis: **0.6.2**), atau buka
+akar folder (versi terbaru saat dokumen ini ditulis: **0.7.0**), atau buka
 `http://localhost:8000/api/health` dan periksa `"versi"` serta `"kode"`.
 
 ## Deploy ke internet (Fase 5)
 Panduan lengkap ada di folder `deploy/`: mulai dari `deploy/install-windows.md`
-(service Windows + Cloudflare Tunnel), lalu `deploy/cloudflare-pages-access.md`
-(frontend + login), `deploy/backup.ps1` + `deploy/restore.md` (backup harian &
-uji restore), dan `deploy/checklist-keamanan.md`.
+(service Windows + Cloudflare Tunnel), `deploy/backup.ps1` +
+`deploy/restore.md` (backup harian & uji restore), dan
+`deploy/checklist-keamanan.md`. Login memakai username+sandi aplikasi
+(Cloudflare Access sudah dihapus).
 
 ## Pindah ke PostgreSQL (nanti)
 Salin `.env.example` menjadi `.env` dan isi `DATABASE_URL` dengan alamat

@@ -4,8 +4,8 @@
 - Setiap input manual dicatat sebagai "unggahan" di lapisan raw supaya
   setiap angka tetap bisa ditelusuri asal-usulnya.
 - Mart dibangun ulang otomatis setelah setiap perubahan.
-- Peran/Cloudflare Access menyusul di fase keamanan; pembatasan peran
-  belum aktif di fase ini.
+- Login memakai username + sandi (tabel pengguna); pembatasan peran
+  admin/pengguna ada di api_fase4/api_database.
 """
 from __future__ import annotations
 
@@ -31,7 +31,7 @@ from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session
 
 from . import versi
-from .auth import JALUR_BEBAS, KonfigurasiAuth, VerifikatorAccess
+from .auth import KonfigurasiAuth
 from .core.alarm import evaluasi_alarm
 from .core.lookup import kurs_pada
 from .db import buat_engine, buat_session_factory
@@ -59,17 +59,6 @@ class KursMasuk(BaseModel):
                                description="Kurs IDR per USD, contoh 16644")
     catatan: str | None = None
     pengisi: str = "?"
-
-
-def _dibuka_dari_komputer_sendiri(request: Request) -> bool:
-    """True bila permintaan datang dari browser di komputer yang sama
-    (localhost / 127.0.0.1). Dipakai untuk memberi petunjuk yang tepat saat
-    mode login tidak cocok dengan cara aplikasi dibuka."""
-    host = (request.url.hostname or "").lower()
-    if host in ("localhost", "127.0.0.1", "::1", "0.0.0.0"):
-        return True
-    klien = request.client.host if request.client else ""
-    return klien in ("127.0.0.1", "::1", "localhost")
 
 
 def _catat_input_manual(session: Session, jenis: str, isi: dict, pengisi: str) -> int:
@@ -112,62 +101,16 @@ def buat_app(engine: Engine | None = None) -> FastAPI:
                            allow_methods=["GET", "POST"],
                            allow_headers=["Content-Type"])
 
-    # --- login lokal (form sendiri, data pengguna di database) --------------
+    # --- login: username + sandi (satu-satunya cara masuk) -------------------
     if cfg_auth.lokal_aktif:
         from .auth_lokal import pasang_middleware_lokal, pastikan_admin
         pasang_middleware_lokal(app, cfg_auth)
         with SessionLocal() as _s:
             if pastikan_admin(_s):
                 _s.commit()
-    # --- verifikasi Cloudflare Access ---------------------------------------
-    elif cfg_auth.aktif:
-        import jwt as _jwt
-
-        verifikator = VerifikatorAccess(cfg_auth)
-
-        @app.middleware("http")
-        async def wajib_login(request: Request, call_next):
-            jalur = request.url.path
-            if not jalur.startswith("/api") or jalur in JALUR_BEBAS:
-                return await call_next(request)
-            token = request.headers.get("Cf-Access-Jwt-Assertion") \
-                or request.cookies.get("CF_Authorization")
-            if not token:
-                pesan = ("Belum login. Akses halaman lewat alamat resmi "
-                         "aplikasi (Cloudflare Access) lalu masuk dengan "
-                         "email kantor Anda.")
-                if _dibuka_dari_komputer_sendiri(request) and not cfg_auth.produksi:
-                    pesan += (" CATATAN: proses API ini berjalan di komputer "
-                              "Anda sendiri dengan mode login Cloudflare "
-                              "Access, dan Access tidak bisa dipakai di "
-                              "localhost. Untuk memakai aplikasi di komputer "
-                              "ini, isi backend/.env dengan AUTH_MODE=lokal "
-                              "(lihat backend/.env.example) lalu jalankan "
-                              "ulang API.")
-                return JSONResponse(status_code=401, content={"detail": pesan})
-            try:
-                klaim = verifikator.verifikasi(token)
-            except _jwt.ExpiredSignatureError:
-                return JSONResponse(status_code=401, content={
-                    "detail": "Sesi login sudah kedaluwarsa. Muat ulang halaman "
-                              "untuk login kembali."})
-            except _jwt.PyJWTError:
-                return JSONResponse(status_code=401, content={
-                    "detail": "Token login tidak sah. Muat ulang halaman; bila "
-                              "masih gagal hubungi admin."})
-            request.state.email = klaim.get("email")
-            return await call_next(request)
-    elif not cfg_auth.produksi:
-        if cfg_auth.aktif:
-            print("PERINGATAN: mode login Cloudflare Access AKTIF di luar "
-                  "produksi. Access hanya bekerja lewat domain yang dilindungi "
-                  "Cloudflare, jadi di localhost semua halaman akan muncul "
-                  "'Belum login'. Untuk pemakaian di komputer sendiri, isi "
-                  "backend/.env dengan AUTH_MODE=lokal (lihat "
-                  "backend/.env.example) lalu jalankan ulang API.")
-        else:
-            print("PERINGATAN: autentikasi NONAKTIF (mode development). "
-                  "Jangan dipakai di produksi.")
+    else:
+        print("PERINGATAN: login DIMATIKAN (AUTH_DISABLED=true, mode "
+              "pengembangan). Jangan dipakai di produksi.")
 
     def ambil_session():
         with SessionLocal() as session:

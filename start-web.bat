@@ -42,7 +42,7 @@ echo.
 rem ------------------------------------------------------------
 rem  1. Ruang kerja Python (.venv)
 rem ------------------------------------------------------------
-if exist "%VPY%" goto :cek_mode_env
+if exist "%VPY%" goto :cek_env
 
 echo Ruang kerja Python belum ada. Menyiapkan sekarang (sekali saja).
 where py >nul 2>nul
@@ -62,7 +62,7 @@ if errorlevel 1 goto :venv_gagal
 ".venv\Scripts\python.exe" -m pip install --quiet --disable-pip-version-check -r requirements.txt
 if errorlevel 1 goto :venv_gagal
 popd
-goto :cek_mode_env
+goto :cek_env
 
 :venv_gagal
 popd
@@ -78,44 +78,18 @@ echo Pasang Python dari https://www.python.org/downloads/
 echo Saat memasang, centang "Add Python to PATH", lalu jalankan lagi.
 goto :berhenti
 
+:cek_env
 rem ------------------------------------------------------------
-rem  1b. Berkas backend\.env - cara login untuk komputer ini
-rem      Tanpa .env, aplikasi bisa masuk mode Cloudflare Access yang
-rem      TIDAK bisa dipakai di localhost ("Belum login ... Cloudflare
-rem      Access"). Jadi .env selalu disiapkan: mode login lokal.
+rem  1b. Berkas backend\.env - setelan login
+rem      Login hanya username + sandi. Bila .env belum ada, dibuat
+rem      otomatis supaya akun admin tersedia dan sesi bisa
+rem      ditandatangani (SECRET_KEY).
 rem ------------------------------------------------------------
 if not exist "backend\.env" goto :buat_env
-goto :cek_mode_env
-
-:buat_env
-echo Membuat backend\.env (login lokal: username + sandi) - sekali saja.
-pushd backend
-".venv\Scripts\python.exe" -m app.cli atur-login-lokal
-popd
-goto :cek_mode_env
-
-:cek_mode_env
-if not exist "backend\.env" goto :punya_env
-findstr /i /c:"CF_ACCESS_AUD" "backend\.env" >nul 2>nul
-if errorlevel 1 goto :punya_env
-findstr /i /c:"AUTH_MODE=lokal" "backend\.env" >nul 2>nul
-if not errorlevel 1 goto :punya_env
-echo.
-echo ============================================================
-echo PERINGATAN: backend\.env memakai login Cloudflare Access.
-echo Access hanya bekerja lewat domain yang dilindungi Cloudflare,
-echo jadi di localhost SEMUA halaman akan berbunyi "Belum login ...
-echo Cloudflare Access" dan form username+sandi tidak bisa dipakai.
-echo ============================================================
-set "JAWAB="
-set /p "JAWAB=Ubah ke login lokal (username+sandi) sekarang? [Y] ya / [N] biarkan: "
-if /i "%JAWAB%"=="Y" goto :perbaiki_env
-if /i "%JAWAB%"=="T" goto :perbaiki_env
-echo Dibiarkan. Login lokal tidak akan bisa dipakai selama AUTH_MODE
-echo bukan lokal.
 goto :punya_env
 
-:perbaiki_env
+:buat_env
+echo Membuat backend\.env (login username + sandi) - sekali saja.
 pushd backend
 ".venv\Scripts\python.exe" -m app.cli atur-login-lokal
 popd
@@ -183,11 +157,10 @@ rem  5. Jalankan API + web di jendela terpisah
 rem ------------------------------------------------------------
 echo.
 echo Menjalankan API di jendela "OP Margin - API" (dengan auto-reload).
-rem  AUTH_MODE=lokal dipaksa untuk jendela ini: skrip ini selalu dipakai di
-rem  komputer sendiri, tempat Cloudflare Access tidak mungkin bekerja.
-rem  Variabel lingkungan menang atas isi backend\.env (load_dotenv tidak
-rem  menimpa), jadi login lokal tetap berlaku walau .env masih setelan Access.
-set "AUTH_MODE=lokal"
+rem  AUTH_DISABLED dibuang untuk jendela ini supaya login BENAR-BENAR aktif,
+rem  apa pun sisa setelan di backend\.env (variabel lingkungan menang atas
+rem  isi .env karena load_dotenv tidak menimpa).
+set "AUTH_DISABLED="
 start "OP Margin - API" /D "%~dp0backend" cmd /k ".venv\Scripts\python -m uvicorn app.main:app --host 127.0.0.1 --port 8000 --reload"
 echo Menjalankan tampilan web di jendela "OP Margin - Web".
 start "OP Margin - Web" /D "%~dp0frontend" cmd /k "npm run dev"

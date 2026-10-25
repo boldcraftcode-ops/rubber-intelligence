@@ -1,24 +1,17 @@
-"""Tes cara login yang berlaku: /api/auth/mode, pesan 401 yang menjelaskan
-kasus localhost pada mode Cloudflare Access, dan alat `atur-login-lokal`.
+"""Tes cara login: /api/auth/mode, sesi username+sandi, dan alat bantu
+`atur-login-lokal`.
 
-Latar belakang kasus nyata: `.env` masih berisi setelan Cloudflare Access
-(CF_ACCESS_AUD) sehingga di localhost semua halaman menampilkan "Belum login
-... Cloudflare Access" dan form username+sandi tidak pernah berhasil.
+Login Cloudflare Access sudah dihapus, jadi yang diuji di sini hanya jalur
+username + sandi — termasuk memastikan sisa setelan CF_ACCESS_* tidak lagi
+berpengaruh.
 """
-import json
-
-import jwt
 import pytest
-from cryptography.hazmat.primitives import serialization
-from cryptography.hazmat.primitives.asymmetric import rsa
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
 from sqlalchemy.pool import StaticPool
 
 from app.main import buat_app
 from app.setup_env import atur_login_lokal, _nilai
-
-AUD = "aud-uji-op-margin"
 
 
 def _engine():
@@ -27,55 +20,21 @@ def _engine():
                          poolclass=StaticPool)
 
 
-def _klien(lokal=False):
-    """base_url localhost = meniru browser di komputer yang sama."""
-    alamat = "http://localhost" if lokal else "http://testserver"
-    return TestClient(buat_app(_engine()), base_url=alamat)
-
-
-@pytest.fixture()
-def mode_access(tmp_path, monkeypatch):
-    kunci = rsa.generate_private_key(public_exponent=65537, key_size=2048)
-    jwk = json.loads(jwt.algorithms.RSAAlgorithm.to_jwk(kunci.public_key()))
-    jwk.update({"kid": "kid-uji", "alg": "RS256", "use": "sig"})
-    jwks = tmp_path / "jwks.json"
-    jwks.write_text(json.dumps({"keys": [jwk]}))
-    monkeypatch.setenv("CF_ACCESS_CERTS_URL", f"file://{jwks}")
-    monkeypatch.setenv("CF_ACCESS_AUD", AUD)
-    monkeypatch.setenv("APP_ENV", "development")
-    monkeypatch.setenv("AUTH_MODE", "access")
-    monkeypatch.delenv("AUTH_DISABLED", raising=False)
+def _klien():
+    return TestClient(buat_app(_engine()))
 
 
 @pytest.fixture()
 def mode_lokal(monkeypatch, tmp_path):
+    """Login username+sandi aktif."""
     monkeypatch.setenv("APP_ENV", "development")
-    monkeypatch.setenv("AUTH_MODE", "lokal")
     monkeypatch.setenv("SECRET_KEY", "k" * 40)
     monkeypatch.delenv("AUTH_DISABLED", raising=False)
     monkeypatch.delenv("CF_ACCESS_AUD", raising=False)
-    monkeypatch.delenv("CF_ACCESS_CERTS_URL", raising=False)
     return tmp_path
 
 
 # --------------------------------------------------------------- mode publik
-def test_mode_access_terbaca_tanpa_login(mode_access):
-    k = _klien()
-    r = k.get("/api/auth/mode")
-    assert r.status_code == 200
-    isi = r.json()
-    assert isi["mode"] == "access" and isi["cara"] == "cloudflare-access"
-    assert isi["perlu_login"] is True
-    assert isi["produksi"] is False
-
-
-def test_mode_lokal_terbaca_tanpa_login(mode_lokal):
-    k = _klien()
-    r = k.get("/api/auth/mode")
-    assert r.status_code == 200
-    assert r.json()["cara"] == "username-sandi"
-
-
 def test_mode_tanpa_auth(monkeypatch):
     monkeypatch.setenv("APP_ENV", "development")
     monkeypatch.delenv("AUTH_MODE", raising=False)
@@ -88,28 +47,9 @@ def test_mode_tanpa_auth(monkeypatch):
     assert isi["perlu_login"] is False and isi["produksi"] is False
 
 
-def test_health_melaporkan_cara_login(mode_access):
+def test_health_melaporkan_cara_login(mode_lokal):
     isi = _klien().get("/api/health").json()
-    assert isi["login"]["cara"] == "cloudflare-access"
-
-
-# ------------------------------------------------- pesan yang menjelaskan
-def test_pesan_access_di_localhost_memberi_petunjuk(mode_access):
-    r = _klien(lokal=True).get("/api/alarm")
-    assert r.status_code == 401
-    detail = r.json()["detail"]
-    assert "Cloudflare Access" in detail
-    assert "AUTH_MODE=lokal" in detail          # petunjuk yang bisa ditindak
-    assert "localhost" in detail
-
-
-def test_login_form_ditolak_dengan_jelas_pada_mode_access(mode_access):
-    """Form username+sandi memang tidak berlaku; jangan balas 404/500."""
-    r = _klien().post("/api/auth/login",
-                      json={"username": "admin", "sandi": "admin123"})
-    assert r.status_code == 422
-    pesan = r.json()["detail"]
-    assert "Cloudflare Access" in pesan and "AUTH_MODE=lokal" in pesan
+    assert isi["login"]["cara"] == "username-sandi"
 
 
 def test_login_lokal_berhasil(mode_lokal):
@@ -133,28 +73,32 @@ def test_atur_login_lokal_membuat_env_baru(tmp_path):
     hasil = atur_login_lokal(env)
     assert hasil["dibuat"] is True
     baris = env.read_text().splitlines()
-    assert _nilai(baris, "AUTH_MODE") == "lokal"
+    assert _nilai(baris, "AUTH_MODE") is None
     assert len(_nilai(baris, "SECRET_KEY") or "") >= 32
 
 
-def test_atur_login_lokal_mengalahkan_setelan_access(tmp_path):
+def test_atur_login_lokal_membersihkan_sisa_cloudflare(tmp_path):
+    """Sisa setelan Cloudflare Access lama dibuang agar tidak membingungkan."""
     env = tmp_path / ".env"
     env.write_text("APP_ENV=development\nAUTH_MODE=access\n"
-                   "CF_ACCESS_AUD=rahasia\nSECRET_KEY=pendek\n"
+                   "CF_ACCESS_AUD=rahasia\n"
+                   "CF_ACCESS_TEAM_DOMAIN=lama.cloudflareaccess.com\n"
+                   "SECRET_KEY=pendek\n"
                    "DATABASE_URL=sqlite:///lain.db\n")
     atur_login_lokal(env)
     baris = env.read_text().splitlines()
-    assert _nilai(baris, "AUTH_MODE") == "lokal"
+    assert _nilai(baris, "AUTH_MODE") is None
+    assert _nilai(baris, "CF_ACCESS_AUD") is None
+    assert _nilai(baris, "CF_ACCESS_TEAM_DOMAIN") is None
     assert len(_nilai(baris, "SECRET_KEY")) >= 32
     # setelan lain tidak boleh hilang / berubah
-    assert _nilai(baris, "CF_ACCESS_AUD") == "rahasia"
     assert _nilai(baris, "DATABASE_URL") == "sqlite:///lain.db"
     assert _nilai(baris, "APP_ENV") == "development"
 
 
 def test_atur_login_lokal_tidak_menimpa_secret_yang_kuat(tmp_path):
     env = tmp_path / ".env"
-    env.write_text("AUTH_MODE=lokal\nSECRET_KEY=" + "x" * 64 + "\n")
+    env.write_text("SECRET_KEY=" + "x" * 64 + "\n")
     hasil = atur_login_lokal(env)
     assert "SECRET_KEY" not in hasil["diubah"]
     assert _nilai(env.read_text().splitlines(), "SECRET_KEY") == "x" * 64
@@ -166,35 +110,6 @@ def test_atur_login_lokal_mematikan_auth_disabled(tmp_path):
     atur_login_lokal(env)
     baris = env.read_text().splitlines()
     assert _nilai(baris, "AUTH_DISABLED") is None
-    assert _nilai(baris, "AUTH_MODE") == "lokal"
-
-
-# -------------------------------------- mode otomatis saat AUTH_MODE kosong
-def test_akses_di_luar_produksi_otomatis_jadi_lokal(monkeypatch):
-    """Kasus nyata: .env lama berisi setelan Access TANPA AUTH_MODE.
-
-    Di luar produksi (localhost) aplikasi tidak boleh terjebak di mode Access
-    yang mustahil dipakai — mode otomatis jadi lokal.
-    """
-    monkeypatch.setenv("APP_ENV", "development")
-    monkeypatch.delenv("AUTH_MODE", raising=False)
-    monkeypatch.delenv("AUTH_DISABLED", raising=False)
-    monkeypatch.setenv("CF_ACCESS_AUD", AUD)
-    monkeypatch.setenv("SECRET_KEY", "k" * 40)
-    isi = _klien().get("/api/auth/mode").json()
-    assert isi["cara"] == "username-sandi"
-    assert isi["mode_otomatis"] is True
-
-
-def test_produksi_tanpa_auth_mode_tetap_access(monkeypatch):
-    """Produksi tidak boleh ikut-ikutan jadi lokal (gagal-tertutup)."""
-    from app.auth import KonfigurasiAuth
-    monkeypatch.setenv("APP_ENV", "produksi")
-    monkeypatch.delenv("AUTH_MODE", raising=False)
-    monkeypatch.delenv("AUTH_DISABLED", raising=False)
-    monkeypatch.setenv("CF_ACCESS_AUD", AUD)
-    monkeypatch.setenv("CF_ACCESS_TEAM_DOMAIN", "contoh.cloudflareaccess.com")
-    assert KonfigurasiAuth().mode == "access"
 
 
 def test_login_lokal_tetap_bisa_tanpa_secret_key(mode_lokal, monkeypatch):

@@ -6,6 +6,6 @@ pydantic>=2.6
 PyYAML>=6.0
 pytest>=8.0
 httpx>=0.27
-PyJWT[crypto]>=2.8
+PyJWT>=2.8  # hanya HS256 (sesi login); ekstra crypto tidak dipakai lagi
 python-multipart>=0.0.9
 python-dotenv>=1.0

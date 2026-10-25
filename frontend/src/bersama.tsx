@@ -22,8 +22,8 @@ export const NAMA_BULAN = ["", "Jan", "Feb", "Mar", "Apr", "Mei", "Jun",
 export const hariIni = () => new Date().toISOString().slice(0, 10);
 
 /* ---------- API ----------
-   Di development URL relatif (proxy satu-origin). Di produksi (Cloudflare
-   Pages) VITE_API_URL berisi https://api.domain-anda; cookie login Access
+   Di development URL relatif (proxy satu-origin). Bila tampilan web dipisah
+   dari API, VITE_API_URL berisi https://api.domain-anda; cookie sesi login
    ikut dikirim (credentials: include). */
 const API_URL: string = (import.meta as any).env?.VITE_API_URL ?? "";
 
@@ -32,7 +32,7 @@ export const urlApi = (path: string) => `${API_URL}${path}`;
 export async function ambilJson(url: string) {
   const r = await fetch(urlApi(url), { credentials: "include" });
   if (r.status === 401) {
-    let detail = "Belum login. Muat ulang halaman untuk masuk lewat Cloudflare Access.";
+    let detail = "Belum login. Silakan masuk dengan username dan sandi Anda.";
     try { detail = (await r.json()).detail ?? detail; } catch { /* abaikan */ }
     throw galatApi(detail, 401);
   }

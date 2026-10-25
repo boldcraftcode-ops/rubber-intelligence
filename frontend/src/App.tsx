@@ -15,7 +15,7 @@ import UnggahData from "./pages/UnggahData";
 import GradeHarga from "./pages/GradeHarga";
 import Database from "./pages/Database";
 import Pengguna from "./pages/Pengguna";
-import Login, { LayarAccess, LayarGalat } from "./pages/Login";
+import Login, { LayarGalat } from "./pages/Login";
 import { ambilJson, kirimJson, pesanGalat, kelasInput, kelasLabel,
          kelasTombol, kelasTombolKecil } from "./bersama";
 import { useBahasa } from "./i18n";
@@ -97,9 +97,8 @@ export default function App() {
   const [bukaSandi, setBukaSandi] = useState(false);
 
   /* ---- cara login yang berlaku di proses API ini ----
-     lokal  -> tampilkan form username+sandi
-     access -> tampilkan layar Cloudflare Access (form tak akan pernah bisa)
-     Dipakai juga untuk membedakan "belum login" dari "API bermasalah". */
+     Dipakai untuk membedakan "belum login" (tampilkan form) dari
+     "login dimatikan / API bermasalah" (tampilkan penjelasan). */
   const caraLogin = useQuery({
     queryKey: ["cara-login"],
     queryFn: () => ambilJson("/api/auth/mode"),
@@ -145,16 +144,8 @@ export default function App() {
   }
   if (saya.error) {
     const detail = pesanGalat(saya.error);
-    const cara = caraLogin.data?.cara;
-    // API versi lama belum punya /api/auth/mode -> caraLogin.error, tetapi
-    // penolakannya menyebut Cloudflare Access. Tetap tampilkan panduan,
-    // jangan form username+sandi yang tidak akan pernah berhasil.
-    const sebutAccess = /cloudflare access/i.test(detail);
-    if (cara === "cloudflare-access" || (cara === undefined && sebutAccess)) {
-      return <LayarAccess detail={detail} produksi={caraLogin.data?.produksi} />;
-    }
-    if (cara === "tanpa-login") {
-      // Login tidak dipakai, tetapi API menolak: bukan soal sandi.
+    // Login dimatikan di API (mode pengembangan) -> penjelasan, bukan form.
+    if (caraLogin.data?.cara === "tanpa-login") {
       return <LayarGalat detail={detail} ulangi={() => qc.invalidateQueries()} />;
     }
     return <Login onSukses={() => qc.invalidateQueries({ queryKey: ["saya"] })} />;

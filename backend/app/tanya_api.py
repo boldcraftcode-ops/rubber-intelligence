@@ -62,11 +62,6 @@ def main() -> int:
         if cara == "username-sandi":
             print("  SIMPULAN: API memakai LOGIN LOKAL (username + sandi).")
             print("  Silakan login di http://localhost:5173 (Ctrl+F5 dulu).")
-        elif cara == "cloudflare-access":
-            print("  SIMPULAN: API memakai CLOUDFLARE ACCESS — tidak bisa di")
-            print("  localhost. Tutup jendela OP Margin - API, jalankan")
-            print("  start-web.bat lagi (atau: python -m app.cli")
-            print("  atur-login-lokal).")
         else:
             print(f"  SIMPULAN: login nonaktif (cara={cara}).")
         return 0

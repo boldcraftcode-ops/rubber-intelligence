@@ -21,7 +21,7 @@ echo.
 rem ------------------------------------------------------------
 echo [0] Versi kode di folder ini
 if exist "VERSI.txt" goto :ada_versi
-echo   VERSI.txt tidak ada  ^-^>  kode di folder ini LEBIH LAMA dari 0.6.2
+echo   VERSI.txt tidak ada  ^-^>  kode di folder ini LEBIH LAMA dari 0.7.0
 goto :cek_git
 
 :ada_versi
@@ -113,10 +113,10 @@ echo ============================================================
 echo  CARA MEMBACA HASIL
 echo ============================================================
 echo  [1]+[2] harus menyebut: mode login : lokal (username-sandi)
-echo  [3] harus memuat versi 0.6.2 dan "cara":"username-sandi"
+echo  [3] harus memuat versi 0.7.0 dan "cara":"username-sandi"
 echo.
 echo  Bila [2] menulis "KODE LAMA"  -^>  jalankan perbarui-kode.bat
-echo  Bila [3] memuat "access"     -^>  tutup jendela OP Margin - API,
+echo  Bila [3] memuat "nonaktif"   -^>  hapus AUTH_DISABLED di backend\.env,
 echo                                    lalu jalankan start-web.bat lagi
 echo  Bila [3] "TIDAK ADA JAWABAN" -^>  API belum jalan: start-web.bat
 echo  Bila sandi lupa              -^>  di folder backend jalankan:
