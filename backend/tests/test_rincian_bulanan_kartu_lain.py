@@ -131,7 +131,9 @@ def test_tonase_bulan_mengikuti_filter_bukan_data(klien):
 
 def test_tonase_dimensi_wilayah(klien):
     d = _tonase(klien, dimensi="kabupaten")
-    assert [b["kunci"] for b in d["baris"]] == ["Deli Serdang"]
+    # kunci wilayah dibakukan UPPER/TRIM; label memakai ejaan asli (v0.9.1)
+    assert [b["kunci"] for b in d["baris"]] == ["DELI SERDANG"]
+    assert d["baris"][0]["label"] == "Deli Serdang"
 
 
 def test_tonase_tanpa_per_bulan_tetap_lama(klien):

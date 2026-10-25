@@ -1,13 +1,13 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
-  Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer,
+  Bar, BarChart, CartesianGrid, Legend, Line, LineChart, ResponsiveContainer,
   Tooltip, XAxis, YAxis,
 } from "recharts";
 import {
   Kartu, NAMA_BULAN, Panel5W1H, PilihRentangBulan, akhirBulan,
   ambilJson, fmtAngka, fmtTanggal, hitungJumlahBulan, kelasInput,
-  kelasTombolAnalisa, kelasTombolKecil,
+  kelasTombolAnalisa, kelasTombolKecil, pesanGalat,
 } from "../bersama";
 
 /* Palet seri grafik bulanan. Navy & merah lebih dulu (identitas), lalu warna
@@ -243,6 +243,271 @@ export function RincianBulanan({ data, dimensi, drill }: {
 }
 
 /* ---------- penerimaan per dimensi, biasa vs EUDR (kg) ---------- */
+/* ---------- analisis tren & musiman (disematkan di kartu Penerimaan) ---------- */
+
+/* Angka pertumbuhan dengan arah yang TIDAK bergantung warna saja
+   (ikon ▲/▼ + kata), sesuai aturan aksesibilitas. */
+function AngkaPertumbuhan({ nilai }: { nilai: number | null | undefined }) {
+  if (nilai === null || nilai === undefined) {
+    return <span className="text-[#9AA0A6]">–</span>;
+  }
+  const naik = nilai > 0.005, turun = nilai < -0.005;
+  const kelas = naik ? "text-[#15803D]" : turun ? "text-[#DC2626]" : "text-[#64676C]";
+  return (
+    <span className={kelas}>
+      {naik ? "▲" : turun ? "▼" : "■"} {fmtAngka(Math.abs(nilai), 2)}%
+    </span>
+  );
+}
+
+export function AnalisisTren({ dari, sampai, modeEudr, bukaAwal = true }: {
+  dari: string; sampai: string; modeEudr: "semua" | "eudr" | "biasa";
+  /** Terbuka sejak awal supaya analisisnya langsung terlihat; bisa ditutup. */
+  bukaAwal?: boolean;
+}) {
+  const [buka, setBuka] = useState(bukaAwal);
+  const params = new URLSearchParams();
+  if (dari) params.set("dari", dari);
+  if (sampai) params.set("sampai", sampai);
+  if (modeEudr !== "semua") params.set("eudr", String(modeEudr === "eudr"));
+  const url = `/api/kartu/penerimaan/tren${params.size ? `?${params.toString()}` : ""}`;
+  const q = useQuery({
+    queryKey: ["tren-penerimaan", url],
+    queryFn: () => ambilJson(url),
+    enabled: buka,
+  });
+
+  const data = q.data;
+  const dekom = data?.dekomposisi;
+  const validasi = data?.validasi;
+
+  const grafik = (data?.bulan ?? []).map((b: any, i: number) => ({
+    nama: b.label,
+    "Total kg": data.total_kg[i],
+    "MA3 (tren dasar)": data.ma3[i],
+    "EUDR kg": data.eudr_kg[i],
+  }));
+
+  const grafikDekom = dekom?.tersedia
+    ? (data.bulan ?? []).map((b: any, i: number) => ({
+        nama: b.label,
+        "Nilai aktual": data.total_kg[i],
+        Tren: dekom.tren?.[i] ?? null,
+        Musiman: dekom.musiman?.[i] ?? null,
+      }))
+    : [];
+
+  return (
+    <div className="mb-3 rounded-sm border border-[#E4E5E8] bg-[#F8F8F8]">
+      <button
+        className="flex w-full items-center justify-between px-3 py-2 text-left"
+        onClick={() => setBuka(!buka)}>
+        <span className="text-xs font-semibold text-[#1D2434]">
+          📈 Analisis tren &amp; musiman (time series)
+        </span>
+        <span className="text-xs text-[#64676C]">
+          {buka ? "sembunyikan ▲" : "tampilkan ▼"}
+        </span>
+      </button>
+
+      {buka && (
+        <div className="border-t border-[#E4E5E8] px-3 py-3">
+          {q.isLoading && <p className="text-xs text-[#64676C]">Menghitung…</p>}
+          {q.error && (
+            <p className="text-xs text-[#B91C1C]">{pesanGalat(q.error)}</p>
+          )}
+
+          {data && data.bulan.length === 0 && (
+            <p className="text-xs text-[#64676C]">Belum ada data tiket untuk dianalisis.</p>
+          )}
+
+          {data && data.bulan.length > 0 && (
+            <>
+              {/* ---- peringatan validasi data ---- */}
+              {validasi?.peringatan?.length > 0 && (
+                <div className="mb-3 rounded-sm border border-[#FDE68A] bg-[#FFFBEB] px-3 py-2">
+                  <p className="mb-1 text-xs font-semibold text-[#B45309]">
+                    Periksa dulu sebelum angka ini dipakai untuk perkiraan:
+                  </p>
+                  <ul className="list-disc pl-4 text-xs text-[#92400E]">
+                    {validasi.peringatan.map((p: string, i: number) => (
+                      <li key={i} className="mb-0.5">{p}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {/* ---- grafik total + MA3 ---- */}
+              <div className="mb-1 flex flex-wrap items-center gap-3 text-xs text-[#64676C]">
+                <span>Total penerimaan vs rata-rata bergerak 3 bulan</span>
+                {validasi && (
+                  <span>
+                    · data {validasi.dari_data} s.d. {validasi.sampai_data}
+                    {validasi.bulan_terakhir_lengkap ? " (bulan terakhir lengkap)"
+                      : " (bulan terakhir belum lengkap)"}
+                  </span>
+                )}
+              </div>
+              <div className="h-64">
+                <ResponsiveContainer>
+                  <LineChart data={grafik} margin={{ top: 5, right: 15, bottom: 5, left: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" />
+                    <XAxis dataKey="nama" fontSize={10} minTickGap={20} />
+                    <YAxis fontSize={10} tickFormatter={(v) => fmtAngka(v as number, 0)} />
+                    <Tooltip formatter={(v: any, n: any) => [
+                      v === null ? "–" : fmtAngka(v as number, 0) + " kg", n]} />
+                    <Legend wrapperStyle={{ fontSize: 11 }} />
+                    <Line type="monotone" dataKey="Total kg" stroke="#1D2434"
+                          strokeWidth={2} dot={{ r: 2 }} />
+                    <Line type="monotone" dataKey="MA3 (tren dasar)" stroke="#FF1313"
+                          strokeWidth={2} strokeDasharray="6 3" dot={false} />
+                    <Line type="monotone" dataKey="EUDR kg" stroke="#15803D"
+                          strokeWidth={1} dot={false} />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+
+              {/* ---- tabel MoM & YoY ---- */}
+              <div className="mt-3 max-h-72 overflow-y-auto">
+                <table className="w-full text-xs">
+                  <thead className="sticky top-0 bg-[#F8F8F8]">
+                    <tr className="text-left text-[#64676C] border-b">
+                      <th className="py-1">Bulan</th>
+                      <th className="text-right">Total kg</th>
+                      <th className="text-right">Biasa kg</th>
+                      <th className="text-right">EUDR kg</th>
+                      <th className="text-right">MA3 kg</th>
+                      <th className="text-right">MoM</th>
+                      <th className="text-right">YoY</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(data.bulan ?? []).map((b: any, i: number) => (
+                      <tr key={b.ym} className="border-b border-[#EDEFF2]">
+                        <td className="py-1 whitespace-nowrap">{b.label}</td>
+                        <td className="text-right font-mono">{fmtAngka(data.total_kg[i], 0)}</td>
+                        <td className="text-right font-mono">{fmtAngka(data.biasa_kg[i], 0)}</td>
+                        <td className="text-right font-mono text-[#15803D]">{fmtAngka(data.eudr_kg[i], 0)}</td>
+                        <td className="text-right font-mono">
+                          {data.ma3[i] === null ? <span className="text-[#9AA0A6]">–</span>
+                            : fmtAngka(data.ma3[i], 0)}
+                        </td>
+                        <td className="text-right font-mono"><AngkaPertumbuhan nilai={data.mom_pct[i]} /></td>
+                        <td className="text-right font-mono"><AngkaPertumbuhan nilai={data.yoy_pct[i]} /></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <p className="mt-1 text-[11px] text-[#64676C]">
+                {data.catatan_metode?.ma3} · {data.catatan_metode?.mom} ·{" "}
+                {data.catatan_metode?.yoy}
+              </p>
+
+              {/* ---- dekomposisi tren-musiman ---- */}
+              <div className="mt-4 border-t border-[#E4E5E8] pt-3">
+                <h4 className="text-xs font-semibold text-[#1D2434]">
+                  Dekomposisi tren-musiman {dekom?.tersedia ? "" : "(belum bisa dihitung)"}
+                </h4>
+                {dekom?.tersedia ? (
+                  <>
+                    <p className="mb-2 text-[11px] text-[#64676C]">
+                      {dekom.metode} · {dekom.jumlah_bulan} bulan · kekuatan musiman{" "}
+                      <b className={dekom.kekuatan_musiman_pct >= 15
+                        ? "text-[#1D2434]" : "text-[#B45309]"}>
+                        {fmtAngka(dekom.kekuatan_musiman_pct, 1)}%
+                      </b>. {dekom.catatan}
+                    </p>
+                    <div className="h-56">
+                      <ResponsiveContainer>
+                        <LineChart data={grafikDekom}
+                                   margin={{ top: 5, right: 15, bottom: 5, left: 0 }}>
+                          <CartesianGrid strokeDasharray="3 3" />
+                          <XAxis dataKey="nama" fontSize={10} minTickGap={20} />
+                          <YAxis fontSize={10} tickFormatter={(v) => fmtAngka(v as number, 0)} />
+                          <Tooltip formatter={(v: any, n: any) => [
+                            v === null ? "–" : fmtAngka(v as number, 0) + " kg", n]} />
+                          <Legend wrapperStyle={{ fontSize: 11 }} />
+                          <Line type="monotone" dataKey="Nilai aktual" stroke="#64676C"
+                                strokeWidth={1} dot={false} />
+                          <Line type="monotone" dataKey="Tren" stroke="#1D2434"
+                                strokeWidth={2} dot={false} />
+                          <Line type="monotone" dataKey="Musiman" stroke="#FF1313"
+                                strokeWidth={1.5} strokeDasharray="4 3" dot={false} />
+                        </LineChart>
+                      </ResponsiveContainer>
+                    </div>
+
+                    <p className="mt-3 mb-1 text-xs font-semibold text-[#1D2434]">
+                      Indeks musiman per bulan kalender
+                    </p>
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+                      {(dekom.indeks_musiman ?? []).map((m: any) => (
+                        <div key={m.bulan}
+                             className={`rounded-sm border px-2 py-1 text-xs ${
+                               m.kg < 0
+                                 ? "border-[#FECACA] bg-[#FEF2F2]"
+                                 : m.kg > 0
+                                   ? "border-[#BBF7D0] bg-[#F0FDF4]"
+                                   : "border-[#E4E5E8] bg-white"}`}>
+                          <span className="font-semibold text-[#1D2434]">{m.label}</span>{" "}
+                          <span className="font-mono">
+                            {m.kg > 0 ? "+" : ""}{fmtAngka(m.kg, 0)} kg
+                          </span>
+                          {m.pct !== null && (
+                            <span className="text-[#64676C]"> ({m.kg > 0 ? "+" : ""}{fmtAngka(m.pct, 1)}%)</span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                    <p className="mt-1 text-[11px] text-[#64676C]">
+                      Angka negatif = penerimaan cenderung di bawah tren pada bulan itu
+                      (mis. musim gugur daun Feb–Apr), positif = di atas tren.
+                    </p>
+                  </>
+                ) : (
+                  <p className="mt-1 rounded-sm border border-[#E4E5E8] bg-white px-3 py-2 text-xs text-[#64676C]">
+                    {dekom?.pesan}
+                    <br />
+                    <span className="text-[11px]">
+                      Yang sudah bisa dipakai sekarang: MA3, MoM, dan YoY. Angka
+                      bulanan tetap bisa dibaca dari tabel di atas; dekomposisi
+                      menyusul otomatis setelah data {dekom?.min_bulan ?? 24} bulan
+                      terkumpul.
+                    </span>
+                  </p>
+                )}
+              </div>
+
+              {/* ---- laporan penggabungan ejaan wilayah ---- */}
+              {data.wilayah?.digabung?.length > 0 && (
+                <details className="mt-3">
+                  <summary className="cursor-pointer text-[11px] text-[#64676C]">
+                    Nama wilayah yang digabung ({data.wilayah.digabung.length}) — ejaan
+                    berbeda, provinsi sama
+                  </summary>
+                  <table className="mt-1 w-full text-[11px]">
+                    <tbody>
+                      {data.wilayah.digabung.map((g: any) => (
+                        <tr key={g.kunci} className="border-b border-[#EDEFF2]">
+                          <td className="py-0.5 pr-2 font-semibold text-[#1D2434]">{g.label}</td>
+                          <td className="text-[#64676C]">
+                            {g.varian.map((v: any) => `${v.ejaan} (${v.jumlah})`).join(" · ")}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </details>
+              )}
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function KartuPenerimaan() {
   const [dimensi, setDimensi] = useState("vendor");
   const [jejak, setJejak] = useState<{ dim: string; nilai: string }[]>([]);
@@ -409,6 +674,8 @@ function KartuPenerimaan() {
           </p>
         )}
 
+        <AnalisisTren dari={dari} sampai={sampai} modeEudr={modeEudr} />
+
         {/* ================= mode BULAN: grafik + tabel bulan x dimensi ===== */}
         {modeBulan && <RincianBulanan data={q.data} dimensi={dimensi} drill={drill} />}
 
@@ -478,6 +745,14 @@ function KartuPenerimaan() {
                   ({q.data.total_kg ? fmtAngka(q.data.total_kg_eudr / q.data.total_kg * 100, 1) : 0}%)</span>
                   {" "}· sumber: {q.data.sumber}
                 </p>
+                {q.data.wilayah?.digabung?.length > 0 && (
+                  <p className="mt-1 rounded-sm border border-[#FDE68A] bg-[#FFFBEB] px-2 py-1 text-[11px] text-[#92400E]">
+                    Ejaan {dimensi} digabung:{" "}
+                    {q.data.wilayah.digabung.map((g: any) => g.label).join(", ")} — beda
+                    huruf besar/kecil, wilayahnya sama. Sumber datanya sebaiknya ikut
+                    dibakukan.
+                  </p>
+                )}
               </>
             )}
           </>

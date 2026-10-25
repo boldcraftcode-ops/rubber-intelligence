@@ -159,14 +159,19 @@ def test_filter_eudr_hanya_menghitung_tiket_eudr(klien):
 
 def test_filter_vendor_membatasi_dimensi_lain(klien):
     d = _ambil(klien, dimensi="kabupaten", vendor="V003")
-    assert [b["kunci"] for b in d["baris"]] == ["Langkat"]
+    assert [b["kunci"] for b in d["baris"]] == ["LANGKAT"]   # kunci UPPER/TRIM
+    assert d["baris"][0]["label"] == "Langkat"
     assert d["total_kg"] == 250.0
 
 
 def test_dimensi_wilayah_bekerja(klien):
     d = _ambil(klien, dimensi="kabupaten")
     kunci = {b["kunci"] for b in d["baris"]}
-    assert kunci == {"Deli Serdang", "Langkat"}
+    # Sejak v0.9.1 kunci wilayah dibakukan UPPER/TRIM (agar "Deli Serdang" dan
+    # "DELI SERDANG" tidak jadi dua baris); ejaan aslinya tetap jadi label.
+    assert kunci == {"DELI SERDANG", "LANGKAT"}
+    label = {b["kunci"]: b["label"] for b in d["baris"]}
+    assert label["DELI SERDANG"] == "Deli Serdang"
 
 
 def test_rentang_tanpa_data_tetap_mengembalikan_bulan(klien):

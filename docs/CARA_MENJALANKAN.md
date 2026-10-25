@@ -59,6 +59,27 @@ Importer otomatis mengenali format ekspor (header di baris 7) maupun format
 template (header di baris 1), membuang baris subtotal, dan menampilkan
 peringatan (vendor tak dikenal, Dry tidak cocok, wilayah kosong, dst.).
 
+### Membaca tren & musiman di menu Intake Analisis
+
+Di kartu **Penerimaan karet (kg) — biasa vs EUDR** ada blok **Analisis tren &
+musiman**. Isinya: grafik total dengan garis **MA3** (rata-rata 3 bulan),
+tabel MoM (**bulan ini vs bulan lalu**) dan YoY (**vs bulan sama tahun lalu**),
+serta dekomposisi tren-musiman.
+
+Dua hal yang perlu diketahui:
+
+1. **Dekomposisi butuh minimal 24 bulan data** (idealnya 36). Kalau belum
+   cukup, blok itu menjelaskan berapa bulan yang masih kurang — bukan
+   menampilkan angka yang belum bisa dipercaya. MA3/MoM/YoY tetap jalan.
+2. Kotak kuning **"Periksa dulu sebelum angka ini dipakai untuk perkiraan"**
+   muncul sendiri bila ada bulan nol, bulan terakhir belum lengkap, pola datar
+   tidak wajar, atau nama wilayah yang ejaannya tidak seragam. Baca dulu
+   kotaknya sebelum memakai angka untuk perencanaan.
+
+Nama provinsi yang beda huruf besar/kecil ("Sumatera Utara" vs "SUMATERA
+UTARA") sekarang otomatis digabung jadi satu baris. Daftar ejaan yang
+disatukan bisa dibuka di kartu itu.
+
 ### Menambah / mengubah vendor tanpa Excel
 
 Buka tab **Master Vendor**. Di sana bisa menambah vendor baru, mengubah nama,
@@ -220,7 +241,7 @@ cd backend
 ### Bukti paling cepat: folder ini kode lama atau bukan
 
 Pesan **"Belum login ... Cloudflare Access"** sudah **tidak ada lagi** di kode
-sejak versi 0.9.0. Kalau pesan itu masih muncul, yang menjawab di port 8000
+sejak versi 0.9.1. Kalau pesan itu masih muncul, yang menjawab di port 8000
 pasti kode lama. Cara membuktikannya dari folder aplikasi:
 
 ```powershell
@@ -229,7 +250,7 @@ findstr /c:"Cloudflare Access" backend\app\main.py
 
 - **Ada hasilnya** → folder ini masih kode lama (belum diperbarui). Jalankan
   `perbarui-kode.bat`.
-- **Tidak ada hasil** → folder sudah 0.9.0; berarti ada proses lama di port
+- **Tidak ada hasil** → folder sudah 0.9.1; berarti ada proses lama di port
   8000. Jalankan `start-web.bat` (sekarang menutupnya otomatis).
 
 `diagnosa.bat` juga memeriksa hal ini dan menuliskannya di bagian [0].
@@ -247,7 +268,7 @@ Bacanya:
 
 | Yang tertulis | Artinya | Tindakan |
 |---|---|---|
-| `mode login : lokal (username-sandi)` dan API menjawab `0.9.0` + `lokal` | sudah benar | login dengan akun Anda (Ctrl+F5 dulu) |
+| `mode login : lokal (username-sandi)` dan API menjawab `0.9.1` + `lokal` | sudah benar | login dengan akun Anda (Ctrl+F5 dulu) |
 | API menjawab `mode: nonaktif` | `AUTH_DISABLED=true` masih ada di `.env` | hapus baris itu, lalu jalankan `start-web.bat` lagi |
 | API tidak menjawab / `404` di `/api/auth/mode` | prosesnya **kode lama** | tutup jendela API lama, jalankan `start-web.bat` lagi |
 | bagian [2] tidak ada akun, atau sandi lupa | akun belum dibuat / sandi salah | `python -m app.cli reset-sandi admin` (dari folder `backend`) |
@@ -273,11 +294,11 @@ Perbaikan:
    melaporkan apakah **port 8000 dan 5173 sudah BEBAS**. Kalau ada yang gagal
    ditutup, skrip mengatakannya (tidak diam-diam).
 2. Jalankan **`start-web.bat`** dari folder aplikasi yang benar — folder yang
-   `VERSI.txt`-nya berisi `0.9.0`. Tunggu tulisan **`API siap: kode 0.9.0`**.
+   `VERSI.txt`-nya berisi `0.9.1`. Tunggu tulisan **`API siap: kode 0.9.1`**.
 3. Buka `http://localhost:5173`, tekan **Ctrl+F5**.
 
 Cek cepat kapan saja: `http://localhost:8000/api/health` — nilai `versi` dan
-`kode` harus `0.9.0`, dan `folder` harus menunjuk folder aplikasi Anda.
+`kode` harus `0.9.1`, dan `folder` harus menunjuk folder aplikasi Anda.
 
 ## Cara tercepat membereskan: `perbaiki.bat`
 
@@ -334,7 +355,7 @@ berkas ini dari folder lama ke folder baru **sebelum** menjalankan
 - `backend\.env` — setelan login (opsional; bila tidak ada, dibuat otomatis)
 
 Cara memastikan folder baru benar-benar versi terbaru: lihat **`VERSI.txt`** di
-akar folder (versi terbaru saat dokumen ini ditulis: **0.9.0**), atau buka
+akar folder (versi terbaru saat dokumen ini ditulis: **0.9.1**), atau buka
 `http://localhost:8000/api/health` dan periksa `"versi"` serta `"kode"`.
 
 ## Login berhasil tetapi kembali ke form login lagi
@@ -349,7 +370,7 @@ Sebabnya **cookie sesi tidak terkirim**, dan itu terjadi bila:
 - halaman web dan API berada di **situs berbeda**, atau
 - browser memblokir cookie pihak ketiga.
 
-Sejak versi 0.9.0 hal ini ditangani otomatis: saat login, API mengirim `token`
+Sejak versi 0.9.1 hal ini ditangani otomatis: saat login, API mengirim `token`
 di badan respons; tampilan web menyimpannya dan mengirimnya lewat header
 `Authorization: Bearer` sebagai **cadangan** di samping cookie. Jadi login tetap
 bekerja walau cookie diblokir. Cookie (HttpOnly) tetap cara utama.

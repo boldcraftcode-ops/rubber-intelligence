@@ -15,7 +15,7 @@ import openpyxl
 import yaml
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from .core import rumus
@@ -87,6 +87,61 @@ def _rentang(tahun: int | None, bulan: int | None):
     return dt.date(tahun, bulan, 1), akhir
 
 
+def _norm_wilayah(nilai: str | None) -> str:
+    """Kunci baku nama wilayah: spasi dirapatkan, HURUF BESAR.
+
+    Masalah nyata di data: "Sumatera Utara" dan "SUMATERA UTARA" masuk sebagai
+    dua baris terpisah, begitu juga "Riau" vs "RIAU" — padahal provinsinya
+    sama. Penyebabnya perbedaan huruf besar/kecil saat pengetikan/ekspor.
+    Kunci dikumpulkan dengan normalisasi ini supaya satu provinsi = satu baris.
+    """
+    return " ".join((nilai or "").split()).upper() or "(kosong)"
+
+
+def _pilih_ejaan(varian: dict[str, int]) -> str:
+    """Pilih ejaan yang ditampilkan dari beberapa variasi penulisan.
+
+    Yang paling sering muncul menang; bila jumlahnya sama, ejaan yang TIDAK
+    seluruhnya huruf besar dipilih karena lebih enak dibaca ("Sumatera Utara"
+    lebih baik daripada "SUMATERA UTARA").
+    """
+    if not varian:
+        return "(kosong)"
+    return sorted(varian.items(),
+                  key=lambda kv: (-kv[1], kv[0].isupper(), kv[0]))[0][0]
+
+
+def _kumpulkan_wilayah(peta: dict[str, dict[str, int]], kunci: str,
+                       mentah: str | None) -> None:
+    """Catat ejaan mentah untuk sebuah kunci wilayah (untuk label & laporan)."""
+    peta.setdefault(kunci, {})
+    ejaan = " ".join((mentah or "").split()) or "(kosong)"
+    peta[kunci][ejaan] = peta[kunci].get(ejaan, 0) + 1
+
+
+def _laporan_wilayah(peta: dict[str, dict[str, int]]) -> dict:
+    """Ringkasan penggabungan ejaan — ditampilkan supaya kelihatan apa yang
+    disatukan, bukan diam-diam diubah."""
+    gabungan = [{
+        "kunci": kunci,
+        "label": _pilih_ejaan(varian),
+        "varian": [{"ejaan": e, "jumlah": n}
+                   for e, n in sorted(varian.items(), key=lambda kv: -kv[1])],
+        "jumlah_ejaan": len(varian),
+    } for kunci, varian in sorted(peta.items()) if len(varian) > 1]
+    return {
+        "dinormalisasi": True,
+        "aturan": "spasi dirapatkan + HURUF BESAR (UPPER/TRIM); label memakai "
+                  "ejaan yang paling sering muncul",
+        "jumlah_kunci": len(peta),
+        "digabung": gabungan,
+        "catatan": ("Provinsi yang sama sempat muncul sebagai beberapa baris "
+                    "karena beda huruf besar/kecil. Sekarang digabung."
+                    if gabungan else
+                    "Tidak ada ejaan wilayah yang dobel pada periode ini."),
+    }
+
+
 def _filter_tiket(q, tahun=None, bulan=None, vendor=None, grade=None, eudr=None,
                   provinsi=None, kabupaten=None, kecamatan=None, desa=None,
                   session: Session | None = None):
@@ -103,14 +158,21 @@ def _filter_tiket(q, tahun=None, bulan=None, vendor=None, grade=None, eudr=None,
         kode_eudr = [g.item_code for g in session.scalars(select(Grade).where(Grade.eudr == True))]  # noqa: E712
         q = q.where(TiketBaris.item_code.in_(kode_eudr) if eudr
                     else TiketBaris.item_code.not_in(kode_eudr))
+    # Perbandingan wilayah TIDAK peka huruf besar/kecil dan mengabaikan spasi
+    # (termasuk spasi ganda di tengah: "sumatera   utara"), sejalan dengan
+    # penggabungan ejaan di kartu (lihat _norm_wilayah).
+    def samakan(kolom, nilai: str):
+        return func.replace(func.upper(func.trim(kolom)), " ", "") == \
+            _norm_wilayah(nilai).replace(" ", "")
+
     if provinsi:
-        q = q.where(TiketBaris.provinsi == provinsi)
+        q = q.where(samakan(TiketBaris.provinsi, provinsi))
     if kabupaten:
-        q = q.where(TiketBaris.kabupaten == kabupaten)
+        q = q.where(samakan(TiketBaris.kabupaten, kabupaten))
     if kecamatan:
-        q = q.where(TiketBaris.kecamatan == kecamatan)
+        q = q.where(samakan(TiketBaris.kecamatan, kecamatan))
     if desa:
-        q = q.where(TiketBaris.desa == desa)
+        q = q.where(samakan(TiketBaris.desa, desa))
     return q
 
 
@@ -155,7 +217,8 @@ def _label_bulan_singkat(th: int, bl: int) -> str:
 def _penerimaan_per_bulan(potongan: list[tuple], dimensi: str,
                           dari: dt.date | None, sampai: dt.date | None,
                           top: int, format: str | None,
-                          session: Session) -> dict:
+                          session: Session,
+                          label_peta: dict[str, str] | None = None) -> dict:
     """Bentuk jawaban `per=bulan`: bulan x dimensi.
 
     Dipakai saat filter periode mencakup lebih dari satu bulan, supaya
@@ -205,7 +268,11 @@ def _penerimaan_per_bulan(potongan: list[tuple], dimensi: str,
         if dimensi == "vendor" else {}
 
     def label_dari(kunci: str) -> str:
-        return f"{kunci} — {nama_vendor[kunci]}" if kunci in nama_vendor else kunci
+        if kunci in nama_vendor:
+            return f"{kunci} — {nama_vendor[kunci]}"
+        if label_peta and kunci in label_peta:
+            return label_peta[kunci]      # ejaan wilayah terpilih (bukan mentah)
+        return kunci
 
     def kg_bulan(a: dict) -> list[float]:
         return [round(x + y, 1) for x, y in zip(a["biasa"], a["eudr"])]
@@ -388,7 +455,8 @@ def _margin_per_bulan(rinci: list, dimensi: str, kurs_cari, sicom_cari,
 def _tonase_per_bulan(potongan: list[tuple], dimensi: str,
                       dari: dt.date | None, sampai: dt.date | None,
                       top: int, format: str | None,
-                      session: Session) -> dict:
+                      session: Session,
+                      label_peta: dict[str, str] | None = None) -> dict:
     """Bentuk jawaban `per=bulan` untuk kartu Tonase: bulan x dimensi (ton)."""
     berdata = sorted({b for _k, b, _t, _n in potongan if b})
     bulan = _daftar_bulan(dari, sampai, berdata)
@@ -413,7 +481,8 @@ def _tonase_per_bulan(potongan: list[tuple], dimensi: str,
     for kunci, a in urut[:top]:
         baris_keluar.append({
             "kunci": kunci,
-            "label": f"{kunci} — {nama_vendor[kunci]}" if kunci in nama_vendor else kunci,
+            "label": (f"{kunci} — {nama_vendor[kunci]}" if kunci in nama_vendor
+                      else (label_peta or {}).get(kunci, kunci)),
             "ton_per_bulan": [round(x, 3) for x in a["ton"]],
             "ton": round(sum(a["ton"]), 3),
             "porsi": round(sum(a["ton"]) / total_ton, 4) if total_ton else None,
@@ -465,6 +534,185 @@ def _tonase_per_bulan(potongan: list[tuple], dimensi: str,
                         + [round(sum(total_per_bulan), 3), None])
         return respon_xlsx(f"tonase_per_{dimensi}_per_bulan.xlsx", judul, isi_xlsx)
     return hasil
+
+
+# ---------------------------------------------------------------------------
+# Analisis tren & musiman (time series) untuk kartu Penerimaan karet
+# ---------------------------------------------------------------------------
+MIN_BULAN_MUSIMAN = 24        # di bawah ini dekomposisi belum bisa dipercaya
+REKOMENDASI_BULAN_MUSIMAN = 36
+
+
+def _rata(nilai: list[float]) -> float:
+    return sum(nilai) / len(nilai) if nilai else 0.0
+
+
+def _simpangan_baku(nilai: list[float]) -> float:
+    """Simpangan baku populasi (tanpa koreksi sampel)."""
+    if len(nilai) < 2:
+        return 0.0
+    r = _rata(nilai)
+    return (_rata([(x - r) ** 2 for x in nilai])) ** 0.5
+
+
+def _ma3(nilai: list[float]) -> list[float | None]:
+    """Rata-rata bergerak 3 bulan (trailing). Dua bulan pertama kosong."""
+    hasil: list[float | None] = []
+    for i in range(len(nilai)):
+        if i < 2:
+            hasil.append(None)
+        else:
+            hasil.append(round(_rata(nilai[i - 2:i + 1]), 1))
+    return hasil
+
+
+def _pertumbuhan(nilai: list[float], geser: int) -> list[float | None]:
+    """Pertumbuhan % dibanding `geser` bulan sebelumnya.
+
+    MoM = geser 1, YoY = geser 12. Kosong bila data pembanding belum ada
+    atau pembandingnya nol (pembagian nol tidak bermakna, bukan 0%).
+    """
+    hasil: list[float | None] = []
+    for i in range(len(nilai)):
+        j = i - geser
+        if j < 0 or not nilai[j]:
+            hasil.append(None)
+        else:
+            hasil.append(round((nilai[i] - nilai[j]) / nilai[j] * 100, 2))
+    return hasil
+
+
+def _dekomposisi_aditif(nilai: list[float], bulan: list[tuple[int, int]]) -> dict:  # noqa: C901
+    """Dekomposisi aditif klasik (pendekatan STL) untuk data bulanan.
+
+    Langkah:
+      1. tren   = rata-rata bergerak 12 bulan terpusat (bobot ½ di ujung);
+      2. musiman = rata-rata sisa (nilai - tren) untuk tiap bulan kalender,
+                   dinormalkan agar total 12 bulan = 0;
+      3. residu = nilai - tren - musiman.
+
+    Bukan STL LOESS penuh (LOESS butuh pustaka tambahan), tetapi memisahkan
+    tren/musiman/residu dengan cara yang sama dan cukup untuk membaca pola
+    musim gugur daun Feb-Apr. Syarat data: minimal 24 bulan (idealnya 36)
+    karena tren 12 bulan kehilangan 6 bulan di tiap ujung.
+    """
+    n = len(nilai)
+    if n < MIN_BULAN_MUSIMAN:
+        return {
+            "tersedia": False,
+            "min_bulan": MIN_BULAN_MUSIMAN,
+            "rekomendasi_bulan": REKOMENDASI_BULAN_MUSIMAN,
+            "jumlah_bulan": n,
+            "kurang_bulan": MIN_BULAN_MUSIMAN - n,
+            "metode": "dekomposisi aditif klasik (rata-rata bergerak 12 bulan)",
+            "pesan": (f"Butuh minimal {MIN_BULAN_MUSIMAN} bulan data untuk "
+                      f"memisahkan tren dan musiman; tersedia baru {n} bulan "
+                      f"(kurang {MIN_BULAN_MUSIMAN - n} bulan). Angka tren/"
+                      "musiman belum bisa dipercaya, jadi tidak ditampilkan."),
+        }
+
+    tren: list[float | None] = [None] * n
+    for i in range(6, n - 6):
+        jendela = nilai[i - 6:i + 7]            # 13 titik
+        tren[i] = (0.5 * jendela[0] + sum(jendela[1:12]) + 0.5 * jendela[12]) / 12
+
+    # rata-rata sisa per bulan kalender
+    kumpulan: dict[int, list[float]] = defaultdict(list)
+    for i in range(n):
+        if tren[i] is not None:
+            kumpulan[bulan[i][1]].append(nilai[i] - tren[i])
+    indeks: dict[int, float] = {}
+    for m in range(1, 13):
+        nilai_m = kumpulan.get(m) or []
+        indeks[m] = _rata(nilai_m)
+    # normalkan: total 12 bulan = 0 (hanya bulan yang punya data)
+    ada = [m for m in range(1, 13) if kumpulan.get(m)]
+    if ada:
+        geser = _rata([indeks[m] for m in ada])
+        for m in ada:
+            indeks[m] -= geser
+
+    musiman = [indeks[b[1]] for b in bulan]
+    residu: list[float | None] = [
+        (nilai[i] - tren[i] - musiman[i]) if tren[i] is not None else None
+        for i in range(n)]
+
+    posisi = [i for i in range(n) if tren[i] is not None]
+    sisa_tren = [nilai[i] - tren[i] for i in posisi]
+    ragam_musiman = _rata([(musiman[i] - _rata(sisa_tren)) ** 2 for i in posisi]) if posisi else 0.0
+    ragam_residu = _rata([(residu[i] or 0.0) ** 2 for i in posisi]) if posisi else 0.0
+    total_ragam = ragam_musiman + ragam_residu
+    kekuatan = round(ragam_musiman / total_ragam * 100, 1) if total_ragam else 0.0
+
+    # Bulan bernilai nol ikut dihitung sebagai penerimaan nol. Kalau nol itu
+    # sebenarnya "tiket belum diunggah", hasil dekomposisi akan bias — katakan
+    # terus terang, jangan diam.
+    jumlah_nol = sum(1 for x in nilai if x == 0)
+    catatan = ("Kekuatan musiman < 15% berarti pola musiman lemah — "
+               "jangan dipakai sebagai dasar tunggal perencanaan."
+               if kekuatan < 15 else
+               "Pola musiman cukup kuat; bulan dengan indeks negatif "
+               "menunjukkan penerimaan di bawah tren.")
+    if jumlah_nol:
+        catatan += (f" Perhatian: ada {jumlah_nol} bulan bernilai nol di dalam "
+                    "deret. Nol dihitung sebagai penerimaan nol; bila sebenarnya "
+                    "tiket belum diunggah, angka musiman ini bias — lengkapi "
+                    "datanya dulu.")
+
+    return {
+        "tersedia": True,
+        "jumlah_bulan_nol": jumlah_nol,
+        "metode": "dekomposisi aditif klasik (pendekatan STL): tren = rata-rata "
+                  "bergerak 12 bulan terpusat, musiman = rata-rata sisa per bulan "
+                  "kalender, residu = sisa",
+        "min_bulan": MIN_BULAN_MUSIMAN,
+        "rekomendasi_bulan": REKOMENDASI_BULAN_MUSIMAN,
+        "jumlah_bulan": n,
+        "tren": [round(x, 1) if x is not None else None for x in tren],
+        "musiman": [round(x, 1) for x in musiman],
+        "residu": [round(x, 1) if x is not None else None for x in residu],
+        "indeks_musiman": [{
+            "bulan": m,
+            "label": NAMA_BULAN_SINGKAT[m],
+            "kg": round(indeks[m], 1),
+            "pct": (round(indeks[m] / _rata([x for x in nilai if x]) * 100, 2)
+                    if _rata([x for x in nilai if x]) else None),
+        } for m in range(1, 13)],
+        "kekuatan_musiman_pct": kekuatan,
+        "catatan": catatan,
+    }
+
+
+def _deteksi_pola_datar(nilai: list[float], bulan: list[tuple[int, int]],
+                        min_bulan: int = 3, ambang_cv: float = 0.05) -> list[dict]:
+    """Cari deret bulan berurutan yang nilainya nyaris sama.
+
+    Penerimaan karet nyata tidak mungkin datar sampai <5% selama beberapa
+    bulan — pola begini hampir selalu berarti data contoh/belum lengkap,
+    bukan kenyataan. Deteksi ini mencegah angka seperti itu dipakai untuk
+    forecasting tanpa dicek.
+    """
+    temuan: list[dict] = []
+    mulai = None
+    for i in range(len(nilai) + 1):
+        berisi = i < len(nilai) and nilai[i] > 0
+        if berisi and mulai is None:
+            mulai = i
+        elif not berisi and mulai is not None:
+            rentang = nilai[mulai:i]
+            if len(rentang) >= min_bulan:
+                r = _rata(rentang)
+                cv = (_simpangan_baku(rentang) / r) if r else 0.0
+                if cv < ambang_cv:
+                    temuan.append({
+                        "mulai": f"{bulan[mulai][0]}-{bulan[mulai][1]:02d}",
+                        "selesai": f"{bulan[i - 1][0]}-{bulan[i - 1][1]:02d}",
+                        "jumlah_bulan": len(rentang),
+                        "rata_kg": round(r, 1),
+                        "cv_pct": round(cv * 100, 2),
+                    })
+            mulai = None
+    return temuan
 
 
 def _agregat_bridge(baris) -> dict | None:
@@ -1328,28 +1576,47 @@ def pasang_router(app, ambil_session):
         if sampai:
             q = q.where(TiketBaris.ticket_date <= sampai)
         kolom = {"vendor": "kode_vendor", "grade": "item_code"}.get(dimensi, dimensi)
+        # Wilayah dinormalisasi sama seperti kartu penerimaan (UPPER/TRIM).
+        wilayah = dimensi in URUTAN_WILAYAH
+        peta_wilayah: dict[str, dict[str, int]] = {}
+
+        def kunci_dari(t) -> str:
+            mentah = getattr(t, kolom)
+            if not wilayah:
+                return mentah or "(kosong)"
+            kunci = _norm_wilayah(mentah)
+            _kumpulkan_wilayah(peta_wilayah, kunci, mentah)
+            return kunci
 
         if per == "bulan":
             potongan: list[tuple[str, tuple[int, int] | None, float, str]] = []
             for t in session.scalars(q):
                 potongan.append((
-                    getattr(t, kolom) or "(kosong)",
+                    kunci_dari(t),
                     (t.ticket_date.year, t.ticket_date.month) if t.ticket_date else None,
                     float(t.dry_kg or 0) / 1000.0,
                     t.ticket_no))
-            return _tonase_per_bulan(potongan, dimensi, dari, sampai, top,
-                                     format, session)
+            label_peta = ({k: _pilih_ejaan(v) for k, v in peta_wilayah.items()}
+                          if wilayah else None)
+            hasil = _tonase_per_bulan(potongan, dimensi, dari, sampai, top,
+                                      format, session, label_peta)
+            if isinstance(hasil, dict) and wilayah:
+                hasil["wilayah"] = _laporan_wilayah(peta_wilayah)
+            return hasil
 
         agreg: dict[str, dict] = defaultdict(lambda: {"ton": 0.0, "tiket": set()})
         for t in session.scalars(q):
-            kunci = getattr(t, kolom) or "(kosong)"
+            kunci = kunci_dari(t)
             agreg[kunci]["ton"] += float(t.dry_kg or 0) / 1000.0
             agreg[kunci]["tiket"].add(t.ticket_no)
+        label_peta = ({k: _pilih_ejaan(v) for k, v in peta_wilayah.items()}
+                      if wilayah else {})
         nama_vendor = {v.kode: v.nama_baku for v in session.scalars(select(Vendor))} \
             if dimensi == "vendor" else {}
         total = sum(a["ton"] for a in agreg.values())
         baris = sorted(({
-            "kunci": k, "label": nama_vendor.get(k, k),
+            "kunci": k,
+            "label": nama_vendor.get(k, label_peta.get(k, k)),
             "ton": round(a["ton"], 3),
             "porsi": round(a["ton"] / total, 4) if total else None,
             "jumlah_tiket": len(a["tiket"]),
@@ -1360,6 +1627,8 @@ def pasang_router(app, ambil_session):
         hasil = {"dimensi": dimensi, "drill_berikutnya": drill,
                  "total_ton": round(total, 3), "baris": baris,
                  "sumber": "tiket_baris (Dry, tanpa tiket nol)"}
+        if wilayah:
+            hasil["wilayah"] = _laporan_wilayah(peta_wilayah)
         if format == "xlsx":
             return respon_xlsx(
                 f"tonase_per_{dimensi}.xlsx",
@@ -1410,6 +1679,21 @@ def pasang_router(app, ambil_session):
             raise HTTPException(422, "Parameter top harus antara 1 dan 40.")
 
         kolom = {"vendor": "kode_vendor", "grade": "item_code"}.get(dimensi, dimensi)
+        # Wilayah: kunci dibakukan (UPPER/TRIM) supaya "Sumatera Utara" dan
+        # "SUMATERA UTARA" tidak muncul sebagai dua baris. Ejaan aslinya
+        # dicatat untuk label & laporan penggabungan.
+        wilayah = dimensi in URUTAN_WILAYAH
+        peta_wilayah: dict[str, dict[str, int]] = {}
+
+        def kunci_dari(t) -> str:
+            mentah = getattr(t, kolom)
+            if not wilayah:
+                return mentah or "(kosong)"
+            kunci = _norm_wilayah(mentah)
+            _kumpulkan_wilayah(peta_wilayah, kunci, mentah)
+            return kunci
+
+        label_peta = {}
         # Satu lintasan data: dipakai untuk kedua bentuk keluaran.
         potongan: list[tuple[str, tuple[int, int] | None, float, bool, str]] = []
         for t in session.scalars(q):
@@ -1419,12 +1703,20 @@ def pasang_router(app, ambil_session):
             if eudr is False and e:
                 continue
             bulan = (t.ticket_date.year, t.ticket_date.month) if t.ticket_date else None
-            potongan.append((getattr(t, kolom) or "(kosong)", bulan,
+            potongan.append((kunci_dari(t), bulan,
                              float(t.dry_kg or 0), e, t.ticket_no))
+        if wilayah:
+            label_peta = {k: _pilih_ejaan(v) for k, v in peta_wilayah.items()}
+            laporan_wilayah = _laporan_wilayah(peta_wilayah)
+        else:
+            laporan_wilayah = None
 
         if per == "bulan":
-            return _penerimaan_per_bulan(potongan, dimensi, dari, sampai,
-                                         top, format, session)
+            hasil = _penerimaan_per_bulan(potongan, dimensi, dari, sampai,
+                                          top, format, session, label_peta)
+            if isinstance(hasil, dict) and laporan_wilayah:
+                hasil["wilayah"] = laporan_wilayah
+            return hasil
 
         agreg: dict[str, dict] = defaultdict(
             lambda: {"biasa": 0.0, "eudr": 0.0, "tiket": set()})
@@ -1437,7 +1729,8 @@ def pasang_router(app, ambil_session):
         total = sum(a["biasa"] + a["eudr"] for a in agreg.values())
         baris = sorted(({
             "kunci": k,
-            "label": (f"{k} — {nama_vendor[k]}" if k in nama_vendor else k),
+            "label": (f"{k} — {nama_vendor[k]}" if k in nama_vendor
+                      else (label_peta.get(k, k) if wilayah else k)),
             "kg_biasa": round(a["biasa"], 1),
             "kg_eudr": round(a["eudr"], 1),
             "kg_total": round(a["biasa"] + a["eudr"], 1),
@@ -1454,6 +1747,8 @@ def pasang_router(app, ambil_session):
                  "baris": baris,
                  "sumber": "tiket_baris (Dry kg, tanpa tiket nol); EUDR = grade "
                            "ber-flag EUDR / kode TTSR"}
+        if laporan_wilayah:
+            hasil["wilayah"] = laporan_wilayah
         if format == "xlsx":
             return respon_xlsx(
                 f"penerimaan_per_{dimensi}.xlsx",
@@ -1461,6 +1756,207 @@ def pasang_router(app, ambil_session):
                  "Jumlah tiket"],
                 [[b["label"], b["kg_biasa"], b["kg_eudr"], b["kg_total"],
                   b["porsi"], b["jumlah_tiket"]] for b in baris])
+        return hasil
+
+    # ------------------------------------------- kartu penerimaan: tren & musiman
+    @router.get("/kartu/penerimaan/tren")
+    def kartu_penerimaan_tren(dari: str | None = None, sampai: str | None = None,
+                              eudr: bool | None = None,
+                              format: str | None = None, session: Session = dep):
+        """Analisis tren & musiman penerimaan karet (kg kering per bulan).
+
+        Isi jawaban:
+        - deret bulanan total / grade biasa / EUDR;
+        - `ma3` rata-rata bergerak 3 bulan (tren dasar);
+        - `mom_pct` dan `yoy_pct` (YoY kosong bila tahun sebelumnya belum ada);
+        - `dekomposisi` tren-musiman (pendekatan STL) — hanya bila data
+          mencukupi (minimal 24 bulan, idealnya 36);
+        - `validasi`: bulan bernilai nol, bulan terakhir belum lengkap, pola
+          datar tidak wajar, dan penggabungan ejaan provinsi.
+
+        Perhitungan MA3/MoM/YoY/dekomposisi memakai SELURUH deret yang ada
+        (bukan hanya rentang tampil), supaya bulan-bulan di awal periode
+        tidak kehilangan pembandingnya. `dari`/`sampai` hanya memotong
+        tampilan.
+        """
+        kd = _bulan_ym(dari, "dari")
+        ks = _bulan_ym(sampai, "sampai")
+        if kd and ks and kd > ks:
+            raise HTTPException(422, f"Periode terbalik: 'dari' ({dari}) lebih "
+                                     f"akhir daripada 'sampai' ({sampai}).")
+
+        kode_eudr = {g.item_code for g in session.scalars(
+            select(Grade).where(Grade.eudr == True))}  # noqa: E712
+
+        per_bulan: dict[tuple[int, int], dict] = defaultdict(
+            lambda: {"total": 0.0, "biasa": 0.0, "eudr": 0.0, "tiket": set()})
+        peta_wilayah: dict[str, dict[str, int]] = {}
+        tanggal_terakhir: dt.date | None = None
+        for t in session.scalars(select(TiketBaris).where(
+                TiketBaris.tiket_nol == False)):  # noqa: E712
+            if not t.ticket_date or t.dry_kg is None:
+                continue
+            e = (t.item_code in kode_eudr) or ("TTSR" in (t.item_code or "").upper())
+            if eudr is True and not e:
+                continue
+            if eudr is False and e:
+                continue
+            kunci = (t.ticket_date.year, t.ticket_date.month)
+            kg = float(t.dry_kg)
+            per_bulan[kunci]["total"] += kg
+            per_bulan[kunci]["eudr" if e else "biasa"] += kg
+            per_bulan[kunci]["tiket"].add(t.ticket_no)
+            _kumpulkan_wilayah(peta_wilayah, _norm_wilayah(t.provinsi), t.provinsi)
+            if tanggal_terakhir is None or t.ticket_date > tanggal_terakhir:
+                tanggal_terakhir = t.ticket_date
+
+        if not per_bulan:
+            return {
+                "status": "kosong",
+                "bulan": [], "total_kg": [], "biasa_kg": [], "eudr_kg": [],
+                "ma3": [], "mom_pct": [], "yoy_pct": [],
+                "dekomposisi": {"tersedia": False, "jumlah_bulan": 0,
+                                "pesan": "Belum ada data tiket untuk dianalisis."},
+                "validasi": {"peringatan": ["Belum ada data tiket penerimaan."]},
+                "wilayah": _laporan_wilayah(peta_wilayah),
+                "sumber": "tiket_baris (Dry, tanpa tiket nol)",
+            }
+
+        berdata = sorted(per_bulan)
+        sumbu = _bulan_berurutan(berdata[0], berdata[-1])
+        total = [round(per_bulan[b]["total"], 1) for b in sumbu]
+        biasa = [round(per_bulan[b]["biasa"], 1) for b in sumbu]
+        eudr_kg = [round(per_bulan[b]["eudr"], 1) for b in sumbu]
+        tiket = [len(per_bulan[b]["tiket"]) for b in sumbu]
+
+        ma3 = _ma3(total)
+        mom = _pertumbuhan(total, 1)
+        yoy = _pertumbuhan(total, 12)
+        dekomposisi = _dekomposisi_aditif(total, sumbu)
+
+        # ---- potong tampilan sesuai filter (perhitungan tetap seluruh deret)
+        i0, i1 = 0, len(sumbu) - 1
+        if kd:
+            i0 = next((i for i, b in enumerate(sumbu) if b >= kd), len(sumbu))
+        if ks:
+            calon = [i for i, b in enumerate(sumbu) if b <= ks]
+            i1 = calon[-1] if calon else -1
+        if i0 > i1:
+            i0, i1 = 0, -1
+
+        def potong(deret: list) -> list:
+            return deret[i0:i1 + 1]
+
+        sumbu_tampil = potong(sumbu)
+        bulan_tampil = [{"ym": f"{th}-{bl:02d}", "label": _label_bulan_singkat(th, bl)}
+                        for th, bl in sumbu_tampil]
+
+        # ---- validasi data sebelum dipakai untuk forecasting
+        total_tampil = potong(total)
+        bulan_nol = [b["ym"] for b, v in zip(bulan_tampil, total_tampil) if v == 0]
+        # Deret nol yang diapit bulan berisi: hampir pasti tiket belum diunggah,
+        # bukan penerimaan benar-benar berhenti. Rentetan nol dihitung utuh
+        # (bukan per bulan), karena biasanya bolongnya beberapa bulan sekaligus.
+        nol_di_tengah: list[str] = []
+        i = 0
+        while i < len(total_tampil):
+            if total_tampil[i] != 0:
+                i += 1
+                continue
+            j = i
+            while j < len(total_tampil) and total_tampil[j] == 0:
+                j += 1
+            if i > 0 and j < len(total_tampil):
+                nol_di_tengah.extend(b["ym"] for b in bulan_tampil[i:j])
+            i = j
+        pola_datar = _deteksi_pola_datar(total_tampil, sumbu_tampil)
+
+        peringatan: list[str] = []
+        bulan_terakhir = f"{berdata[-1][0]}-{berdata[-1][1]:02d}"
+        akhir_bulan_data = (dt.date(berdata[-1][0], berdata[-1][1],
+                                    calendar.monthrange(berdata[-1][0],
+                                                        berdata[-1][1])[1]))
+        lengkap = tanggal_terakhir is not None and tanggal_terakhir >= akhir_bulan_data
+        if not lengkap:
+            peringatan.append(
+                f"Bulan terakhir ({bulan_terakhir}) baru terisi sampai "
+                f"{tanggal_terakhir.strftime('%d/%m/%Y') if tanggal_terakhir else '-'}"
+                f" — kemungkinan bulan berjalan atau data belum lengkap. "
+                "Angka bulan ini akan naik setelah tiket berikutnya diunggah.")
+        if nol_di_tengah:
+            peringatan.append(
+                f"{len(nol_di_tengah)} bulan bernilai nol di tengah periode "
+                f"({', '.join(nol_di_tengah[:6])}{'…' if len(nol_di_tengah) > 6 else ''}). "
+                "Nol biasanya berarti tiket belum diunggah, bukan penerimaan "
+                "benar-benar berhenti.")
+        if pola_datar:
+            d = pola_datar[0]
+            peringatan.append(
+                f"Pola datar tidak wajar: {d['jumlah_bulan']} bulan berturut "
+                f"({d['mulai']} sampai {d['selesai']}) rata-rata "
+                f"{d['rata_kg']:,.0f} kg dengan variasi hanya {d['cv_pct']}%. "
+                "Penerimaan nyata jarang seseragam ini — periksa apakah datanya "
+                "data contoh atau belum lengkap sebelum dipakai untuk perkiraan."
+                .replace(",", "."))
+        laporan_wilayah = _laporan_wilayah(peta_wilayah)
+        if laporan_wilayah["digabung"]:
+            contoh = laporan_wilayah["digabung"][0]
+            peringatan.append(
+                f"Nama provinsi sempat tidak seragam ({contoh['jumlah_ejaan']} "
+                f"ejaan untuk {contoh['label']}: "
+                f"{', '.join(v['ejaan'] for v in contoh['varian'])}). Sudah "
+                "digabung otomatis dengan UPPER/TRIM; sebaiknya sumber datanya "
+                "juga dibakukan.")
+        if not dekomposisi.get("tersedia"):
+            peringatan.append(dekomposisi["pesan"])
+
+        hasil = {
+            "status": "ok",
+            "bulan": bulan_tampil,
+            "jumlah_bulan": len(bulan_tampil),
+            "total_kg": potong(total),
+            "biasa_kg": potong(biasa),
+            "eudr_kg": potong(eudr_kg),
+            "jumlah_tiket": potong(tiket),
+            "ma3": potong(ma3),
+            "mom_pct": potong(mom),
+            "yoy_pct": potong(yoy),
+            "dekomposisi": {
+                **dekomposisi,
+                "tren": potong(dekomposisi.get("tren", [])),
+                "musiman": potong(dekomposisi.get("musiman", [])),
+                "residu": potong(dekomposisi.get("residu", [])),
+            },
+            "validasi": {
+                "dari_data": f"{berdata[0][0]}-{berdata[0][1]:02d}",
+                "sampai_data": bulan_terakhir,
+                "tanggal_terakhir": (tanggal_terakhir.isoformat()
+                                     if tanggal_terakhir else None),
+                "jumlah_bulan_data": len(berdata),
+                "bulan_nol": bulan_nol,
+                "bulan_nol_di_tengah": nol_di_tengah,
+                "bulan_terakhir_lengkap": lengkap,
+                "pola_datar": pola_datar,
+                "peringatan": peringatan,
+            },
+            "wilayah": laporan_wilayah,
+            "catatan_metode": {
+                "ma3": "rata-rata bergerak 3 bulan (trailing); bulan ke-1–2 kosong",
+                "mom": "pertumbuhan % terhadap bulan sebelumnya; kosong bila "
+                       "pembanding nol/tidak ada",
+                "yoy": "pertumbuhan % terhadap bulan yang sama tahun lalu; "
+                       "kosong bila data tahun sebelumnya belum ada",
+            },
+            "sumber": "tiket_baris (Dry, tanpa tiket nol)",
+        }
+        if format == "xlsx":
+            judul = ["Bulan", "Total kg", "Biasa kg", "EUDR kg", "MA3 kg",
+                     "MoM %", "YoY %", "Jumlah tiket"]
+            isi = [[b["label"], tot, bis, eud, ma, mo, yo, nt] for b, tot, bis, eud, ma, mo, yo, nt
+                   in zip(bulan_tampil, hasil["total_kg"], hasil["biasa_kg"],
+                          hasil["eudr_kg"], hasil["ma3"], hasil["mom_pct"],
+                          hasil["yoy_pct"], hasil["jumlah_tiket"])]
+            return respon_xlsx("penerimaan_tren_musiman.xlsx", judul, isi)
         return hasil
 
     # ------------------------------------------------------------ kartu: konsentrasi vendor

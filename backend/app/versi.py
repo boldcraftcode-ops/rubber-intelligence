@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import pathlib
 
-VERSI = "0.9.0"
+VERSI = "0.9.1"
 
 #: akar repo (satu tingkat di atas folder backend/)
 AKAR = pathlib.Path(__file__).resolve().parents[2]

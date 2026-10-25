@@ -9,7 +9,7 @@ Kalau Anda hanya punya 15 menit, baca bagian **1 (Status)**, **3 (Cara
 menjalankan)**, dan **7 (Aturan yang tidak boleh dilanggar)**. Selebihnya bisa
 dibaca saat mengerjakan tugas pertama.
 
-Terakhir diperbarui: **2026-10-25**, versi kode **0.9.0**.
+Terakhir diperbarui: **2026-10-25**, versi kode **0.9.1**.
 
 ---
 
@@ -36,11 +36,11 @@ ini setiap hari untuk memutuskan **harga beli maksimum** yang masih aman.
 
 | Hal | Nilai |
 |---|---|
-| Versi kode | **0.9.0** (`VERSI.txt`, `backend/app/versi.py`, `frontend/src/versi.ts`) |
+| Versi kode | **0.9.1** (`VERSI.txt`, `backend/app/versi.py`, `frontend/src/versi.ts`) |
 | Branch kerja | `arena/18670644-rubber-intelligence` |
 | Pull request | **#1 masih terbuka** — https://github.com/boldcraftcode-ops/rubber-intelligence/pull/1 |
 | Branch `main` | belum memuat pekerjaan v0.7.x–v0.8.x |
-| Unit test | **270 lulus** (`cd backend && .venv/bin/python -m pytest -q`) |
+| Unit test | **292 lulus** (`cd backend && .venv/bin/python -m pytest -q`) |
 | Build frontend | bersih, ±3,3 detik (`cd frontend && npm run build`) |
 | Database | SQLite `backend/opmargin.db` (tidak masuk Git) |
 
@@ -102,7 +102,7 @@ Login awal: **`admin` / `admin123`** (dari `ADMIN_SANDI_AWAL` di
 
 ```bash
 cd backend
-.venv/bin/python -m pytest -q                                  # 270 tes
+.venv/bin/python -m pytest -q                                  # 292 tes
 .venv/bin/python -m app.cli diagnosa                            # laporan kesehatan
 .venv/bin/python -m app.cli reset-sandi admin                   # lupa sandi
 .venv/bin/python -m app.cli atur-login-lokal                    # pastikan mode login benar
@@ -154,7 +154,7 @@ rubber-intelligence/
 │   │       ├── kualitas.py     deteksi data terlambat/aneh
 │   │       └── alarm.py        evaluasi alarm + audit
 │   ├── semantic/metrics.yaml   definisi metrik (rujukan, dibaca fase API)
-│   ├── tests/                  270 tes, termasuk kasus emas Excel lama
+│   ├── tests/                  292 tes, termasuk kasus emas Excel lama
 │   ├── unggahan/               berkas Excel yang diunggah lewat web
 │   └── .env.example            contoh setelan (JANGAN commit .env asli)
 └── frontend/
@@ -230,7 +230,7 @@ tetesan lateks merah + simpul data, dibuat manual sebagai SVG
 **Jangan memakai font/CDN/gambar eksternal.** Aplikasi harus jalan di jaringan
 tertutup pabrik; semua aset lokal.
 
-### Periode tampilan menu Stok (v0.9.0)
+### Periode tampilan menu Stok (v0.9.1)
 
 Menu **Stok** kini punya pemilih periode di bagian paling atas, dengan isi
 bawaan **1 Januari tahun berjalan s.d. bulan berjalan** (dibuka Oktober 2026 →
@@ -255,7 +255,7 @@ Pemilih periode ini dipakai bersama oleh menu Stok dan Intake Analisis
 (`PilihRentangBulan` di `frontend/src/bersama.tsx`), supaya bentuk, warna, dan
 perilakunya tidak bercabang.
 
-### Daftar intake terakhir & batas 12 bulan KPI Reject (v0.9.0)
+### Daftar intake terakhir & batas 12 bulan KPI Reject (v0.9.1)
 
 **Kartu "Daftar intake terakhir"** (paling bawah halaman Intake Analisis, setelah
 kartu margin) menjawab
@@ -285,7 +285,7 @@ seluruh riwayat 2020–2026:
   `bulan` di luar 0–120 → 422). Filter tahun tetap jalan dan dihitung setelah
   filter itu.
 
-### Master Vendor — CRUD & bulk import (v0.9.0)
+### Master Vendor — CRUD & bulk import (v0.9.1)
 
 Menu baru **Master Vendor** (sidebar, di atas Grade & Harga) merawat daftar
 vendor: daftar + cari + saring status, tambah, ubah, hapus, dan impor massal
@@ -310,6 +310,74 @@ Catatan penting: status lama di database yang tertulis “Aktif” ditampilkan
 sebagai `aktif` (dibakukan huruf kecil) supaya cocok dengan pilihan di layar.
 CORS kini mengizinkan `PUT` dan `DELETE` — tanpa itu tombol ubah/hapus gagal
 bila tampilan web dan API berada di domain berbeda (deploy tunnel).
+
+### Analisis tren & musiman + normalisasi wilayah (v0.9.1)
+
+Disematkan di dalam kartu **Penerimaan karet (kg) — biasa vs EUDR**, terbuka
+sejak awal dan bisa ditutup. Sumbernya `GET /api/kartu/penerimaan/tren`
+(ikut filter periode dan mode grade kartu; ada ekspor `.xlsx`).
+
+| Bagian | Isi |
+|---|---|
+| **Grafik** | total kg per bulan + **garis MA3** (rata-rata bergerak 3 bulan) + EUDR |
+| **Tabel** | per bulan: total, biasa, EUDR, MA3, **MoM %**, **YoY %** |
+| **Dekomposisi** | tren, musiman, residu + **indeks musiman 12 bulan kalender** |
+| **Peringatan** | kotak kuning "periksa dulu sebelum dipakai untuk perkiraan" |
+
+**Metode yang dipakai (jujur, bukan STL LOESS penuh):** dekomposisi aditif
+klasik — tren = rata-rata bergerak 12 bulan terpusat (bobot ½ di ujung),
+musiman = rata-rata sisa per bulan kalender lalu dinormalkan agar total 12 bulan
+= 0, residu = sisa. Hasilnya dipakai untuk membaca pola musim gugur daun
+(Feb–Apr) dan musim hujan. **Butuh minimal 24 bulan** (idealnya 36); di bawah
+itu blok dekomposisi menampilkan pesan jumlah bulan yang kurang dan **tidak**
+menampilkan angka tren/musiman — lebih baik kosong daripada menyesatkan.
+MA3/MoM/YoY tetap bisa dipakai walau data masih pendek.
+
+Catatan teknis:
+- MA3/MoM/YoY/dekomposisi dihitung dari **seluruh deret** yang ada, lalu
+  `dari`/`sampai` hanya memotong tampilan — supaya bulan pertama pada periode
+  pilihan tetap punya pembanding.
+- MoM/YoY **kosong (bukan 0%)** bila pembandingnya tidak ada atau nol.
+- Bulan tanpa tiket tetap tampil sebagai bulan bernilai 0 (grafik tidak
+  melompat), tetapi ikut dilaporkan sebagai peringatan.
+- Bila ada bulan nol di dalam deret, catatan dekomposisi menyebut bahwa nol
+  dihitung sebagai penerimaan nol sehingga hasil bisa bias bila sebenarnya
+  data belum diunggah.
+
+**Validasi otomatis sebelum angka dipakai untuk perkiraan:**
+1. **Bulan nol** dan **rentetan nol di tengah** — ditandai sebagai "tiket
+   kemungkinan belum diunggah", bukan penerimaan berhenti.
+2. **Bulan terakhir belum lengkap** — dihitung dari tanggal tiket terakhir vs
+   hari terakhir bulan itu.
+3. **Pola datar tidak wajar** — deret ≥3 bulan berurutan dengan variasi <5%
+   (CV) ditandai; penerimaan karet nyata tidak seseragam itu.
+4. **Ejaan wilayah dobel** — lihat bagian berikut.
+
+#### Normalisasi nama wilayah (provinsi → desa)
+
+Masalah nyata yang dilaporkan pemilik: `"Sumatera Utara"` dan
+`"SUMATERA UTARA"`, `"Riau"` dan `"RIAU"` muncul sebagai baris terpisah
+(Okt-26: 7.100 kg dan 4.680 kg). Itu memang **masalah standardisasi data**,
+bukan provinsi berbeda.
+
+Perbaikannya (berlaku di kartu Penerimaan dan Tonase):
+- **kunci** wilayah dibakukan: spasi dirapatkan + **HURUF BESAR**
+  (`UPPER`/`TRIM`) → satu provinsi = satu baris;
+- **label** memakai ejaan yang paling sering muncul (`Sumatera Utara`), supaya
+  tampilan tetap enak dibaca;
+- filter dan drill-down wilayah **tidak peka huruf besar/kecil** dan
+  mengabaikan spasi berlebih;
+- penggabungannya **dilaporkan**, bukan diam-diam: `wilayah.digabung` berisi
+  daftar ejaan yang disatukan, ditampilkan di kartu dan di blok analisis.
+
+> **Perubahan kontrak API:** untuk dimensi wilayah, `kunci` pada jawaban
+> kartu kini berupa teks ter-normalisasi (`DELI SERDANG`), sedangkan `label`
+> tetap ejaan asli (`Deli Serdang`). Kode yang memakai `kunci` sebagai teks
+> tampilan perlu beralih ke `label`.
+
+Penyebabnya di sumber data, jadi normalisasi ini obat sementara: idealnya
+ekspor/pengetikan dari aplikasi asal ikut dibakukan, atau dipakai master
+wilayah. Hal itu belum dikerjakan.
 
 ---
 
@@ -443,7 +511,7 @@ Semua ini lahir dari kegagalan nyata, bukan kehati-hatian berlebihan.
    kode salah. Perbaikannya: `hentikan-api.bat` lalu `start-web.bat`.
 6. **Selalu jalankan `npm run build` (bukan hanya `vite build`)** — skrip npm
    memakai `tsc -b`, jadi error tipe ikut tertangkap.
-7. **270 tes harus tetap lulus.** Tes "kasus emas"
+7. **292 tes harus tetap lulus.** Tes "kasus emas"
    (`tests/test_data_awal.py`, `tests/test_bridge_doc.py`) mencocokkan hasil
    dengan Excel lama sampai beberapa desimal. Kalau tes emas gagal, hampir pasti rumus
    yang diubah, bukan tesnya.
@@ -535,13 +603,13 @@ pernah membuat label dan ikon tertukar; ganti blok utuhnya.
 ### Rilis versi baru (prosedur yang sudah terbukti)
 ```bash
 # 1. pastikan bersih
-cd backend && .venv/bin/python -m pytest -q          # 270 passed
+cd backend && .venv/bin/python -m pytest -q          # 292 passed
 cd ../frontend && npm run build                       # bersih
 
 # 2. naikkan versi di 6 berkas (isi dua variabel, sisanya otomatis)
 cd ..
 LAMA=$(tr -d '\r\n' < VERSI.txt)     # versi yang masih terpakai
-BARU=0.9.0                            # <- tulis versi baru di sini
+BARU=0.9.1                            # <- tulis versi baru di sini
 for f in VERSI.txt backend/app/versi.py frontend/src/versi.ts \
          docs/CARA_MENJALANKAN.md diagnosa.bat hentikan-api.bat; do
   sed -i "s/$LAMA/$BARU/g" "$f"
