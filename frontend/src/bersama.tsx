@@ -29,9 +29,37 @@ const API_URL: string = (import.meta as any).env?.VITE_API_URL ?? "";
 
 export const urlApi = (path: string) => `${API_URL}${path}`;
 
+/* ---------- token sesi cadangan ----------
+   Cookie HttpOnly (`op_sesi`) adalah cara utama. Namun bila aplikasi dibuka di
+   dalam iframe (preview/embed) atau browser memblokir cookie lintas situs,
+   cookie tidak pernah terkirim: login berhasil lalu permintaan berikutnya 401,
+   sehingga pengguna kembali ke form login. Untuk itu API juga mengirim token
+   pada saat login, disimpan di sini, dan dikirim lewat header Authorization. */
+const KUNCI_TOKEN = "op-margin.token";
+
+export const tokenSesi = (): string | null => {
+  try { return localStorage.getItem(KUNCI_TOKEN); } catch { return null; }
+};
+
+export const simpanToken = (token: string | null | undefined) => {
+  try {
+    if (token) localStorage.setItem(KUNCI_TOKEN, token);
+    else localStorage.removeItem(KUNCI_TOKEN);
+  } catch { /* localStorage diblokir: cookie masih dipakai */ }
+};
+
+const kepalaSesi = (): Record<string, string> => {
+  const t = tokenSesi();
+  return t ? { Authorization: `Bearer ${t}` } : {};
+};
+
 export async function ambilJson(url: string) {
-  const r = await fetch(urlApi(url), { credentials: "include" });
+  const r = await fetch(urlApi(url), {
+    credentials: "include",
+    headers: kepalaSesi(),
+  });
   if (r.status === 401) {
+    simpanToken(null);   // token kedaluwarsa/tidak sah: jangan dipakai lagi
     let detail = "Belum login. Silakan masuk dengan username dan sandi Anda.";
     try { detail = (await r.json()).detail ?? detail; } catch { /* abaikan */ }
     throw galatApi(detail, 401);
@@ -75,7 +103,7 @@ export async function kirimJson(url: string, body: unknown) {
   const r = await fetch(urlApi(url), {
     method: "POST",
     credentials: "include",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...kepalaSesi() },
     body: JSON.stringify(body),
   });
   const data = await r.json();

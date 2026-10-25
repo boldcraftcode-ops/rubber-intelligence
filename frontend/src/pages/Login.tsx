@@ -1,5 +1,5 @@
 import { FormEvent, useState } from "react";
-import { kelasInput, kelasLabel, kelasTombol, kirimJson } from "../bersama";
+import { kelasInput, kelasLabel, kelasTombol, kirimJson, simpanToken } from "../bersama";
 
 /* ---------------------------------------------------------------------------
    Layar bila API menjawab tetapi login sedang tidak aktif (mis. mode
@@ -39,6 +39,7 @@ export default function Login({ onSukses }: { onSukses: () => void }) {
     setSibuk(true);
     try {
       const j = await kirimJson("/api/auth/login", { username, sandi });
+      simpanToken(j.token);          // cadangan bila cookie diblokir
       localStorage.setItem("op-margin.pengisi", j.nama ?? username);
       onSukses();
     } catch (err) {

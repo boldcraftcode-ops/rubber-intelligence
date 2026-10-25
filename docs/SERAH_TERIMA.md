@@ -9,7 +9,7 @@ Kalau Anda hanya punya 15 menit, baca bagian **1 (Status)**, **3 (Cara
 menjalankan)**, dan **7 (Aturan yang tidak boleh dilanggar)**. Selebihnya bisa
 dibaca saat mengerjakan tugas pertama.
 
-Terakhir diperbarui: **2026-10-25**, versi kode **0.7.4**.
+Terakhir diperbarui: **2026-10-25**, versi kode **0.7.5**.
 
 ---
 
@@ -36,11 +36,11 @@ ini setiap hari untuk memutuskan **harga beli maksimum** yang masih aman.
 
 | Hal | Nilai |
 |---|---|
-| Versi kode | **0.7.4** (`VERSI.txt`, `backend/app/versi.py`, `frontend/src/versi.ts`) |
+| Versi kode | **0.7.5** (`VERSI.txt`, `backend/app/versi.py`, `frontend/src/versi.ts`) |
 | Branch kerja | `arena/18670644-rubber-intelligence` |
 | Pull request | **#1 masih terbuka** — https://github.com/boldcraftcode-ops/rubber-intelligence/pull/1 |
 | Branch `main` | belum memuat pekerjaan v0.7.x |
-| Unit test | **183 lulus** (`cd backend && .venv/bin/python -m pytest -q`) |
+| Unit test | **190 lulus** (`cd backend && .venv/bin/python -m pytest -q`) |
 | Build frontend | bersih, ±3,3 detik (`cd frontend && npm run build`) |
 | Database | SQLite `backend/opmargin.db` (tidak masuk Git) |
 
@@ -102,7 +102,7 @@ Login awal: **`admin` / `admin123`** (dari `ADMIN_SANDI_AWAL` di
 
 ```bash
 cd backend
-.venv/bin/python -m pytest -q                                  # 183 tes
+.venv/bin/python -m pytest -q                                  # 190 tes
 .venv/bin/python -m app.cli diagnosa                            # laporan kesehatan
 .venv/bin/python -m app.cli reset-sandi admin                   # lupa sandi
 .venv/bin/python -m app.cli atur-login-lokal                    # pastikan mode login benar
@@ -153,7 +153,7 @@ rubber-intelligence/
 │   │       ├── kualitas.py     deteksi data terlambat/aneh
 │   │       └── alarm.py        evaluasi alarm + audit
 │   ├── semantic/metrics.yaml   definisi metrik (rujukan, dibaca fase API)
-│   ├── tests/                  183 tes, termasuk kasus emas Excel lama
+│   ├── tests/                  190 tes, termasuk kasus emas Excel lama
 │   ├── unggahan/               berkas Excel yang diunggah lewat web
 │   └── .env.example            contoh setelan (JANGAN commit .env asli)
 └── frontend/
@@ -245,6 +245,11 @@ Ada dua pola pemasangan:
 | **Satu-origin** (disarankan) | API menyajikan `frontend/dist`; satu hostname tunnel melayani halaman + API | `SAJIKAN_WEB=true` di `.env`, `npm run build` |
 | Terpisah | halaman di Pages/Workers, API di `api.domain` | `VITE_API_URL` saat build, `FRONTEND_ORIGIN`, dan `COOKIE_SAMESITE=none` bila beda situs |
 
+Sesi memakai dua jalur: **cookie HttpOnly `op_sesi`** (utama) dan **token di
+`Authorization: Bearer`** (cadangan, dikirim API saat login dan disimpan
+tampilan web di `localStorage`). Cadangan ini ada karena cookie tidak terkirim
+di dalam iframe atau lintas situs — lihat jebakan di bagian 9.
+
 Jebakan yang paling menipu: **cookie sesi**. `op_sesi` dipasang dengan
 `SameSite=lax`. Bila halaman web dan API berada di **situs berbeda**
 (`*.pages.dev` / `*.workers.dev` + domain lain), browser tidak mengirim cookie
@@ -280,7 +285,7 @@ Semua ini lahir dari kegagalan nyata, bukan kehati-hatian berlebihan.
    kode salah. Perbaikannya: `hentikan-api.bat` lalu `start-web.bat`.
 6. **Selalu jalankan `npm run build` (bukan hanya `vite build`)** — skrip npm
    memakai `tsc -b`, jadi error tipe ikut tertangkap.
-7. **183 tes harus tetap lulus.** Tes "kasus emas"
+7. **190 tes harus tetap lulus.** Tes "kasus emas"
    (`tests/test_data_awal.py`, `tests/test_bridge_doc.py`) mencocokkan hasil
    dengan Excel lama sampai beberapa desimal. Kalau tes emas gagal, hampir pasti rumus
    yang diubah, bukan tesnya.
@@ -335,14 +340,14 @@ pernah membuat label dan ikon tertukar; ganti blok utuhnya.
 ### Rilis versi baru (prosedur yang sudah terbukti)
 ```bash
 # 1. pastikan bersih
-cd backend && .venv/bin/python -m pytest -q          # 183 passed
+cd backend && .venv/bin/python -m pytest -q          # 190 passed
 cd ../frontend && npm run build                       # bersih
 
-# 2. naikkan versi di 6 berkas (contoh 0.7.4 -> 0.7.5)
+# 2. naikkan versi di 6 berkas (contoh 0.7.5 -> 0.7.6)
 cd ..
 for f in VERSI.txt backend/app/versi.py frontend/src/versi.ts \
          docs/CARA_MENJALANKAN.md diagnosa.bat hentikan-api.bat; do
-  sed -i 's/0\.7\.4/0.7.5/g' "$f"
+  sed -i 's/0\.7\.5/0.7.6/g' "$f"
 done
 #    (Windows: ganti manual nilai versi di 6 berkas itu)
 #    .bat: pastikan tetap ASCII + CRLF
@@ -376,6 +381,7 @@ tidak, pengguna akan melihat layar "beda versi" (yang memang tujuannya).
 | Logo tidak muncul di login | aset eksternal/CDN | taruh di `frontend/public/`, rujuk path relatif |
 | Preview aplikasi kosong total | kode browser memanggil `localhost:8000` langsung | selalu pakai URL relatif `/api/...`; dev server memproksikan |
 | Login "berhasil" tapi langsung kembali ke form (deploy) | cookie `SameSite=lax` tidak dikirim lintas situs | `COOKIE_SAMESITE=none`, atau pakai satu-origin (`SAJIKAN_WEB=true`) |
+| Login 200 tetapi `/api/auth/saya` 401, kembali ke form | cookie sesi tidak terkirim (iframe / lintas situs / cookie pihak ketiga diblokir) | sejak 0.7.5 ada cadangan `Authorization: Bearer` — pastikan tampilan web versi baru; untuk deploy beda situs setel `COOKIE_SAMESITE=none` atau pakai satu-origin |
 | `uvicorn: Attribute "app" not found in module "app.main"` | baris `app = buat_app()` di akhir `main.py` ikut terhapus saat menyunting | tambahkan kembali; **tes unit tidak menangkapnya** karena tes memanggil `buat_app()` |
 
 Catatan lingkungan kerja saya (mungkin berguna, mungkin tidak):
@@ -440,7 +446,12 @@ Berurutan dari yang paling masuk akal:
   karakter di produksi; `ADMIN_SANDI_AWAL` hanya dipakai saat tabel pengguna
   masih kosong.
 - Sandi disimpan sebagai hash (lihat `auth_lokal.hash_sandi`), sesi = JWT HS256
-  di cookie `op_sesi`.
+  di cookie `op_sesi` (HttpOnly). Sejak 0.7.5 token yang sama juga boleh dikirim
+  lewat `Authorization: Bearer` dan disimpan tampilan web di `localStorage`
+  sebagai cadangan untuk lingkungan yang memblokir cookie. Konsekuensinya:
+  token itu terbaca JavaScript, jadi **jangan menambahkan fitur yang
+  menampilkan HTML mentah dari pengguna** (cegah XSS). Bila tidak butuh
+  cadangan ini, hapus `token` dari respons login di `auth_lokal.py`.
 - **Tanpa Cloudflare Access**, perlindungan sepenuhnya bergantung pada login
   aplikasi + HTTPS di depannya. Panduan: `deploy/checklist-keamanan.md`.
 - Backup: `deploy/backup.ps1` (harian, retensi 30 hari) dan prosedur uji

@@ -17,8 +17,7 @@ import Database from "./pages/Database";
 import Pengguna from "./pages/Pengguna";
 import Login, { LayarApiLama, LayarGalat } from "./pages/Login";
 import { VERSI_UI } from "./versi";
-import { ambilJson, kirimJson, pesanGalat, kelasInput, kelasLabel,
-         kelasTombol, kelasTombolKecil } from "./bersama";
+import { ambilJson, kirimJson, pesanGalat, kelasInput, kelasLabel, kelasTombol, kelasTombolKecil, simpanToken } from "./bersama";
 import { useBahasa } from "./i18n";
 
 const TAB = [
@@ -132,7 +131,10 @@ export default function App() {
 
   const keluar = useMutation({
     mutationFn: () => kirimJson("/api/auth/logout", {}),
-    onSettled: () => qc.resetQueries(),
+    onSettled: () => {
+      simpanToken(null);      // buang token cadangan juga, jangan sampai tertinggal
+      qc.resetQueries();
+    },
   });
 
   const alarm = useQuery({

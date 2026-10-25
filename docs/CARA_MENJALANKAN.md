@@ -205,7 +205,7 @@ cd backend
 ### Bukti paling cepat: folder ini kode lama atau bukan
 
 Pesan **"Belum login ... Cloudflare Access"** sudah **tidak ada lagi** di kode
-sejak versi 0.7.4. Kalau pesan itu masih muncul, yang menjawab di port 8000
+sejak versi 0.7.5. Kalau pesan itu masih muncul, yang menjawab di port 8000
 pasti kode lama. Cara membuktikannya dari folder aplikasi:
 
 ```powershell
@@ -214,7 +214,7 @@ findstr /c:"Cloudflare Access" backend\app\main.py
 
 - **Ada hasilnya** → folder ini masih kode lama (belum diperbarui). Jalankan
   `perbarui-kode.bat`.
-- **Tidak ada hasil** → folder sudah 0.7.4; berarti ada proses lama di port
+- **Tidak ada hasil** → folder sudah 0.7.5; berarti ada proses lama di port
   8000. Jalankan `start-web.bat` (sekarang menutupnya otomatis).
 
 `diagnosa.bat` juga memeriksa hal ini dan menuliskannya di bagian [0].
@@ -232,7 +232,7 @@ Bacanya:
 
 | Yang tertulis | Artinya | Tindakan |
 |---|---|---|
-| `mode login : lokal (username-sandi)` dan API menjawab `0.7.4` + `lokal` | sudah benar | login dengan akun Anda (Ctrl+F5 dulu) |
+| `mode login : lokal (username-sandi)` dan API menjawab `0.7.5` + `lokal` | sudah benar | login dengan akun Anda (Ctrl+F5 dulu) |
 | API menjawab `mode: nonaktif` | `AUTH_DISABLED=true` masih ada di `.env` | hapus baris itu, lalu jalankan `start-web.bat` lagi |
 | API tidak menjawab / `404` di `/api/auth/mode` | prosesnya **kode lama** | tutup jendela API lama, jalankan `start-web.bat` lagi |
 | bagian [2] tidak ada akun, atau sandi lupa | akun belum dibuat / sandi salah | `python -m app.cli reset-sandi admin` (dari folder `backend`) |
@@ -258,11 +258,11 @@ Perbaikan:
    melaporkan apakah **port 8000 dan 5173 sudah BEBAS**. Kalau ada yang gagal
    ditutup, skrip mengatakannya (tidak diam-diam).
 2. Jalankan **`start-web.bat`** dari folder aplikasi yang benar — folder yang
-   `VERSI.txt`-nya berisi `0.7.4`. Tunggu tulisan **`API siap: kode 0.7.4`**.
+   `VERSI.txt`-nya berisi `0.7.5`. Tunggu tulisan **`API siap: kode 0.7.5`**.
 3. Buka `http://localhost:5173`, tekan **Ctrl+F5**.
 
 Cek cepat kapan saja: `http://localhost:8000/api/health` — nilai `versi` dan
-`kode` harus `0.7.4`, dan `folder` harus menunjuk folder aplikasi Anda.
+`kode` harus `0.7.5`, dan `folder` harus menunjuk folder aplikasi Anda.
 
 ## Cara tercepat membereskan: `perbaiki.bat`
 
@@ -319,8 +319,33 @@ berkas ini dari folder lama ke folder baru **sebelum** menjalankan
 - `backend\.env` — setelan login (opsional; bila tidak ada, dibuat otomatis)
 
 Cara memastikan folder baru benar-benar versi terbaru: lihat **`VERSI.txt`** di
-akar folder (versi terbaru saat dokumen ini ditulis: **0.7.4**), atau buka
+akar folder (versi terbaru saat dokumen ini ditulis: **0.7.5**), atau buka
 `http://localhost:8000/api/health` dan periksa `"versi"` serta `"kode"`.
+
+## Login berhasil tetapi kembali ke form login lagi
+
+Gejalanya: form login terisi, tombol ditekan, tidak ada pesan galat, tetapi
+kembali ke form login. Di log API terlihat `POST /api/auth/login 200` lalu
+`GET /api/auth/saya 401`.
+
+Sebabnya **cookie sesi tidak terkirim**, dan itu terjadi bila:
+
+- aplikasi dibuka **di dalam iframe** (halaman preview/embed), atau
+- halaman web dan API berada di **situs berbeda**, atau
+- browser memblokir cookie pihak ketiga.
+
+Sejak versi 0.7.5 hal ini ditangani otomatis: saat login, API mengirim `token`
+di badan respons; tampilan web menyimpannya dan mengirimnya lewat header
+`Authorization: Bearer` sebagai **cadangan** di samping cookie. Jadi login tetap
+bekerja walau cookie diblokir. Cookie (HttpOnly) tetap cara utama.
+
+Bila masih terjadi pada versi lama:
+
+1. Tarik kode terbaru (`perbarui-kode.bat` atau `git pull`).
+2. `hentikan-api.bat`, lalu `start-web.bat`.
+3. Muat ulang halaman dengan `Ctrl+F5` (hapus cache).
+4. Untuk deploy beda situs, lihat `deploy/install-windows.md` bagian C
+   (`COOKIE_SAMESITE=none` atau mode satu-origin `SAJIKAN_WEB=true`).
 
 ## Deploy ke internet (Fase 5)
 Panduan lengkap ada di folder `deploy/`: mulai dari `deploy/install-windows.md`
