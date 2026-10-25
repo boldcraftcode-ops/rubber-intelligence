@@ -65,7 +65,7 @@ peringatan (vendor tak dikenal, Dry tidak cocok, wilayah kosong, dst.).
 python -m pytest
 ```
 
-Harus tertulis `171 passed`. Pengujian mencakup semua kasus uji emas:
+Harus tertulis `172 passed`. Pengujian mencakup semua kasus uji emas:
 harian 3 Jan 2026, bulan Jan/Feb 2026, Jan 2023, Mar 2020 (kurs berubah
 tengah bulan), Apr 2022 (koreksi salah ketik Excel), Days/rasio stok,
 dan perencanaan Jan 2027.
@@ -241,6 +241,28 @@ Bila `SECRET_KEY` belum diisi, di luar produksi aplikasi membuat kunci
 sementara otomatis supaya login tetap bisa dipakai (sesi berakhir saat API
 dijalankan ulang). `start-web.bat` membuang `AUTH_DISABLED` untuk jendela
 API-nya, sehingga login selalu aktif saat dijalankan dari skrip itu.
+
+## Layar "Aplikasi dan servernya beda versi"
+
+Layar ini muncul bila **tampilan web** dan **API** memakai versi berbeda —
+hampir selalu karena proses API dari folder/sesi lama masih menjawab di port
+8000. Layar itu menyebutkan versi keduanya, dan (bila API-nya versi baru) juga
+menampilkan **folder asal & PID** proses lama.
+
+Perbaikan:
+
+1. Klik kanan **`hentikan-api.bat`** → **Run as administrator**. Skrip itu
+   menghentikan **service Windows** `OPMargin*` (bila aplikasi pernah dipasang
+   sebagai service — service akan menghidupkan ulang API lama bila hanya
+   prosesnya yang ditutup), menutup semua proses `uvicorn`/`vite`, lalu
+   melaporkan apakah **port 8000 dan 5173 sudah BEBAS**. Kalau ada yang gagal
+   ditutup, skrip mengatakannya (tidak diam-diam).
+2. Jalankan **`start-web.bat`** dari folder aplikasi yang benar — folder yang
+   `VERSI.txt`-nya berisi `0.7.0`. Tunggu tulisan **`API siap: kode 0.7.0`**.
+3. Buka `http://localhost:5173`, tekan **Ctrl+F5**.
+
+Cek cepat kapan saja: `http://localhost:8000/api/health` — nilai `versi` dan
+`kode` harus `0.7.0`, dan `folder` harus menunjuk folder aplikasi Anda.
 
 ## Cara tercepat membereskan: `perbaiki.bat`
 

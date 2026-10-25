@@ -61,6 +61,28 @@ class KursMasuk(BaseModel):
     pengisi: str = "?"
 
 
+def _info_proses() -> dict:
+    """Folder kerja & PID proses API yang sedang menjawab.
+
+    Dipakai layar "beda versi" di tampilan web: bila API yang menjawab
+    ternyata dijalankan dari folder lain (proses lama), folder itulah yang
+    harus ditutup. Aman: hanya untuk diagnosis di komputer sendiri.
+    """
+    import os
+
+    from . import versi as _versi
+    sekarang = dt.datetime.now(dt.timezone.utc)
+    mulai = None
+    try:  # waktu proses python ini dimulai
+        import time as _time
+        mulai = dt.datetime.fromtimestamp(
+            _time.time() - _time.monotonic(), dt.timezone.utc
+        ).isoformat(timespec="seconds")
+    except Exception:
+        mulai = sekarang.isoformat(timespec="seconds")
+    return {"folder": str(_versi.AKAR), "pid": os.getpid(), "mulai": mulai}
+
+
 def _catat_input_manual(session: Session, jenis: str, isi: dict, pengisi: str) -> int:
     """Catat input manual ke lapisan raw (jejak: siapa, kapan, apa)."""
     payload = json.dumps(isi, default=str, ensure_ascii=False, sort_keys=True)
@@ -179,6 +201,10 @@ def buat_app(engine: Engine | None = None) -> FastAPI:
         TANPA data sensitif.
         """
         from .auth import info_mode
+        # pid/folder/mulai dipakai untuk mengenali proses API yang MENJAWAB:
+        # bila versinya beda dengan folder aplikasi, layar "beda versi"
+        # menampilkan folder & PID-nya supaya bisa ditutup dengan tepat.
+        proses = _info_proses()
         return {"status": "ok", "app": "op-margin", "versi": versi.VERSI,
                 "login": info_mode(cfg_auth),
                 "waktu": dt.datetime.utcnow().isoformat(timespec="seconds") + "Z",
@@ -189,7 +215,9 @@ def buat_app(engine: Engine | None = None) -> FastAPI:
                 ],
                 # versi kode ikut dilaporkan supaya mudah membandingkan
                 # folder yang dijalankan dengan kode terbaru di repo
-                "kode": versi.versi_folder()}
+                "kode": versi.versi_folder(),
+                "folder": proses["folder"], "pid": proses["pid"],
+                "mulai": proses["mulai"]}
 
     # ------------------------------------------------------------ SICOM
     @app.get("/api/sicom")

@@ -157,7 +157,8 @@ export default function App() {
     // API yang menjawab bukan kode di folder ini -> jelaskan, jangan tampilkan
     // form yang pasti gagal (kode lama bisa menjawab "Cloudflare Access").
     if (versiApi !== undefined && versiApi !== VERSI_UI) {
-      return <LayarApiLama versiApi={versiApi} versiUi={VERSI_UI} detail={detail} />;
+      return <LayarApiLama versiApi={versiApi} versiUi={VERSI_UI} detail={detail}
+                           folder={health.data?.folder} pid={health.data?.pid} />;
     }
     if (versiApi === undefined && /cloudflare access/i.test(detail)) {
       return <LayarApiLama versiUi={VERSI_UI} detail={detail} />;

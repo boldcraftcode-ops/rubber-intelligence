@@ -154,6 +154,7 @@ rem ------------------------------------------------------------
 echo.
 echo [4] Menutup proses lama di port 8000 dan 5173 (bila ada).
 echo     Proses lama = kode lama = login & fitur baru gagal.
+call :hentikan_service
 call :bersihkan_port 8000 "API" "app.main:app"
 call :bersihkan_port 5173 "tampilan web" "vite"
 
@@ -246,6 +247,16 @@ endlocal
 exit /b 0
 
 rem ============================================================
+rem  :hentikan_service
+rem  Aplikasi bisa dipasang sebagai service Windows (lihat
+rem  deploy/install-windows.md). Service yang hidup akan LANGSUNG
+rem  menghidupkan lagi API lama setelah ditutup, jadi harus dimatikan.
+rem ============================================================
+:hentikan_service
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$s=@(); try { $s = Get-Service -Name 'OPMargin*' -ErrorAction Stop } catch {}; if (-not $s) { Write-Host '   tidak ada service OPMargin*' } else { foreach ($x in $s) { Write-Host ('   service ' + $x.Name + ' (' + $x.Status + ') dihentikan'); try { Stop-Service -Name $x.Name -Force -ErrorAction Stop } catch { Write-Host ('   GAGAL menghentikan service ' + $x.Name + ': ' + $_.Exception.Message); Write-Host '   -> jalankan start-web.bat sebagai Administrator, atau hentikan lewat services.msc' } } }"
+goto :eof
+
+rem ============================================================
 rem  :bersihkan_port PORT NAMA POLA
 rem  Menutup paksa proses aplikasi lama:
 rem   - pemegang port itu, dan
@@ -258,7 +269,7 @@ rem ============================================================
 set "PORT=%~1"
 set "NAMA=%~2"
 set "POLA=%~3"
-powershell -NoProfile -ExecutionPolicy Bypass -Command "$p=%PORT%; $nama='%NAMA%'; $pola='%POLA%'; $saya=$PID; $induk=0; try { $induk=(Get-CimInstance Win32_Process -Filter ('ProcessId=' + $saya)).ParentProcessId } catch {}; $pernah=$false; for ($i=0; $i -lt 5; $i++) { $kandidat=@(); try { $kandidat += (Get-CimInstance Win32_Process -ErrorAction Stop | Where-Object { $_.CommandLine -and ($_.CommandLine -match $pola) } | ForEach-Object { $_.ProcessId }) } catch {}; try { $kandidat += (Get-NetTCPConnection -LocalPort $p -State Listen -ErrorAction Stop).OwningProcess } catch { $kandidat += @(netstat -ano | Select-String 'LISTENING\s*$' | Select-String (':' + $p + '\s') | ForEach-Object { ($_.ToString().Trim() -split '\s+')[-1] }) }; $kandidat = $kandidat | Where-Object { $_ -and $_ -ne 0 -and $_ -ne $saya -and $_ -ne $induk } | Sort-Object -Unique; if (-not $kandidat) { break }; foreach ($id in $kandidat) { $pernah=$true; Write-Host ('   port ' + $p + ' (' + $nama + '): PID ' + $id + ' ditutup'); Stop-Process -Id $id -Force -ErrorAction SilentlyContinue }; Start-Sleep -Milliseconds 900 }; if (-not $pernah) { Write-Host ('   port ' + $p + ' (' + $nama + ') sudah bebas') } else { Write-Host ('   port ' + $p + ' (' + $nama + ') dibersihkan') }"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$p=%PORT%; $nama='%NAMA%'; $pola='%POLA%'; $saya=$PID; $induk=0; try { $induk=(Get-CimInstance Win32_Process -Filter ('ProcessId=' + $saya)).ParentProcessId } catch {}; $pernah=$false; for ($i=0; $i -lt 5; $i++) { $kandidat=@(); try { $kandidat += (Get-CimInstance Win32_Process -ErrorAction Stop | Where-Object { $_.CommandLine -and ($_.CommandLine -match $pola) } | ForEach-Object { $_.ProcessId }) } catch {}; try { $kandidat += (Get-NetTCPConnection -LocalPort $p -State Listen -ErrorAction Stop).OwningProcess } catch { $kandidat += @(netstat -ano | Select-String 'LISTENING\s*$' | Select-String (':' + $p + '\s') | ForEach-Object { ($_.ToString().Trim() -split '\s+')[-1] }) }; $kandidat = $kandidat | Where-Object { $_ -and $_ -ne 0 -and $_ -ne $saya -and $_ -ne $induk } | Sort-Object -Unique; if (-not $kandidat) { break }; foreach ($id in $kandidat) { $pernah=$true; try { Stop-Process -Id $id -Force -ErrorAction Stop; Write-Host ('   port ' + $p + ' (' + $nama + '): PID ' + $id + ' ditutup') } catch { Write-Host ('   GAGAL menutup PID ' + $id + ' (butuh Administrator): ' + $_.Exception.Message) } }; Start-Sleep -Milliseconds 900 }; if (-not $pernah) { Write-Host ('   port ' + $p + ' (' + $nama + ') sudah bebas') } else { Write-Host ('   port ' + $p + ' (' + $nama + ') dibersihkan') }"
 goto :eof
 
 rem ============================================================

@@ -117,7 +117,7 @@ def test_health_terbuka_tanpa_login(dengan_auth):
     # "fitur"/"login"/"kode" = identitas proses (bukan data bisnis), dipakai
     # untuk mendiagnosis "API masih versi lama".
     assert set(isi) <= {"status", "app", "versi", "waktu", "fitur",
-                        "login", "kode"}
+                        "login", "kode", "folder", "pid", "mulai"}
     assert all(isinstance(x, str) and "/" not in x for x in isi.get("fitur", []))
     assert isi["login"]["cara"] == "username-sandi"
 

@@ -99,8 +99,10 @@ export default function Login({ onSukses }: { onSukses: () => void }) {
    ... Cloudflare Access") — layar ini menggantinya dengan penjelasan dan
    langkah perbaikan.
 --------------------------------------------------------------------------- */
-export function LayarApiLama({ versiApi, versiUi, detail }:
-  { versiApi?: string; versiUi: string; detail?: string }) {
+export function LayarApiLama({ versiApi, versiUi, detail, folder, pid }:
+  { versiApi?: string; versiUi: string; detail?: string;
+    folder?: string; pid?: number }) {
+  const perintah = pid ? `taskkill /f /pid ${pid}` : undefined;
   return (
     <div className="galaxy min-h-screen flex items-center justify-center p-4 text-slate-200">
       <div className="w-full max-w-lg rounded-2xl bg-[#15143a]/90 border border-amber-400/30 p-8">
@@ -113,16 +115,43 @@ export function LayarApiLama({ versiApi, versiUi, detail }:
           port 8000 {versiApi ? <>versi <b>{versiApi}</b></> : "masih versi lama"}.
           Karena itu login tidak bisa diproses.
         </p>
+        {folder && (
+          <div className="mt-3 rounded-md bg-violet-500/10 border border-violet-400/30
+                          px-3 py-2 text-[12px] text-violet-200 leading-relaxed">
+            API lama itu dijalankan dari folder:
+            <br />
+            <code className="break-all">{folder}</code>
+            {pid ? <> — PID <b>{pid}</b></> : null}
+            <br />
+            Tutup proses itu, lalu jalankan <b>start-web.bat</b> dari folder
+            aplikasi yang baru.
+          </div>
+        )}
+
         <div className="mt-4 rounded-md bg-amber-500/10 border border-amber-400/30
                         px-3 py-2 text-[12px] text-amber-200 leading-relaxed">
-          Biasanya karena jendela <b>OP Margin - API</b> dari sesi sebelumnya
-          masih hidup. Perbaikan:
+          Perbaikan (pilih salah satu):
           <ol className="list-decimal list-inside mt-1 space-y-1">
-            <li>Tutup jendela <b>OP Margin - API</b> (dan <b>OP Margin - Web</b>).</li>
-            <li>Jalankan <b>start-web.bat</b> lagi — skrip itu menutup paksa
-                port lama lalu memastikan versinya cocok.</li>
+            <li>
+              Jalankan <b>hentikan-api.bat</b> (klik kanan → Run as
+              administrator bila perlu). Skrip itu menutup semua proses API
+              dan web di komputer ini, lalu melaporkan apakah port 8000 sudah
+              bebas.
+            </li>
+            <li>
+              Lalu jalankan <b>start-web.bat</b> dari folder yang ada
+              <code>VERSI.txt</code> berisi <b>{versiUi}</b>. Tunggu tulisan
+              "API siap: kode {versiUi}".
+            </li>
             <li>Muat ulang halaman ini (Ctrl+F5).</li>
           </ol>
+          {perintah && (
+            <p className="mt-2">
+              Cara cepat menutup API lama: buka Command Prompt, jalankan
+              <br />
+              <code className="inline-block mt-1">{perintah}</code>
+            </p>
+          )}
         </div>
         <p className="mt-3 text-[11px] text-indigo-300/60 leading-relaxed">
           Periksa juga <code>http://localhost:8000/api/health</code> — nilai

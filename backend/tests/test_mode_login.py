@@ -193,3 +193,22 @@ def test_reset_sandi_membuat_akun_bila_belum_ada(tmp_path, monkeypatch, capsys):
         p = s.get(Pengguna, "admin")
         assert p is not None and p.peran == "admin" and p.aktif
         assert cek_sandi("sandi-uji-123", p.hash_sandi)
+
+
+def test_health_memuat_asal_proses(monkeypatch):
+    """health menyebut folder & PID proses yang menjawab.
+
+    Tanpa ini, layar "beda versi" hanya tahu nomor versinya. Dengan folder dan
+    PID, pemakai bisa melihat API lama dijalankan dari folder mana dan
+    menutupnya dengan tepat.
+    """
+    import os
+
+    from app.versi import AKAR
+
+    monkeypatch.setenv("APP_ENV", "development")
+    monkeypatch.setenv("AUTH_DISABLED", "true")
+    isi = _klien().get("/api/health").json()
+    assert isi["folder"] == str(AKAR)
+    assert isi["pid"] == os.getpid()
+    assert isi["mulai"]
