@@ -879,9 +879,24 @@ def pasang_router(app, ambil_session):
         return analisa_analitik(session, d, z)
 
     @router.get("/grafik/margin-antar-tahun")
-    def grafik_margin(session: Session = dep):
+    def grafik_margin(dari: str | None = None, sampai: str | None = None,
+                      session: Session = dep):
+        """Pola bulanan per tahun untuk mode 'banding antar tahun'.
+
+        `dari`/`sampai` (YYYY-MM) membatasi bulan yang dibandingkan, supaya
+        perbandingan antar tahun memakai periode yang sama.
+        """
+        kd = _bulan_ym(dari, "dari")
+        ks = _bulan_ym(sampai, "sampai")
+        if kd and ks and kd > ks:
+            raise HTTPException(422, "Periode 'dari' harus sebelum atau sama "
+                                     "dengan 'sampai'.")
         per_tahun: dict[int, dict[int, float]] = defaultdict(dict)
         for b in session.scalars(select(MartBulanan)):
+            if kd and (b.tahun, b.bulan) < kd:
+                continue
+            if ks and (b.tahun, b.bulan) > ks:
+                continue
             per_tahun[b.tahun][b.bulan] = b.op_margin_usc
         return [{"tahun": t,
                  "data": [{"bulan": m, "margin": per_tahun[t].get(m)}
@@ -1127,14 +1142,28 @@ def pasang_router(app, ambil_session):
         return {"baris": baris}
 
     @router.get("/kartu/margin-bulanan")
-    def kartu_margin_bulanan(format: str | None = None, session: Session = dep):
+    def kartu_margin_bulanan(dari: str | None = None, sampai: str | None = None,
+                             format: str | None = None, session: Session = dep):
+        """OP Margin bulanan untuk grafik tren vs target.
+
+        `dari`/`sampai` (YYYY-MM) membatasi periode yang ditampilkan; kartu di
+        layar selalu mengirim periode pilihannya, bawaannya seluruh data.
+        """
+        kd = _bulan_ym(dari, "dari")
+        ks = _bulan_ym(sampai, "sampai")
+        if kd and ks and kd > ks:
+            raise HTTPException(422, "Periode 'dari' harus sebelum atau sama "
+                                     "dengan 'sampai'.")
+        semua = [b for b in session.scalars(select(MartBulanan).order_by(
+            MartBulanan.tahun, MartBulanan.bulan))
+            if (kd is None or (b.tahun, b.bulan) >= kd)
+            and (ks is None or (b.tahun, b.bulan) <= ks)]
         baris = [{
             "tahun": b.tahun, "bulan": b.bulan, "sicom": b.sicom_usc,
             "op_price": b.harga_beli_usc, "op_margin": b.op_margin_usc,
             "ton": b.qty_ton, "target": b.target_usc, "pencapaian": b.pencapaian,
             "catatan_koreksi": KOREKSI.get((b.tahun, b.bulan)),
-        } for b in session.scalars(select(MartBulanan).order_by(
-            MartBulanan.tahun, MartBulanan.bulan))]
+        } for b in semua]
         if format == "xlsx":
             return respon_xlsx(
                 "margin_bulanan.xlsx",
@@ -1143,7 +1172,10 @@ def pasang_router(app, ambil_session):
                 [[b["tahun"], b["bulan"], b["sicom"], b["op_price"], b["op_margin"],
                   b["ton"], b["target"], b["pencapaian"], b["catatan_koreksi"] or ""]
                  for b in baris])
-        return {"baris": baris}
+        return {"baris": baris,
+                "dari": f"{baris[0]['tahun']}-{baris[0]['bulan']:02d}" if baris else None,
+                "sampai": f"{baris[-1]['tahun']}-{baris[-1]['bulan']:02d}" if baris else None,
+                "jumlah_bulan": len(baris)}
 
     # ------------------------------------------------------------ kartu: margin per grade/vendor
     @router.get("/kartu/margin-per")

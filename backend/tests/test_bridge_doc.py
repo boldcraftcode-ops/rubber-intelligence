@@ -270,3 +270,52 @@ def test_bridge_analisa_saat_margin_naik(klien):
     assert any("naik" in a for a in d["analisa"])
     # walau margin naik, penekan tetap dilaporkan
     assert any("Penekan terbesar" in a for a in d["analisa"])
+
+
+# ------------------------------------- kartu "OP Margin bulanan vs target"
+def test_margin_bulanan_tanpa_filter_semua_periode(klien):
+    d = klien.get("/api/kartu/margin-bulanan").json()
+    assert d["jumlah_bulan"] == len(d["baris"]) > 0
+    # urut waktu
+    kunci = [(b["tahun"], b["bulan"]) for b in d["baris"]]
+    assert kunci == sorted(kunci)
+
+
+def test_margin_bulanan_pakai_periode(klien):
+    d = klien.get("/api/kartu/margin-bulanan",
+                  params={"dari": "2025-03", "sampai": "2025-08"}).json()
+    assert d["dari"] == "2025-03" and d["sampai"] == "2025-08"
+    assert d["jumlah_bulan"] == 6
+    assert all("2025-03" <= f"{b['tahun']}-{b['bulan']:02d}" <= "2025-08"
+               for b in d["baris"])
+
+
+def test_margin_bulanan_validasi_periode(klien):
+    assert klien.get("/api/kartu/margin-bulanan?dari=2025-13").status_code == 422
+    assert klien.get("/api/kartu/margin-bulanan?dari=2025-06&sampai=2025-01"
+                     ).status_code == 422
+
+
+def test_margin_antar_tahun_ikut_periode(klien):
+    """Mode 'banding antar tahun' harus membandingkan bulan yang sama saja."""
+    d = klien.get("/api/grafik/margin-antar-tahun",
+                  params={"dari": "2024-03", "sampai": "2025-09"}).json()
+    assert [x["tahun"] for x in d] == [2024, 2025]
+    for th in d:
+        terisi = [m["bulan"] for m in th["data"] if m["margin"] is not None]
+        if th["tahun"] == 2024:
+            assert terisi == list(range(3, 13))
+        else:
+            assert terisi == list(range(1, 10))
+
+
+def test_margin_antar_tahun_validasi(klien):
+    assert klien.get("/api/grafik/margin-antar-tahun?dari=Agustus"
+                     ).status_code == 422
+
+
+def test_margin_bulanan_ekspor_ikut_periode(klien):
+    r = klien.get("/api/kartu/margin-bulanan?dari=2025-03&sampai=2025-08&format=xlsx")
+    assert r.status_code == 200
+    wb = openpyxl.load_workbook(io.BytesIO(r.content))
+    assert wb.active.max_row == 7  # header + 6 bulan

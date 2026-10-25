@@ -300,13 +300,21 @@ function KartuElemen() {
 function KartuGrafikMargin() {
   const { t } = useBahasa();
   const [mode, setMode] = useState<"tren" | "banding">("tren");
+  // Periode yang ditampilkan (YYYY-MM). Kosong = semua periode.
+  const [dari, setDari] = useState("");
+  const [sampai, setSampai] = useState("");
+  const params = new URLSearchParams();
+  if (dari) params.set("dari", dari);
+  if (sampai) params.set("sampai", sampai);
+  const qs = params.size ? "?" + params.toString() : "";
+
   const bulanan = useQuery({
-    queryKey: ["margin-bulanan-grafik"],
-    queryFn: () => ambilJson("/api/kartu/margin-bulanan"),
+    queryKey: ["margin-bulanan-grafik", qs],
+    queryFn: () => ambilJson(`/api/kartu/margin-bulanan${qs}`),
   });
   const antar = useQuery({
-    queryKey: ["grafik-margin"],
-    queryFn: () => ambilJson("/api/grafik/margin-antar-tahun"),
+    queryKey: ["grafik-margin", qs],
+    queryFn: () => ambilJson(`/api/grafik/margin-antar-tahun${qs}`),
   });
 
   const tahunSemua: number[] = antar.data?.map((d: any) => d.tahun) ?? [];
@@ -333,9 +341,35 @@ function KartuGrafikMargin() {
   return (
     <Kartu idMetrik="margin_bulanan" judul={t("OP Margin bulanan vs target")}
            keterangan={t("Tujuan grafik: menjawab “apakah margin tiap bulan mencapai target, dan bagaimana trennya?”")}
-           urlEkspor="/api/kartu/margin-bulanan"
+           urlEkspor={`/api/kartu/margin-bulanan${qs}`}
            anak={
       <>
+        <div className="flex flex-wrap items-end gap-3 mb-3 text-xs">
+          <div>
+            <label className="block text-slate-400 mb-1">{t("Dari bulan")}</label>
+            <input type="month" className="rounded-md border border-violet-400/30 bg-[#0b0a26]/80 px-2 py-1.5 text-slate-100"
+                   value={dari} onChange={(e) => setDari(e.target.value)} />
+          </div>
+          <div>
+            <label className="block text-slate-400 mb-1">{t("Sampai bulan")}</label>
+            <input type="month" className="rounded-md border border-violet-400/30 bg-[#0b0a26]/80 px-2 py-1.5 text-slate-100"
+                   value={sampai} onChange={(e) => setSampai(e.target.value)} />
+          </div>
+          {(dari || sampai) && (
+            <button className="rounded-md border border-violet-400/30 bg-white/5 px-2.5 py-1.5 text-slate-300 hover:bg-violet-500/20"
+                    onClick={() => { setDari(""); setSampai(""); }}>
+              {t("tampilkan semua periode")}
+            </button>
+          )}
+          <span className="text-slate-500 pb-1.5">
+            {bulanan.data
+              ? `${bulanan.data.jumlah_bulan} ${t("bulan ditampilkan")}` +
+                (bulanan.data.dari
+                  ? ` (${bulanan.data.dari} → ${bulanan.data.sampai})` : "")
+              : ""}
+          </span>
+        </div>
+
         <div className="flex flex-wrap items-center gap-2 mb-3">
           {([["tren", t("Tren & capaian target")], ["banding", t("Banding antar tahun")]] as const)
             .map(([id, label]) => (

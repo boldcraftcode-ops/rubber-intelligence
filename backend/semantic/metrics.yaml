@@ -112,6 +112,10 @@ kartu:
       putus-putus = target yang berlaku bulan itu. Tampilan "Banding antar
       tahun" - garis pola Jan-Des untuk tahun-tahun yang dipilih (bawaan
       2 tahun terakhir) untuk melihat pola musiman.
+      Kartu memakai filter periode (dari/sampai bulan): tren hanya menampilkan
+      bulan dalam periode itu, dan mode banding hanya membandingkan bulan-bulan
+      dalam periode yang sama antar tahun (mis. Mar-Sep 2024 vs Mar-Sep 2025).
+      Bila filter kosong, seluruh data ditampilkan.
   margin_per:
     judul: Margin per grade / vendor
     cara_dihitung: >
