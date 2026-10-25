@@ -2,7 +2,13 @@
 
 Hasil akhir: backend berjalan otomatis sebagai service di PC Windows,
 terhubung ke internet lewat **Cloudflare Tunnel** (tanpa membuka port apa pun
-di router), dan hanya bisa diakses setelah login **Cloudflare Access**.
+di router), dan hanya bisa dipakai setelah **login username + sandi** aplikasi.
+
+> Login **Cloudflare Access sudah dihapus** dari aplikasi. Tunnel tetap boleh
+> dipakai (itu hanya jalan masuk, bukan pengaman login), tetapi sekarang
+> satu-satunya penjaga adalah username+sandi aplikasi — karena itu
+> `SECRET_KEY` wajib diisi dan sandi `admin123` wajib diganti (lihat
+> `checklist-keamanan.md`).
 
 Prasyarat: domain perusahaan sudah dikelola di Cloudflare (gratis), dan
 aplikasi sudah berjalan normal secara lokal (`start.bat` lulus tes).
@@ -28,16 +34,21 @@ bagian A-alternatif.)
    copy .env.example .env
    notepad .env
    ```
-   Isi minimal (nilai Access diisi di Bagian C):
+   Isi minimal:
    ```
    DATABASE_URL=sqlite:///opmargin.db
    APP_ENV=produksi
-   CF_ACCESS_TEAM_DOMAIN=[ISI-TEAM].cloudflareaccess.com
-   CF_ACCESS_AUD=[ISI-AUD]
+   SECRET_KEY=<hasil: python -c "import secrets; print(secrets.token_hex(32))">
    FRONTEND_ORIGIN=https://[ISI-NAMA-PROYEK].pages.dev
+   ADMIN_SANDI_AWAL=<sandi admin pertama, ganti setelah bisa masuk>
    ```
-   PENTING: jangan tulis `AUTH_DISABLED=true` — aplikasi sengaja MENOLAK
-   start di produksi bila itu ada (pengaman).
+   PENTING:
+   - jangan tulis `AUTH_DISABLED=true` — aplikasi sengaja MENOLAK start di
+     produksi bila itu ada (pengaman);
+   - `SECRET_KEY` wajib minimal 32 karakter, kalau tidak aplikasi juga
+     menolak start;
+   - setelan lama `CF_ACCESS_*` / `AUTH_MODE` boleh dihapus (tidak dipakai
+     lagi).
 4. Daftarkan service:
    ```powershell
    C:\nssm\nssm.exe install OPMarginAPI "C:\op-margin\backend\.venv\Scripts\python.exe" "-m uvicorn app.main:app --host 127.0.0.1 --port 8000 --env-file .env"
@@ -49,7 +60,7 @@ bagian A-alternatif.)
    ```
    Catatan: bila uvicorn versi Anda tidak mendukung `--env-file`, hapus opsi
    itu dan set variabel lewat NSSM:
-   `C:\nssm\nssm.exe set OPMarginAPI AppEnvironmentExtra APP_ENV=produksi CF_ACCESS_TEAM_DOMAIN=... CF_ACCESS_AUD=... FRONTEND_ORIGIN=...`
+   `C:\nssm\nssm.exe set OPMarginAPI AppEnvironmentExtra APP_ENV=produksi SECRET_KEY=... FRONTEND_ORIGIN=...`
 5. Uji: buka browser di PC itu ke `http://127.0.0.1:8000/api/health` —
    harus muncul `{"status":"ok",...}`. Perintah cek service:
    `C:\nssm\nssm.exe status OPMarginAPI`
@@ -113,15 +124,28 @@ bagian A-alternatif.)
 
 ---
 
-## Bagian C — Cloudflare Pages (frontend) dan Access (login)
+## Bagian C — Frontend di Cloudflare Pages + HTTPS
 
-Ikuti `deploy/cloudflare-pages-access.md`, lalu kembali ke sini:
-
-8. Isi `CF_ACCESS_TEAM_DOMAIN` dan `CF_ACCESS_AUD` di
-   `C:\op-margin\backend\.env` (nilai dari panduan Access), lalu restart:
+8. Build frontend dan pasang di Cloudflare Pages (atau host statis lain):
    ```powershell
-   C:\nssm\nssm.exe restart OPMarginAPI
+   cd C:\op-margin\frontend
+   npm install
+   npm run build      # hasilnya di folder dist\
    ```
+   Unggah `dist\` ke Pages. Bila frontend dan API berada di domain berbeda,
+   set variabel build `VITE_API_URL=https://api.[ISI-DOMAIN]` dan isi
+   `FRONTEND_ORIGIN=https://[ISI-NAMA-PROYEK].pages.dev` di `.env` backend,
+   lalu restart service.
+
+9. **Login tidak lagi lewat Cloudflare Access.** Setelah frontend terbuka,
+   yang muncul adalah form **username + sandi** aplikasi. Akun pertama
+   `admin` dengan sandi dari `ADMIN_SANDI_AWAL` (bawaan `admin123`).
+   Segera ganti lewat menu kanan atas → Ganti sandi, dan buat akun untuk
+   setiap pemakai di menu **Pengguna**.
+
+10. Pastikan alamatnya **HTTPS** (Cloudflare Pages/Tunnel sudah otomatis).
+    Tanpa HTTPS, sandi login bisa terlihat di jaringan — jangan pakai
+    `http://` untuk pemakaian lewat internet.
 
 ---
 
@@ -145,12 +169,14 @@ Ikuti `deploy/cloudflare-pages-access.md`, lalu kembali ke sini:
 ## Bagian E — Verifikasi akhir (kriteria penerimaan)
 
 Dari HP dengan data seluler (bukan WiFi kantor):
-1. Buka `https://[alamat-frontend]` → muncul halaman login Cloudflare Access.
-2. Login dengan email yang TERDAFTAR di kebijakan → aplikasi tampil dan data
-   terlihat (Ringkasan terisi).
-3. Coba login email yang TIDAK terdaftar (mis. Gmail pribadi lain) → Access
-   menolak ("You don't have permission").
-4. `https://api.[ISI-DOMAIN]/api/tahun` tanpa login → 401 dari backend
-   (lapisan kedua; Access biasanya sudah menghadang lebih dulu).
+1. Buka `https://[alamat-frontend]` → muncul form **username + sandi**
+   aplikasi (bukan halaman Cloudflare).
+2. Login dengan akun Anda → aplikasi tampil dan data terlihat (Ringkasan
+   terisi).
+3. Coba sandi salah → ditolak dengan pesan "Username atau sandi salah".
+   Coba akun yang dinonaktifkan → juga ditolak.
+4. `https://api.[ISI-DOMAIN]/api/tahun` tanpa sesi → 401 dari backend.
+   Header `Cf-Access-Jwt-Assertion` buatan sendiri juga harus 401 (Access
+   sudah dihapus, jadi tidak ada lagi jalur masuk lewat header itu).
 5. Restart PC → tunggu 2 menit → ulangi langkah 1-2 (service hidup sendiri).
 6. Cek `deploy/checklist-keamanan.md` dan centang semuanya.

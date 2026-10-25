@@ -4,8 +4,8 @@
 - Setiap input manual dicatat sebagai "unggahan" di lapisan raw supaya
   setiap angka tetap bisa ditelusuri asal-usulnya.
 - Mart dibangun ulang otomatis setelah setiap perubahan.
-- Peran/Cloudflare Access menyusul di fase keamanan; pembatasan peran
-  belum aktif di fase ini.
+- Login memakai username + sandi (tabel pengguna); pembatasan peran
+  admin/pengguna ada di api_fase4/api_database.
 """
 from __future__ import annotations
 
@@ -30,7 +30,8 @@ from sqlalchemy import select
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session
 
-from .auth import JALUR_BEBAS, KonfigurasiAuth, VerifikatorAccess
+from . import versi
+from .auth import KonfigurasiAuth
 from .core.alarm import evaluasi_alarm
 from .core.lookup import kurs_pada
 from .db import buat_engine, buat_session_factory
@@ -60,6 +61,28 @@ class KursMasuk(BaseModel):
     pengisi: str = "?"
 
 
+def _info_proses() -> dict:
+    """Folder kerja & PID proses API yang sedang menjawab.
+
+    Dipakai layar "beda versi" di tampilan web: bila API yang menjawab
+    ternyata dijalankan dari folder lain (proses lama), folder itulah yang
+    harus ditutup. Aman: hanya untuk diagnosis di komputer sendiri.
+    """
+    import os
+
+    from . import versi as _versi
+    sekarang = dt.datetime.now(dt.timezone.utc)
+    mulai = None
+    try:  # waktu proses python ini dimulai
+        import time as _time
+        mulai = dt.datetime.fromtimestamp(
+            _time.time() - _time.monotonic(), dt.timezone.utc
+        ).isoformat(timespec="seconds")
+    except Exception:
+        mulai = sekarang.isoformat(timespec="seconds")
+    return {"folder": str(_versi.AKAR), "pid": os.getpid(), "mulai": mulai}
+
+
 def _catat_input_manual(session: Session, jenis: str, isi: dict, pengisi: str) -> int:
     """Catat input manual ke lapisan raw (jejak: siapa, kapan, apa)."""
     payload = json.dumps(isi, default=str, ensure_ascii=False, sort_keys=True)
@@ -86,7 +109,7 @@ def buat_app(engine: Engine | None = None) -> FastAPI:
     SessionLocal = buat_session_factory(engine)
 
     # Di produksi, halaman dokumentasi otomatis dimatikan.
-    app = FastAPI(title="OP Margin API", version="0.5.0",
+    app = FastAPI(title="OP Margin API", version=versi.VERSI,
                   docs_url=None if cfg_auth.produksi else "/docs",
                   redoc_url=None,
                   openapi_url=None if cfg_auth.produksi else "/openapi.json")
@@ -100,46 +123,16 @@ def buat_app(engine: Engine | None = None) -> FastAPI:
                            allow_methods=["GET", "POST"],
                            allow_headers=["Content-Type"])
 
-    # --- login lokal (form sendiri, data pengguna di database) --------------
+    # --- login: username + sandi (satu-satunya cara masuk) -------------------
     if cfg_auth.lokal_aktif:
         from .auth_lokal import pasang_middleware_lokal, pastikan_admin
         pasang_middleware_lokal(app, cfg_auth)
         with SessionLocal() as _s:
             if pastikan_admin(_s):
                 _s.commit()
-    # --- verifikasi Cloudflare Access ---------------------------------------
-    elif cfg_auth.aktif:
-        import jwt as _jwt
-
-        verifikator = VerifikatorAccess(cfg_auth)
-
-        @app.middleware("http")
-        async def wajib_login(request: Request, call_next):
-            jalur = request.url.path
-            if not jalur.startswith("/api") or jalur in JALUR_BEBAS:
-                return await call_next(request)
-            token = request.headers.get("Cf-Access-Jwt-Assertion") \
-                or request.cookies.get("CF_Authorization")
-            if not token:
-                return JSONResponse(status_code=401, content={
-                    "detail": "Belum login. Akses halaman lewat alamat resmi "
-                              "aplikasi (Cloudflare Access) lalu masuk dengan "
-                              "email kantor Anda."})
-            try:
-                klaim = verifikator.verifikasi(token)
-            except _jwt.ExpiredSignatureError:
-                return JSONResponse(status_code=401, content={
-                    "detail": "Sesi login sudah kedaluwarsa. Muat ulang halaman "
-                              "untuk login kembali."})
-            except _jwt.PyJWTError:
-                return JSONResponse(status_code=401, content={
-                    "detail": "Token login tidak sah. Muat ulang halaman; bila "
-                              "masih gagal hubungi admin."})
-            request.state.email = klaim.get("email")
-            return await call_next(request)
-    elif not cfg_auth.produksi:
-        print("PERINGATAN: autentikasi NONAKTIF (mode development). "
-              "Jangan dipakai di produksi.")
+    else:
+        print("PERINGATAN: login DIMATIKAN (AUTH_DISABLED=true, mode "
+              "pengembangan). Jangan dipakai di produksi.")
 
     def ambil_session():
         with SessionLocal() as session:
@@ -148,6 +141,9 @@ def buat_app(engine: Engine | None = None) -> FastAPI:
     # Rute analisis Fase 3 (ringkasan, rekonsiliasi, kualitas, kartu, telusur)
     from .api_analisis import pasang_router
     pasang_router(app, ambil_session)
+
+    from .api_jelaskan import pasang_router as pasang_jelaskan
+    pasang_jelaskan(app, ambil_session)
 
     # Rute Fase 4 (stok, aturan, simulasi, perencanaan, alarm, audit)
     from .api_fase4 import pasang_router_fase4
@@ -197,9 +193,31 @@ def buat_app(engine: Engine | None = None) -> FastAPI:
 
     @app.get("/api/health")
     def health():
-        """Pemeriksaan hidup untuk monitoring. TANPA data sensitif."""
-        return {"status": "ok", "app": "op-margin", "versi": "0.5.0",
-                "waktu": dt.datetime.utcnow().isoformat(timespec="seconds") + "Z"}
+        """Pemeriksaan hidup + daftar fitur yang dikenal proses ini.
+
+        Berguna untuk mendiagnosis "backend masih versi lama": bila fitur
+        tidak ada di daftar, berarti proses yang berjalan adalah kode lama
+        (mis. jendela API lama belum ditutup sehingga port 8000 dipakai ulang).
+        TANPA data sensitif.
+        """
+        from .auth import info_mode
+        # pid/folder/mulai dipakai untuk mengenali proses API yang MENJAWAB:
+        # bila versinya beda dengan folder aplikasi, layar "beda versi"
+        # menampilkan folder & PID-nya supaya bisa ditutup dengan tepat.
+        proses = _info_proses()
+        return {"status": "ok", "app": "op-margin", "versi": versi.VERSI,
+                "login": info_mode(cfg_auth),
+                "waktu": dt.datetime.utcnow().isoformat(timespec="seconds") + "Z",
+                "fitur": [
+                    "ringkasan", "telusur", "margin-elemen", "5w1h",
+                    "margin-bridge", "days-of-cover", "jelaskan",
+                    "margin-bulanan-periode", "ekspor-xlsx",
+                ],
+                # versi kode ikut dilaporkan supaya mudah membandingkan
+                # folder yang dijalankan dengan kode terbaru di repo
+                "kode": versi.versi_folder(),
+                "folder": proses["folder"], "pid": proses["pid"],
+                "mulai": proses["mulai"]}
 
     # ------------------------------------------------------------ SICOM
     @app.get("/api/sicom")

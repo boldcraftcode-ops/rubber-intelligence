@@ -65,7 +65,7 @@ peringatan (vendor tak dikenal, Dry tidak cocok, wilayah kosong, dst.).
 python -m pytest
 ```
 
-Harus tertulis `82 passed`. Pengujian mencakup semua kasus uji emas:
+Harus tertulis `172 passed`. Pengujian mencakup semua kasus uji emas:
 harian 3 Jan 2026, bulan Jan/Feb 2026, Jan 2023, Mar 2020 (kurs berubah
 tengah bulan), Apr 2022 (koreksi salah ketik Excel), Days/rasio stok,
 dan perencanaan Jan 2027.
@@ -122,11 +122,212 @@ Lalu buka `http://localhost:5173`. Sejak Fase 3 aplikasi punya lima tab:
   perhitungan OP Margin. Menyimpan tanggal yang sama menimpa nilai lama
   dengan pemberitahuan, tidak menggandakan.
 
+## Kalau ada tombol analisa yang bilang "Fitur ini tidak dikenali"
+
+Gejalanya: misalnya **Margin Bridge** atau **Days of Cover** tidak mau terbuka
+(muncul pesan error / "Not Found"), padahal **5W1H** jalan normal.
+
+Artinya bukan data Anda yang salah — yang berjalan di port 8000 masih **proses
+API dari sesi sebelumnya**, yaitu kode lama yang belum punya fitur baru. 5W1H
+sudah ada di kode lama, karena itu ia tetap jalan; Margin Bridge dan Days of
+Cover belum, karena itu ia 404.
+
+Cara memastikan (buka di browser):
+
+```
+http://localhost:8000/api/health
+```
+
+Di situ ada daftar `fitur`. Kalau daftar itu **tidak** memuat
+`margin-bridge`, `days-of-cover`, dan `jelaskan`, berarti API-nya versi lama.
+
+Cara memperbaiki:
+
+1. Tutup jendela hitam berjudul **"OP Margin - API"** (atau tekan `Ctrl+C` di
+   jendela itu). Kalau lupa mana, jalankan saja `start-web.bat` — skrip itu
+   akan menanyakan sendiri: `Tutup proses itu sekarang? [Y] ya / [N] biarkan`.
+   Jawab `Y` lalu Enter.
+2. Jalankan `start-web.bat` lagi. Skrip ini sekarang:
+   - **menutup paksa** proses lama di port 8000 dan 5173 (termasuk proses
+     induk `uvicorn --reload` yang menghidupkan ulang anaknya),
+   - menjalankan API dan web,
+   - **membandingkan versi** API yang menjawab dengan `VERSI.txt`. Bila beda,
+     skrip menutup port sekali lagi dan menjalankan API ulang secara otomatis;
+     bila tetap beda, muncul **GAGAL: ... tetap VERSI LAIN** dengan langkah
+     lanjutan.
+3. Di browser, muat ulang dengan **Ctrl+F5** (agar berkas lama tidak dipakai).
+
+`start-web.bat` kini juga **menyiapkan sendiri** apa pun yang belum ada:
+ruang kerja Python (`backend\.venv`), database + data awal, dan pustaka
+tampilan web. Jadi pesan *"GAGAL: jalankan dulu start.bat"* tidak muncul lagi
+— skrip langsung mengerjakannya.
+
+### Kalau muncul pesan aneh seperti `'f' is not recognized`
+
+Itu bukan salah Python atau data Anda: itu cmd.exe salah membaca baris skrip
+versi lama. Versi `start-web.bat` sekarang sudah bebas dari penyebabnya
+(tanpa blok kurung berlapis, tanpa `for /f`, ASCII saja, akhir baris CRLF).
+
+Yang perlu Anda pastikan: berkas yang dijalankan memang versi terbaru —
+
+```powershell
+git pull
+```
+
+lalu jalankan `start-web.bat` lagi. Kalau masih muncul, hapus berkas
+`start-web.bat` di folder itu dan `git checkout -- start-web.bat`.
+
+## Login aplikasi: username + sandi
+
+Login **Cloudflare Access sudah DIHAPUS** (tidak dipakai lagi). Satu-satunya
+cara masuk adalah username + sandi yang tersimpan di tabel `pengguna`:
+
+- Akun pertama dibuat otomatis saat API pertama kali start: **`admin`**,
+  sandi dari `ADMIN_SANDI_AWAL` di `.env` (bawaan `admin123`).
+- Pengguna lain dibuat admin lewat menu **Pengguna**.
+- Lupa sandi / akun terkunci? Dari folder `backend`:
+
+  ```powershell
+  .venv\Scripts\python -m app.cli reset-sandi admin
+  ```
+
+  Perintah itu mencetak sandi baru dan mengaktifkan kembali akunnya.
+
+Bila `.env` Anda masih menyimpan setelan lama (`AUTH_MODE=...`,
+`CF_ACCESS_TEAM_DOMAIN`, `CF_ACCESS_AUD`), semuanya **diabaikan** dan boleh
+dihapus. Untuk membersihkannya sekaligus menyiapkan `SECRET_KEY`:
+
+```powershell
+cd backend
+.venv\Scripts\python -m app.cli atur-login-lokal
+```
+
+### Bukti paling cepat: folder ini kode lama atau bukan
+
+Pesan **"Belum login ... Cloudflare Access"** sudah **tidak ada lagi** di kode
+sejak versi 0.7.3. Kalau pesan itu masih muncul, yang menjawab di port 8000
+pasti kode lama. Cara membuktikannya dari folder aplikasi:
+
+```powershell
+findstr /c:"Cloudflare Access" backend\app\main.py
+```
+
+- **Ada hasilnya** → folder ini masih kode lama (belum diperbarui). Jalankan
+  `perbarui-kode.bat`.
+- **Tidak ada hasil** → folder sudah 0.7.3; berarti ada proses lama di port
+  8000. Jalankan `start-web.bat` (sekarang menutupnya otomatis).
+
+`diagnosa.bat` juga memeriksa hal ini dan menuliskannya di bagian [0].
+
+### Kalau masih tidak bisa masuk: jalankan `diagnosa.bat`
+
+Klik dua kali **`diagnosa.bat`** di folder aplikasi. Skrip itu mencetak:
+
+1. versi kode yang ada di folder (`git log`) — memastikan `git pull` berhasil;
+2. setelan `.env`, **mode login yang benar-benar dipakai**, jumlah akun dan
+   status aktifnya;
+3. jawaban API yang **sedang berjalan** di port 8000 (versi + mode login).
+
+Bacanya:
+
+| Yang tertulis | Artinya | Tindakan |
+|---|---|---|
+| `mode login : lokal (username-sandi)` dan API menjawab `0.7.3` + `lokal` | sudah benar | login dengan akun Anda (Ctrl+F5 dulu) |
+| API menjawab `mode: nonaktif` | `AUTH_DISABLED=true` masih ada di `.env` | hapus baris itu, lalu jalankan `start-web.bat` lagi |
+| API tidak menjawab / `404` di `/api/auth/mode` | prosesnya **kode lama** | tutup jendela API lama, jalankan `start-web.bat` lagi |
+| bagian [2] tidak ada akun, atau sandi lupa | akun belum dibuat / sandi salah | `python -m app.cli reset-sandi admin` (dari folder `backend`) |
+
+Bila `SECRET_KEY` belum diisi, di luar produksi aplikasi membuat kunci
+sementara otomatis supaya login tetap bisa dipakai (sesi berakhir saat API
+dijalankan ulang). `start-web.bat` membuang `AUTH_DISABLED` untuk jendela
+API-nya, sehingga login selalu aktif saat dijalankan dari skrip itu.
+
+## Layar "Aplikasi dan servernya beda versi"
+
+Layar ini muncul bila **tampilan web** dan **API** memakai versi berbeda —
+hampir selalu karena proses API dari folder/sesi lama masih menjawab di port
+8000. Layar itu menyebutkan versi keduanya, dan (bila API-nya versi baru) juga
+menampilkan **folder asal & PID** proses lama.
+
+Perbaikan:
+
+1. Klik kanan **`hentikan-api.bat`** → **Run as administrator**. Skrip itu
+   menghentikan **service Windows** `OPMargin*` (bila aplikasi pernah dipasang
+   sebagai service — service akan menghidupkan ulang API lama bila hanya
+   prosesnya yang ditutup), menutup semua proses `uvicorn`/`vite`, lalu
+   melaporkan apakah **port 8000 dan 5173 sudah BEBAS**. Kalau ada yang gagal
+   ditutup, skrip mengatakannya (tidak diam-diam).
+2. Jalankan **`start-web.bat`** dari folder aplikasi yang benar — folder yang
+   `VERSI.txt`-nya berisi `0.7.3`. Tunggu tulisan **`API siap: kode 0.7.3`**.
+3. Buka `http://localhost:5173`, tekan **Ctrl+F5**.
+
+Cek cepat kapan saja: `http://localhost:8000/api/health` — nilai `versi` dan
+`kode` harus `0.7.3`, dan `folder` harus menunjuk folder aplikasi Anda.
+
+## Cara tercepat membereskan: `perbaiki.bat`
+
+Klik dua kali **`perbaiki.bat`** (satu berkas, tidak butuh Git). Skrip itu:
+
+1. menutup semua proses aplikasi lama (port 8000 & 5173);
+2. mengunduh kode terbaru ke folder baru `..\rubber-intelligence-baru`;
+3. menyalin database lama (`backend\opmargin.db`) ke folder baru — data aman;
+4. menyiapkan Python + pustaka di folder baru;
+5. **menyetel ulang sandi admin dan mencetak sandi barunya** di layar;
+6. menjalankan `start-web.bat` dari folder baru.
+
+Folder lama tidak dihapus dan tidak diubah. Setelah selesai, buka
+`http://localhost:5173`, Ctrl+F5, lalu masuk dengan **admin** dan sandi yang
+tercetak di langkah 5. `.env` sengaja **tidak** disalin, supaya tidak ada sisa
+setelan lama yang mengganggu.
+
+## Kalau folder Anda hasil UNDUHAN ZIP (bukan `git clone`)
+
+Tanda-tandanya: di dalam folder **tidak ada** folder `.git`, path-nya seperti
+`Downloads\rubber-intelligence-arena-...\`, dan `diagnosa.bat` melaporkan
+*"Folder ini BUKAN hasil git clone"*.
+
+Penting: **unduhan ZIP tidak ikut diperbarui.** Mengunduh satu-dua berkas dari
+GitHub tidak memperbarui sisanya — akibatnya muncul campuran berkas baru dan
+lama seperti pesan *`invalid choice: 'diagnosa'`* atau *`No module named
+app.tanya_api`*. Perbaikan login yang terbaru pun tidak ikut terpakai.
+
+Cara membereskan (pilih salah satu):
+
+1. **Otomatis** — klik dua kali **`perbarui-kode.bat`**. Skrip itu mengunduh
+   kode terbaru dari branch resmi, mengekstraknya ke folder baru di sebelah
+   folder lama (`..\rubber-intelligence-terbaru`), lalu membuka foldernya.
+   Folder lama tidak dihapus. Setelah itu jalankan `start-web.bat` di folder
+   baru.
+2. **Manual** — unduh alamat ini di browser, lalu ekstrak:
+
+   ```
+   https://github.com/boldcraftcode-ops/rubber-intelligence/archive/refs/heads/arena/18670644-rubber-intelligence.zip
+   ```
+3. **Paling rapi (butuh Git)** — di folder tujuan:
+
+   ```powershell
+   git clone -b arena/18670644-rubber-intelligence https://github.com/boldcraftcode-ops/rubber-intelligence.git
+   ```
+
+   Setelah itu pembaruan berikutnya cukup `git pull`.
+
+**Data lama tidak hilang.** Bila ingin memakai data yang sudah ada, salin dua
+berkas ini dari folder lama ke folder baru **sebelum** menjalankan
+`start-web.bat`:
+
+- `backend\opmargin.db` — database (data SICOM, pembelian, stok, target)
+- `backend\.env` — setelan login (opsional; bila tidak ada, dibuat otomatis)
+
+Cara memastikan folder baru benar-benar versi terbaru: lihat **`VERSI.txt`** di
+akar folder (versi terbaru saat dokumen ini ditulis: **0.7.3**), atau buka
+`http://localhost:8000/api/health` dan periksa `"versi"` serta `"kode"`.
+
 ## Deploy ke internet (Fase 5)
 Panduan lengkap ada di folder `deploy/`: mulai dari `deploy/install-windows.md`
-(service Windows + Cloudflare Tunnel), lalu `deploy/cloudflare-pages-access.md`
-(frontend + login), `deploy/backup.ps1` + `deploy/restore.md` (backup harian &
-uji restore), dan `deploy/checklist-keamanan.md`.
+(service Windows + Cloudflare Tunnel), `deploy/backup.ps1` +
+`deploy/restore.md` (backup harian & uji restore), dan
+`deploy/checklist-keamanan.md`. Login memakai username+sandi aplikasi
+(Cloudflare Access sudah dihapus).
 
 ## Pindah ke PostgreSQL (nanti)
 Salin `.env.example` menjadi `.env` dan isi `DATABASE_URL` dengan alamat
