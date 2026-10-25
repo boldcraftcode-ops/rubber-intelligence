@@ -116,6 +116,23 @@ kartu:
       bulan dalam periode itu, dan mode banding hanya membandingkan bulan-bulan
       dalam periode yang sama antar tahun (mis. Mar-Sep 2024 vs Mar-Sep 2025).
       Bila filter kosong, seluruh data ditampilkan.
+
+      Cara membaca & penyajian:
+      - Satuan sumbu: US¢/kg (sen dolar AS per kg, BUKAN dolar). Tersedia
+        toggle Rp/kg memakai kurs efektif bulanan (K = SUM(Amount)/SUM(Amount/kurs));
+        Rp/kg = US¢/kg x K / 100.
+      - Target digambar sebagai segmen pendek pada tiap batang (bukan garis
+        tangga), supaya tidak terbaca sebagai target bulan lain.
+      - Angka margin dan selisih dicetak di atas batang (mis. 10,1 (-1,9)).
+      - Status: 'di atas target' (selisih >= 1 US¢/kg, biru, ikon centang),
+        'tipis' (0 s.d. < 1 US¢/kg di atas target, kuning, ikon tilde), dan
+        'di bawah target' (oranye, ikon seru). Ikon + angka dipakai agar tetap
+        terbaca oleh penglihatan buta warna; garis target berwarna putih.
+      - Judul kartu berupa kesimpulan otomatis, mis. 'Margin di bawah target
+        3 bulan berturut-turut sejak Okt-26'.
+      - Panel selisih di bawah grafik menunjukkan bulan mana yang minus.
+      - Anotasi singkat ditambahkan pada titik penting (SICOM turun tajam,
+        perubahan target, selisih terburuk).
   margin_per:
     judul: Margin per grade / vendor
     cara_dihitung: >

@@ -319,3 +319,38 @@ def test_margin_bulanan_ekspor_ikut_periode(klien):
     assert r.status_code == 200
     wb = openpyxl.load_workbook(io.BytesIO(r.content))
     assert wb.active.max_row == 7  # header + 6 bulan
+
+
+# ------------------------------- status target & toggle Rp/kg (kurs bulanan)
+def test_status_target_termasuk_tipis():
+    """Ambang tipis: di atas target tetapi < 1 US¢/kg."""
+    from app.api_analisis import AMBANG_TIPIS_USC, _status_target
+    assert _status_target(13.4, 13.0) == "tipis"      # +0,40 -> tipis
+    assert _status_target(13.0 + AMBANG_TIPIS_USC, 13.0) == "di atas target"
+    assert _status_target(15.8, 13.0) == "di atas target"
+    assert _status_target(12.63, 13.0) == "di bawah target"
+    assert _status_target(None, 13.0) == "tanpa target"
+    assert _status_target(10.0, None) == "tanpa target"
+
+
+def test_margin_bulanan_punya_kurs_dan_status(klien):
+    d = klien.get("/api/kartu/margin-bulanan",
+                  params={"dari": "2026-01", "sampai": "2026-10"}).json()
+    for b in d["baris"]:
+        assert b["kurs"] and 15000 < b["kurs"] < 20000      # Rp/USD wajar
+        assert b["status_target"] in ("di atas target", "tipis",
+                                      "di bawah target", "tanpa target")
+        assert b["selisih_vs_target"] == pytest.approx(
+            b["op_margin"] - b["target"], abs=1e-9)
+    # konversi Rp/kg = US¢/kg x kurs / 100
+    b = d["baris"][0]
+    assert b["op_margin"] * b["kurs"] / 100 == pytest.approx(1760, abs=6)
+
+
+def test_margin_bulanan_ekspor_punya_kolom_rp_dan_status(klien):
+    r = klien.get("/api/kartu/margin-bulanan?dari=2026-01&sampai=2026-03&format=xlsx")
+    wb = openpyxl.load_workbook(io.BytesIO(r.content))
+    judul = [c.value for c in wb.active[1]]
+    for kolom in ("OP Margin (Rp/kg)", "Kurs efektif (Rp/USD)",
+                  "Selisih vs target (USc/kg)", "Status"):
+        assert kolom in judul

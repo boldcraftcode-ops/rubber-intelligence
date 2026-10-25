@@ -14,7 +14,7 @@ punya tiga tombol analisa dengan periode mengikuti filter kartu:
 keputusan, + bridge per bulan), dan **Days of Cover** (pemakaian implisit dari
 neraca stok, safety dibandingkan dalam hari). Sudah ada API (FastAPI)
 dan aplikasi web (React + Vite): ringkasan, input harian SICOM/kurs, unggah
-data, rekonsiliasi, perencanaan, alarm, pengguna, dll. **129 unit test** —
+data, rekonsiliasi, perencanaan, alarm, pengguna, dll. **132 unit test** —
 termasuk 19 kasus uji emas yang dicocokkan persis dengan perhitungan Excel lama.
 
 Struktur: `backend/` = API, rumus inti, importer, pengujian; `frontend/` =

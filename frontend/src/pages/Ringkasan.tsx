@@ -297,9 +297,63 @@ function KartuElemen() {
 }
 
 /* ---------- grafik margin: tren vs target & banding antar tahun ---------- */
+// Palet aman buta warna (bukan hijau-merah): biru = di atas target,
+// kuning = hanya tipis di atas target, oranye = di bawah target.
+const WARNA_STATUS: Record<string, { isi: string; ikon: string; teks: string }> = {
+  "di atas target": { isi: "#3b82f6", ikon: "✓", teks: "text-sky-300" },
+  tipis: { isi: "#eab308", ikon: "≈", teks: "text-yellow-300" },
+  "di bawah target": { isi: "#f97316", ikon: "!", teks: "text-orange-300" },
+  "tanpa target": { isi: "#64748b", ikon: "–", teks: "text-slate-400" },
+};
+const warnaIkon = (status: string) => (WARNA_STATUS[status] ?? WARNA_STATUS["tanpa target"]).isi;
+
+const labelBulanTahun = (tahun: number, bulan: number) =>
+  `${NAMA_BULAN[bulan]}-${String(tahun).slice(2)}`;
+
+/* Segmen target pendek per batang (bukan garis tangga) — tidak bisa disalahbaca
+   sebagai target bulan lain seperti garis tangga. */
+function SegmenTarget({ cx, cy, lebar }: any) {
+  if (cx == null || cy == null) return null;
+  const w = (lebar ?? 16) / 2;
+  return (
+    <line x1={cx - w} x2={cx + w} y1={cy} y2={cy}
+          stroke="#e2e8f0" strokeWidth={3} strokeLinecap="round" />
+  );
+}
+
+/* Kesimpulan otomatis sebagai judul kartu (bukan nama grafik). */
+function kesimpulanMargin(rows: any[], satuan: string, fmt: (n: number) => string) {
+  const berstatus = rows.filter((r) => r.status !== "tanpa target");
+  if (!berstatus.length) return null;
+  const akhir = berstatus[berstatus.length - 1];
+  const selisih = Math.abs(akhir.delta);
+  const arah = akhir.delta >= 0 ? "di atas" : "di bawah";
+
+  // berapa bulan berturut-turut status akhir ini?
+  let rentet = 0;
+  for (let i = berstatus.length - 1; i >= 0; i--) {
+    if (berstatus[i].status === akhir.status) rentet++;
+    else break;
+  }
+  const capai = berstatus.filter((r) => r.delta >= 0).length;
+
+  if (akhir.status === "di bawah target" && rentet >= 2) {
+    return `Margin di bawah target ${rentet} bulan berturut-turut sejak ${berstatus[berstatus.length - rentet].label}`;
+  }
+  if (akhir.status === "tipis") {
+    return `Margin ${akhir.label} hanya ${fmt(selisih)} ${satuan} di atas target — praktis pas`;
+  }
+  if (akhir.status === "di bawah target") {
+    return `Margin ${akhir.label} ${arah} target ${fmt(selisih)} ${satuan}`;
+  }
+  return `Margin ${akhir.label} di atas target ${fmt(selisih)} ${satuan} ` +
+         `(${capai} dari ${berstatus.length} bulan mencapai target)`;
+}
+
 function KartuGrafikMargin() {
   const { t } = useBahasa();
   const [mode, setMode] = useState<"tren" | "banding">("tren");
+  const [unit, setUnit] = useState<"usc" | "rp">("usc");
   // Periode yang ditampilkan (YYYY-MM). Kosong = semua periode.
   const [dari, setDari] = useState("");
   const [sampai, setSampai] = useState("");
@@ -321,14 +375,73 @@ function KartuGrafikMargin() {
   const [pilih, setPilih] = useState<number[] | null>(null);
   const tahunDipilih = pilih ?? tahunSemua.slice(-2); // bawaan: 2 tahun terakhir
 
-  const dataTren = (bulanan.data?.baris ?? []).map((b: any) => ({
-    label: `${NAMA_BULAN[b.bulan]}-${String(b.tahun).slice(2)}`,
-    margin: b.op_margin,
-    target: b.target,
-    capai: b.target !== null && b.op_margin !== null && b.op_margin >= b.target,
-  }));
+  const adaKurs = (bulanan.data?.baris ?? []).some((b: any) => b.kurs);
+  const pakaiRp = unit === "rp" && adaKurs;
+  // 1 US¢/kg = kurs/100 Rp/kg
+  const keSatuan = (usc: number | null, kurs: number | null) =>
+    usc === null || usc === undefined ? null
+      : pakaiRp ? (kurs ? (usc * kurs) / 100 : null) : usc;
+  const satuan = pakaiRp ? "Rp/kg" : "US¢/kg";
+  const fmtNilai = (n: number) => fmtAngka(n, pakaiRp ? 0 : 2);
+
+  const dataTren = (bulanan.data?.baris ?? []).map((b: any) => {
+    const m = keSatuan(b.op_margin, b.kurs);
+    const tgt = keSatuan(b.target, b.kurs);
+    const delta = m !== null && tgt !== null ? m - tgt : null;
+    return {
+      label: labelBulanTahun(b.tahun, b.bulan),
+      margin: m, target: tgt, delta,
+      marginUsc: b.op_margin, targetUsc: b.target, kurs: b.kurs,
+      sicom: b.sicom,
+      status: b.status_target ?? "tanpa target",
+      capai: delta !== null && delta >= 0,
+    };
+  });
   const adaTarget = dataTren.filter((d: any) => d.target !== null);
   const capai = adaTarget.filter((d: any) => d.capai).length;
+  const tipis = adaTarget.filter((d: any) => d.status === "tipis").length;
+
+  // jumlah batang menentukan kerapatan label & lebar segmen target
+  const n = dataTren.length;
+  const lebarSegmen = n > 36 ? 6 : n > 20 ? 10 : n > 12 ? 14 : 18;
+  const tampilLabel = n <= 40;
+  // ambang "tipis" = 1 US¢/kg; dalam Rp/kg dikonversi dengan kurs terakhir
+  const kursTerakhir = [...dataTren].reverse().find((d: any) => d.kurs)?.kurs ?? null;
+  const ambangTipis = pakaiRp && kursTerakhir ? kursTerakhir / 100 : 1;
+
+  // Anotasi ringkas: titik-titik yang layak dijelaskan (maks 3)
+  const anotasi: { label: string; teks: string }[] = [];
+  const berdata = dataTren.filter((d: any) => d.sicom !== null);
+  if (n > 1 && n <= 40) {
+    const jatuh = [...berdata].sort((a, b) => (a.sicom - b.sicom))[0];
+    const iJatuh = berdata.indexOf(jatuh);
+    if (iJatuh > 0 && n > 1) {
+      anotasi.push({ label: jatuh.label, teks: t("SICOM turun tajam") });
+    }
+    // perubahan target antar bulan
+    for (let i = 1; i < dataTren.length; i++) {
+      const kini = dataTren[i], lalu = dataTren[i - 1];
+      if (kini.target != null && lalu.target != null && kini.target !== lalu.target) {
+        anotasi.push({
+          label: kini.label,
+          teks: `${t("target")} ${kini.target > lalu.target ? "↑" : "↓"} ${fmtNilai(kini.target)}`,
+        });
+        break;
+      }
+    }
+    // penurunan margin terbesar
+    const turun = dataTren.filter((d: any) => d.delta !== null)
+      .sort((a: any, b: any) => a.delta - b.delta)[0];
+    if (turun && turun.delta < 0 && !anotasi.some((a) => a.label === turun.label)) {
+      anotasi.push({ label: turun.label, teks: t("selisih terburuk") });
+    }
+  }
+  const anotasiTampil = anotasi.slice(0, 3);
+
+  const judulKesimpulan = mode === "tren" ? kesimpulanMargin(dataTren, satuan, fmtNilai) : null;
+  const periodeTeks = bulanan.data?.dari
+    ? `${bulanan.data.dari} → ${bulanan.data.sampai}`
+    : "";
 
   const dataBanding = Array.from({ length: 12 }, (_, i) => {
     const titik: any = { bulan: NAMA_BULAN[i + 1] };
@@ -339,8 +452,9 @@ function KartuGrafikMargin() {
   });
 
   return (
-    <Kartu idMetrik="margin_bulanan" judul={t("OP Margin bulanan vs target")}
-           keterangan={t("Tujuan grafik: menjawab “apakah margin tiap bulan mencapai target, dan bagaimana trennya?”")}
+    <Kartu idMetrik="margin_bulanan"
+           judul={judulKesimpulan ? t(judulKesimpulan) : t("OP Margin bulanan vs target")}
+           keterangan={t("OP Margin tiap bulan dibandingkan target bulan itu sendiri (segmen putih pada tiap batang). Satuan: sen dolar AS per kg (US¢/kg) — bukan dolar.")}
            urlEkspor={`/api/kartu/margin-bulanan${qs}`}
            anak={
       <>
@@ -361,11 +475,24 @@ function KartuGrafikMargin() {
               {t("tampilkan semua periode")}
             </button>
           )}
+          <div>
+            <label className="block text-slate-400 mb-1">{t("Satuan")}</label>
+            <div className="flex rounded-md overflow-hidden border border-violet-400/30">
+              {([["usc", "US¢/kg"], ["rp", "Rp/kg"]] as const).map(([id, label]) => (
+                <button key={id} disabled={id === "rp" && !adaKurs}
+                  className={`px-2.5 py-1.5 ${unit === id ? "bg-violet-600 text-white"
+                    : "bg-white/5 text-slate-300 hover:bg-white/10"} disabled:opacity-40`}
+                  title={id === "rp" && !adaKurs ? t("Kurs bulanan belum tersedia") : undefined}
+                  onClick={() => setUnit(id)}>
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
           <span className="text-slate-500 pb-1.5">
             {bulanan.data
               ? `${bulanan.data.jumlah_bulan} ${t("bulan ditampilkan")}` +
-                (bulanan.data.dari
-                  ? ` (${bulanan.data.dari} → ${bulanan.data.sampai})` : "")
+                (periodeTeks ? ` (${periodeTeks})` : "")
               : ""}
           </span>
         </div>
@@ -382,8 +509,9 @@ function KartuGrafikMargin() {
           ))}
           {mode === "tren" && adaTarget.length > 0 && (
             <span className="ml-auto text-xs text-slate-400">
-              <b className="text-emerald-400">{capai}</b> {t("dari")} {adaTarget.length}{" "}
+              <b className="text-sky-300">{capai}</b> {t("dari")} {adaTarget.length}{" "}
               {t("bulan mencapai target")} ({fmtAngka((capai / adaTarget.length) * 100, 0)}%)
+              {tipis > 0 && <span className="text-yellow-300"> · {tipis} {t("tipis")}</span>}
             </span>
           )}
         </div>
@@ -393,46 +521,125 @@ function KartuGrafikMargin() {
             <div className="h-80">
               <ResponsiveContainer>
                 <ComposedChart data={dataTren}
-                               margin={{ top: 5, right: 10, bottom: 5, left: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="label" fontSize={10} minTickGap={26} />
-                  <YAxis fontSize={11}
-                         label={{ value: "US¢/kg", angle: -90, position: "insideLeft",
+                               margin={{ top: 22, right: 10, bottom: 5, left: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,.08)" />
+                  <XAxis dataKey="label" fontSize={10} minTickGap={26}
+                         tick={{ fill: "#cbd5e1" }} />
+                  <YAxis fontSize={11} tick={{ fill: "#cbd5e1" }}
+                         label={{ value: satuan, angle: -90, position: "insideLeft",
                                   fontSize: 11, fill: "#a5b4fc" }} />
                   <Tooltip content={({ payload, label }) => {
                     const p: any = payload?.[0]?.payload;
                     if (!p) return null;
+                    const st = WARNA_STATUS[p.status] ?? WARNA_STATUS["tanpa target"];
+                    const lain = pakaiRp
+                      ? (p.kurs ? `≈ ${fmtAngka(p.marginUsc, 2)} US¢/kg` : null)
+                      : (p.kurs ? `≈ ${fmtAngka(p.marginUsc * p.kurs / 100, 0)} Rp/kg` : null);
                     return (
                       <div className="rounded-md bg-[#15143a] border border-violet-500/30 p-2 text-xs shadow">
                         <b>{label}</b><br />
-                        OP Margin: <b>{fmtAngka(p.margin)}</b> US¢/kg<br />
-                        Target: {fmtAngka(p.target, 1)}<br />
-                        {p.target !== null && (p.capai
-                          ? <span className="text-emerald-400">✓ mencapai target (+{fmtAngka(p.margin - p.target, 2)})</span>
-                          : <span className="text-red-400">✗ di bawah target ({fmtAngka(p.margin - p.target, 2)})</span>)}
+                        {t("Margin")}: <b>{fmtNilai(p.margin ?? 0)}</b> {satuan}
+                        {lain && <span className="text-slate-500"> ({lain})</span>}<br />
+                        {t("Target")}: {p.target === null ? "–" : `${fmtNilai(p.target)} ${satuan}`}<br />
+                        {t("Selisih")}: <b className={st.teks}>
+                          {p.delta === null ? "–" : `${p.delta >= 0 ? "+" : "−"}${fmtNilai(Math.abs(p.delta))}`}
+                        </b><br />
+                        <span className={st.teks}>{st.ikon} {t(p.status)}</span>
+                        {p.kurs && (
+                          <div className="text-slate-500 mt-0.5">
+                            {t("Kurs")}: {fmtAngka(p.kurs, 0)} Rp/USD
+                          </div>
+                        )}
                       </div>
                     );
                   }} />
                   <ReferenceLine y={0} stroke="#64748b" />
-                  <Bar dataKey="margin" name="OP Margin" maxBarSize={14}>
+                  {anotasiTampil.map((a) => (
+                    <ReferenceLine key={a.label} x={a.label} stroke="#a78bfa"
+                                   strokeDasharray="2 3"
+                                   label={{ value: a.teks, position: "insideTop",
+                                            fill: "#c4b5fd", fontSize: 9 }} />
+                  ))}
+                  <Bar dataKey="margin" name="OP Margin" maxBarSize={16} isAnimationActive={false}>
                     {dataTren.map((d: any, i: number) => (
-                      <Cell key={i} fill={d.target === null ? "#818cf8"
-                        : d.capai ? "#34d399" : "#fb7185"} />
+                      <Cell key={i} fill={warnaIkon(d.status)} />
                     ))}
+                    {tampilLabel && (
+                      <LabelList dataKey="margin" content={(p: any) => {
+                        const d = p?.payload;
+                        if (!d || d.margin === null) return null;
+                        const st = WARNA_STATUS[d.status] ?? WARNA_STATUS["tanpa target"];
+                        const naik = (d.margin ?? 0) >= 0;
+                        const y = naik ? p.y - 5 : p.y + p.height + 11;
+                        const teks = d.delta === null
+                          ? fmtNilai(d.margin)
+                          : `${fmtNilai(d.margin)} (${d.delta >= 0 ? "+" : "−"}${fmtNilai(Math.abs(d.delta))})`;
+                        return (
+                          <text x={p.x + p.width / 2} y={y} textAnchor="middle"
+                                fontSize={n > 20 ? 8 : 9} fontWeight={600} fill="#e2e8f0">
+                            {st.ikon} {teks}
+                          </text>
+                        );
+                      }} />
+                    )}
                   </Bar>
-                  <Line dataKey="target" name="Target" stroke="#fbbf24"
-                        strokeDasharray="6 3" dot={false} type="stepAfter"
-                        strokeWidth={1.8} />
+                  <Line dataKey="target" name="Target" stroke="transparent" strokeWidth={0}
+                        dot={<SegmenTarget lebar={lebarSegmen} />} activeDot={false}
+                        isAnimationActive={false} legendType="none" />
                 </ComposedChart>
               </ResponsiveContainer>
             </div>
-            <p className="mt-2 text-xs text-slate-400">
-              Cara baca: satu batang = satu bulan (urut waktu 2020 → sekarang).
-              <span className="text-emerald-400"> ■ hijau</span> = margin mencapai
-              target · <span className="text-red-400">■ merah</span> = di bawah
-              target · <span className="text-amber-400">- - kuning</span> = garis
-              target. Arahkan kursor ke batang untuk angka persisnya.
-            </p>
+
+            {/* Panel selisih terhadap target: satu pandangan melihat bulan minus */}
+            <div className="mt-2">
+              <div className="text-[11px] text-slate-400 mb-0.5">
+                {t("Selisih terhadap target (ke atas = di atas target, ke bawah = kurang)")}
+              </div>
+              <div className="h-24">
+                <ResponsiveContainer>
+                  <BarChart data={dataTren} margin={{ top: 4, right: 10, bottom: 0, left: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,.06)" />
+                    <XAxis dataKey="label" hide />
+                    <YAxis fontSize={9} tick={{ fill: "#94a3b8" }} width={38} />
+                    <Tooltip content={({ payload, label }) => {
+                      const p: any = payload?.[0]?.payload;
+                      if (!p) return null;
+                      const st = WARNA_STATUS[p.status] ?? WARNA_STATUS["tanpa target"];
+                      return (
+                        <div className="rounded-md bg-[#15143a] border border-violet-500/30 p-2 text-xs shadow">
+                          <b>{label}</b><br />
+                          {t("Selisih")}: {p.delta === null ? "–"
+                            : `${p.delta >= 0 ? "+" : "−"}${fmtNilai(Math.abs(p.delta))}`} {satuan}<br />
+                          <span className={st.teks}>{st.ikon} {t(p.status)}</span>
+                        </div>
+                      );
+                    }} />
+                    <ReferenceLine y={0} stroke="#94a3b8" />
+                    <Bar dataKey="delta" isAnimationActive={false} maxBarSize={16}>
+                      {dataTren.map((d: any, i: number) => (
+                        <Cell key={i} fill={warnaIkon(d.status)} />
+                      ))}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+
+            <div className="mt-2 grid gap-1 text-xs text-slate-400">
+              <p>
+                {t("Cara baca: satu batang = satu bulan")}
+                {periodeTeks ? `, ${t("periode aktif")} ${periodeTeks}` : ""}
+                {bulanan.data ? ` (${bulanan.data.jumlah_bulan} ${t("bulan")})` : ""}.
+                {" "}
+                <span className="text-sky-300">■ ✓ {t("di atas target")}</span> ·{" "}
+                <span className="text-yellow-300">■ ≈ {t("tipis")} (&lt; {fmtAngka(ambangTipis, pakaiRp ? 0 : 1)} {satuan} {t("di atas target")})</span> ·{" "}
+                <span className="text-orange-300">■ ! {t("di bawah target")}</span> ·{" "}
+                <span className="text-slate-200">▬ {t("segmen target bulan itu")}</span>
+              </p>
+              <p className="text-slate-500">
+                {t("Warna tidak sendirian — setiap batang diberi ikon dan angka, jadi tetap terbaca oleh penglihatan buta warna.")}
+              </p>
+            </div>
           </>
         ) : (
           <>
@@ -453,15 +660,15 @@ function KartuGrafikMargin() {
               <ResponsiveContainer>
                 <LineChart data={dataBanding}
                            margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="bulan" fontSize={12} />
-                  <YAxis fontSize={11}
+                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,.08)" />
+                  <XAxis dataKey="bulan" fontSize={12} tick={{ fill: "#cbd5e1" }} />
+                  <YAxis fontSize={11} tick={{ fill: "#cbd5e1" }}
                          label={{ value: "US¢/kg", angle: -90, position: "insideLeft",
                                   fontSize: 11, fill: "#a5b4fc" }} />
-                  <Tooltip formatter={(v: any) => fmtAngka(v as number)} />
+                  <Tooltip formatter={(v: any) => `${fmtAngka(v as number)} US¢/kg`} />
                   <Legend />
                   {antar.data?.filter((th: any) => tahunDipilih.includes(th.tahun))
-                    .map((th: any, i: number) => (
+                    .map((th: any) => (
                     <Line key={th.tahun} dataKey={th.tahun} type="monotone"
                           stroke={WARNA[tahunSemua.indexOf(th.tahun) % WARNA.length]}
                           dot={{ r: 2.5 }} connectNulls
@@ -471,10 +678,8 @@ function KartuGrafikMargin() {
               </ResponsiveContainer>
             </div>
             <p className="mt-2 text-xs text-slate-400">
-              Cara baca: membandingkan pola bulanan beberapa tahun (mis. apakah
-              margin biasanya turun di pertengahan tahun). Centang maksimal 2–3
-              tahun supaya tetap mudah dibaca; garis paling tebal = tahun terbaru
-              yang dipilih.
+              {t("Cara baca: membandingkan pola bulanan beberapa tahun (mis. apakah margin biasanya turun di pertengahan tahun). Centang maksimal 2–3 tahun supaya tetap mudah dibaca; garis paling tebal = tahun terbaru yang dipilih.")}
+              {periodeTeks && ` ${t("Periode aktif")}: ${periodeTeks}.`}
             </p>
           </>
         )}

@@ -170,6 +170,23 @@ def _bulan_ym(teks: str | None, nama: str) -> tuple[int, int] | None:
                                  f"(contoh: 2026-08), bukan '{teks}'.")
 
 
+# Ambang "tipis": margin di atas target tetapi kurang dari 1 US¢/kg. Hijau
+# penuh pada selisih sekecil itu menyesatkan (mis. Agu-26 hanya +0,37).
+AMBANG_TIPIS_USC = 1.0
+
+
+def _status_target(margin, target) -> str:
+    """'di atas target' / 'tipis' / 'di bawah target' / 'tanpa target'."""
+    if margin is None or target is None:
+        return "tanpa target"
+    selisih = margin - target
+    if selisih < 0:
+        return "di bawah target"
+    if selisih < AMBANG_TIPIS_USC:
+        return "tipis"
+    return "di atas target"
+
+
 def _jumlah_hari(th: int, bl: int) -> int:
     """Jumlah hari dalam bulan (untuk pemakaian per hari)."""
     return calendar.monthrange(th, bl)[1]
@@ -1158,19 +1175,50 @@ def pasang_router(app, ambil_session):
             MartBulanan.tahun, MartBulanan.bulan))
             if (kd is None or (b.tahun, b.bulan) >= kd)
             and (ks is None or (b.tahun, b.bulan) <= ks)]
+        # Kurs efektif bulanan (tertimbang nilai transaksi) untuk toggle Rp/kg:
+        # K = SUM(Amount) / SUM(Amount/kurs). Jatuh ke rata-rata kurs bila kosong.
+        rp: dict[tuple[int, int], float] = defaultdict(float)
+        usd: dict[tuple[int, int], float] = defaultdict(float)
+        kurs_avg: dict[tuple[int, int], list[float]] = defaultdict(list)
+        for h in session.scalars(select(MartHarian)):
+            kunci = (h.tanggal.year, h.tanggal.month)
+            if h.kurs:
+                kurs_avg[kunci].append(h.kurs)
+                if h.qty_kering_kg and h.qty_kering_kg > 0 and h.amount_rp:
+                    rp[kunci] += float(h.amount_rp)
+                    usd[kunci] += float(h.amount_rp) / h.kurs
+
+        def _kurs(kunci: tuple[int, int]) -> float | None:
+            if usd.get(kunci):
+                return rp[kunci] / usd[kunci]
+            v = kurs_avg.get(kunci)
+            return sum(v) / len(v) if v else None
+
         baris = [{
             "tahun": b.tahun, "bulan": b.bulan, "sicom": b.sicom_usc,
             "op_price": b.harga_beli_usc, "op_margin": b.op_margin_usc,
             "ton": b.qty_ton, "target": b.target_usc, "pencapaian": b.pencapaian,
+            "kurs": _kurs((b.tahun, b.bulan)),
+            "selisih_vs_target": (b.op_margin_usc - b.target_usc)
+            if (b.target_usc is not None and b.op_margin_usc is not None) else None,
+            "status_target": _status_target(b.op_margin_usc, b.target_usc),
             "catatan_koreksi": KOREKSI.get((b.tahun, b.bulan)),
         } for b in semua]
         if format == "xlsx":
             return respon_xlsx(
                 "margin_bulanan.xlsx",
-                ["Tahun", "Bulan", "SICOM", "OP Price", "OP Margin", "Ton",
-                 "Target", "Pencapaian", "Catatan"],
+                ["Tahun", "Bulan", "SICOM (USc/kg)", "OP Price (USc/kg)",
+                 "OP Margin (USc/kg)", "Ton", "Target (USc/kg)", "Pencapaian",
+                 "OP Margin (Rp/kg)", "Kurs efektif (Rp/USD)", "Selisih vs target (USc/kg)",
+                 "Status", "Catatan"],
                 [[b["tahun"], b["bulan"], b["sicom"], b["op_price"], b["op_margin"],
-                  b["ton"], b["target"], b["pencapaian"], b["catatan_koreksi"] or ""]
+                  b["ton"], b["target"], b["pencapaian"],
+                  (b["op_margin"] * b["kurs"] / 100.0) if b["kurs"] else None,
+                  b["kurs"],
+                  (b["op_margin"] - b["target"])
+                  if (b["target"] is not None and b["op_margin"] is not None) else None,
+                  _status_target(b["op_margin"], b["target"]),
+                  b["catatan_koreksi"] or ""]
                  for b in baris])
         return {"baris": baris,
                 "dari": f"{baris[0]['tahun']}-{baris[0]['bulan']:02d}" if baris else None,

@@ -77,6 +77,29 @@ const KAMUS: Record<string, string> = {
   "Baris pembelian & tiket pada": "Purchase & ticket rows on",
   "unggahan asal": "source upload",
   // ---- panel analisa kartu RM Stock – Intake vs Pricing
+  // ---- grafik OP Margin bulanan vs target
+  "OP Margin tiap bulan dibandingkan target bulan itu sendiri (segmen putih pada tiap batang). Satuan: sen dolar AS per kg (US¢/kg) — bukan dolar.":
+    "Each month's OP Margin against that month's own target (white segment on each bar). Unit: US cents per kg (US¢/kg) — not dollars.",
+  "Satuan": "Unit",
+  "Kurs bulanan belum tersedia": "Monthly FX rate not available yet",
+  "Margin": "Margin",
+  "Selisih": "Gap",
+  "Kurs": "FX rate",
+  "di atas target": "above target",
+  "di bawah target": "below target",
+  "tanpa target": "no target",
+  "tipis": "thin",
+  "Selisih terhadap target (ke atas = di atas target, ke bawah = kurang)":
+    "Gap to target (up = above target, down = short)",
+  "Cara baca: satu batang = satu bulan": "How to read: one bar = one month",
+  "periode aktif": "active period",
+  "Periode aktif": "Active period",
+  "segmen target bulan itu": "that month's target segment",
+  "Warna tidak sendirian — setiap batang diberi ikon dan angka, jadi tetap terbaca oleh penglihatan buta warna.":
+    "Colour never stands alone — every bar also carries an icon and a number, so it stays readable with colour-blind vision.",
+  "SICOM turun tajam": "SICOM drops sharply",
+  "target": "target",
+  "selisih terburuk": "worst gap",
   "Margin Bridge": "Margin Bridge",
   "Days of Cover": "Days of Cover",
   "Margin Bridge — analisa grafik": "Margin Bridge — chart analysis",
