@@ -9,6 +9,7 @@ const KAMUS: Record<string, string> = {
   // ---- menu samping
   "Margin Performance": "Margin Performance",
   "Analisis": "Analytics",
+  "Intake Analisis": "Intake Analytics",
   "Stok": "Stock",
   "Stok vs Margin": "Stock vs Margin",
   "Aturan Harga": "Pricing Rules",

@@ -9,7 +9,7 @@ Kalau Anda hanya punya 15 menit, baca bagian **1 (Status)**, **3 (Cara
 menjalankan)**, dan **7 (Aturan yang tidak boleh dilanggar)**. Selebihnya bisa
 dibaca saat mengerjakan tugas pertama.
 
-Terakhir diperbarui: **2026-10-25**, versi kode **0.7.8**.
+Terakhir diperbarui: **2026-10-25**, versi kode **0.7.9**.
 
 ---
 
@@ -36,7 +36,7 @@ ini setiap hari untuk memutuskan **harga beli maksimum** yang masih aman.
 
 | Hal | Nilai |
 |---|---|
-| Versi kode | **0.7.8** (`VERSI.txt`, `backend/app/versi.py`, `frontend/src/versi.ts`) |
+| Versi kode | **0.7.9** (`VERSI.txt`, `backend/app/versi.py`, `frontend/src/versi.ts`) |
 | Branch kerja | `arena/18670644-rubber-intelligence` |
 | Pull request | **#1 masih terbuka** — https://github.com/boldcraftcode-ops/rubber-intelligence/pull/1 |
 | Branch `main` | belum memuat pekerjaan v0.7.x |
@@ -456,11 +456,11 @@ pernah membuat label dan ikon tertukar; ganti blok utuhnya.
 cd backend && .venv/bin/python -m pytest -q          # 227 passed
 cd ../frontend && npm run build                       # bersih
 
-# 2. naikkan versi di 6 berkas (contoh 0.7.8 -> 0.7.9)
+# 2. naikkan versi di 6 berkas (contoh 0.7.9 -> 0.8.0)
 cd ..
 for f in VERSI.txt backend/app/versi.py frontend/src/versi.ts \
          docs/CARA_MENJALANKAN.md diagnosa.bat hentikan-api.bat; do
-  sed -i 's/0\.7\.8/0.7.9/g' "$f"
+  sed -i 's/0\.7\.9/0.8.0/g' "$f"
 done
 #    (Windows: ganti manual nilai versi di 6 berkas itu)
 #    .bat: pastikan tetap ASCII + CRLF

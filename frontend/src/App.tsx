@@ -22,7 +22,7 @@ import { useBahasa } from "./i18n";
 
 const TAB = [
   { id: "ringkasan", label: "Margin Performance", ikon: "◧" },
-  { id: "analisis", label: "Analisis", ikon: "◨" },
+  { id: "analisis", label: "Intake Analisis", ikon: "◨" },
   { id: "stok", label: "Stok", ikon: "▤" },
   { id: "stokmargin", label: "Stok vs Margin", ikon: "▥" },
   { id: "aturan", label: "Aturan Harga", ikon: "▦" },

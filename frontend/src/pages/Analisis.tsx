@@ -1025,7 +1025,7 @@ export default function Analisis() {
         </button>
       </div>
       {bukaAnalisa && (
-        <Panel5W1H judul="Analisa halaman Analisis — 5W1H"
+        <Panel5W1H judul="Analisa halaman Intake Analisis — 5W1H"
                    url={`/api/analisis/analisa${paramsA.size ? "?" + paramsA.toString() : ""}`}
                    tutup={() => setBukaAnalisa(false)} />
       )}
