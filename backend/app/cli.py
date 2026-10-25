@@ -7,6 +7,7 @@ Contoh pemakaian (dari folder backend):
   python -m app.cli ringkasan 2026
   python -m app.cli rekomendasi
   python -m app.cli rencana 2027
+  python -m app.cli atur-login-lokal
 """
 from __future__ import annotations
 
@@ -46,6 +47,10 @@ def main() -> None:
 
     sub.add_parser("init-db", help="Buat semua tabel database")
 
+    sub.add_parser("atur-login-lokal",
+                   help="Setel .env ke login lokal (username+sandi) "
+                        "untuk pemakaian di komputer sendiri")
+
     p = sub.add_parser("import-template", help="Impor template + data awal (.xlsx)")
     p.add_argument("file")
     p.add_argument("--pengunggah", default="?")
@@ -64,6 +69,25 @@ def main() -> None:
     p.add_argument("tahun_target", type=int)
 
     args = ap.parse_args()
+
+    if args.perintah == "atur-login-lokal":
+        from .setup_env import atur_login_lokal
+        hasil = atur_login_lokal()
+        print(("Dibuat: " if hasil["dibuat"] else "Diperbarui: ") + hasil["jalur"])
+        if hasil["diubah"]:
+            for k in sorted(hasil["diubah"]):
+                tampil = hasil["diubah"][k]
+                if k == "SECRET_KEY":
+                    tampil = "(kunci acak baru, 64 karakter)"
+                print(f"  {k} -> {tampil}")
+        else:
+            print("  (tidak ada yang perlu diubah)")
+        print("\nSekarang API memakai login lokal: username 'admin', "
+              "sandi awal 'admin123'.")
+        print("Jalankan ulang API (tutup jendela 'OP Margin - API', lalu "
+              "start-web.bat) agar setelan ini terpakai.")
+        return
+
     engine = buat_engine()
     Session = buat_session_factory(engine)
 

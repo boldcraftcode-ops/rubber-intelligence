@@ -32,6 +32,7 @@ def lingkungan_access(tmp_path, monkeypatch, kunci_rsa):
     jwks_file.write_text(json.dumps({"keys": [jwk]}))
     monkeypatch.setenv("CF_ACCESS_CERTS_URL", f"file://{jwks_file}")
     monkeypatch.setenv("CF_ACCESS_AUD", AUD)
+    monkeypatch.setenv("AUTH_MODE", "access")   # tegas: bukan login lokal
     monkeypatch.delenv("AUTH_DISABLED", raising=False)
     monkeypatch.setenv("APP_ENV", "development")
 
@@ -103,7 +104,7 @@ def test_health_terbuka_tanpa_login(lingkungan_access):
     assert isi["status"] == "ok"
     # "fitur" = daftar nama endpoint (bukan data bisnis); dipakai untuk
     # memastikan proses API yang berjalan memang versi terbaru.
-    assert set(isi) <= {"status", "app", "versi", "waktu", "fitur"}
+    assert set(isi) <= {"status", "app", "versi", "waktu", "fitur", "login"}
     assert all(isinstance(x, str) and "/" not in x for x in isi.get("fitur", []))
 
 
@@ -118,6 +119,7 @@ def test_produksi_auth_disabled_menolak_start(monkeypatch):
 
 
 def test_produksi_tanpa_access_menolak_start(monkeypatch):
+    monkeypatch.setenv("AUTH_MODE", "access")
     monkeypatch.setenv("APP_ENV", "produksi")
     monkeypatch.delenv("AUTH_DISABLED", raising=False)
     monkeypatch.delenv("CF_ACCESS_TEAM_DOMAIN", raising=False)

@@ -15,9 +15,9 @@ import UnggahData from "./pages/UnggahData";
 import GradeHarga from "./pages/GradeHarga";
 import Database from "./pages/Database";
 import Pengguna from "./pages/Pengguna";
-import Login from "./pages/Login";
-import { ambilJson, kirimJson, kelasInput, kelasLabel, kelasTombol,
-         kelasTombolKecil } from "./bersama";
+import Login, { LayarAccess, LayarGalat } from "./pages/Login";
+import { ambilJson, kirimJson, pesanGalat, kelasInput, kelasLabel,
+         kelasTombol, kelasTombolKecil } from "./bersama";
 import { useBahasa } from "./i18n";
 
 const TAB = [
@@ -96,6 +96,17 @@ export default function App() {
   const [tab, setTab] = useState<TabId>("ringkasan");
   const [bukaSandi, setBukaSandi] = useState(false);
 
+  /* ---- cara login yang berlaku di proses API ini ----
+     lokal  -> tampilkan form username+sandi
+     access -> tampilkan layar Cloudflare Access (form tak akan pernah bisa)
+     Dipakai juga untuk membedakan "belum login" dari "API bermasalah". */
+  const caraLogin = useQuery({
+    queryKey: ["cara-login"],
+    queryFn: () => ambilJson("/api/auth/mode"),
+    retry: false,
+    staleTime: 5 * 60_000,
+  });
+
   /* ---- sesi login ---- */
   const saya = useQuery({
     queryKey: ["saya"],
@@ -133,6 +144,15 @@ export default function App() {
     );
   }
   if (saya.error) {
+    const detail = pesanGalat(saya.error);
+    const cara = caraLogin.data?.cara;
+    if (cara === "cloudflare-access") {
+      return <LayarAccess detail={detail} produksi={caraLogin.data?.produksi} />;
+    }
+    if (cara === "tanpa-login") {
+      // Login tidak dipakai, tetapi API menolak: bukan soal sandi.
+      return <LayarGalat detail={detail} ulangi={() => qc.invalidateQueries()} />;
+    }
     return <Login onSukses={() => qc.invalidateQueries({ queryKey: ["saya"] })} />;
   }
 

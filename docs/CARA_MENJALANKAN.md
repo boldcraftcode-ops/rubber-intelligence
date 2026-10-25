@@ -65,7 +65,7 @@ peringatan (vendor tak dikenal, Dry tidak cocok, wilayah kosong, dst.).
 python -m pytest
 ```
 
-Harus tertulis `156 passed`. Pengujian mencakup semua kasus uji emas:
+Harus tertulis `168 passed`. Pengujian mencakup semua kasus uji emas:
 harian 3 Jan 2026, bulan Jan/Feb 2026, Jan 2023, Mar 2020 (kurs berubah
 tengah bulan), Apr 2022 (koreksi salah ketik Excel), Days/rasio stok,
 dan perencanaan Jan 2027.
@@ -172,6 +172,39 @@ git pull
 
 lalu jalankan `start-web.bat` lagi. Kalau masih muncul, hapus berkas
 `start-web.bat` di folder itu dan `git checkout -- start-web.bat`.
+
+## Kalau muncul "Belum login ... Cloudflare Access" padahal Anda di localhost
+
+Pesan itu berarti proses API menjalankan **mode login Cloudflare Access**.
+Access hanya bekerja lewat domain yang dilindungi Cloudflare, jadi di komputer
+sendiri pesan itu tidak akan pernah bisa dilewati — dan form username+sandi
+tidak bisa dipakai pada mode ini.
+
+Penyebab: `backend/.env` berisi setelan Access (`CF_ACCESS_AUD`) tanpa
+`AUTH_MODE=lokal`.
+
+Cara memperbaiki (pilih salah satu):
+
+1. Jalankan ulang `start-web.bat` — skrip ini mendeteksi setelan Access di
+   `.env`, lalu menawarkan mengubahnya ke login lokal. Jawab `Y`.
+2. Atau manual, dari folder `backend`:
+
+   ```powershell
+   .venv\Scripts\python -m app.cli atur-login-lokal
+   ```
+
+   Perintah ini menyetel `AUTH_MODE=lokal`, membuat `SECRET_KEY` acak yang
+   cukup panjang, dan tidak menghapus setelan lain (mis. `DATABASE_URL`).
+3. Tutup jendela **"OP Margin - API"**, jalankan `start-web.bat` lagi, lalu
+   muat ulang halaman (**Ctrl+F5**).
+
+Setelah itu halaman login memakai **username + sandi** (akun awal `admin` /
+`admin123` — segera ganti setelah masuk). Untuk melihat cara login yang
+sedang berlaku, buka `http://localhost:8000/api/auth/mode` atau
+`http://localhost:8000/api/health` (bagian `login`).
+
+Catatan: `backend/.env` tidak ikut Git (berisi rahasia). Contoh lengkapnya ada
+di `backend/.env.example`.
 
 ## Deploy ke internet (Fase 5)
 Panduan lengkap ada di folder `deploy/`: mulai dari `deploy/install-windows.md`

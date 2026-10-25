@@ -38,7 +38,8 @@ from .models import Pengguna
 
 COOKIE_SESI = "op_sesi"
 SESI_JAM = 12  # masa berlaku sesi (jam)
-JALUR_BEBAS_LOKAL = ("/api/health", "/api/sehat", "/api/auth/login")
+JALUR_BEBAS_LOKAL = ("/api/health", "/api/sehat", "/api/auth/login",
+                     "/api/auth/mode")
 
 _ITERASI = 240_000
 
@@ -173,13 +174,39 @@ class PenggunaUbah(BaseModel):
 # ----------------------------------------------------------------------------
 # Rute /api/auth
 # ----------------------------------------------------------------------------
+def _pesan_bukan_lokal(cfg) -> str:
+    """Penjelasan saat form username+sandi dipakai padahal mode bukan lokal."""
+    if cfg.aktif:
+        return ("Aplikasi ini memakai login Cloudflare Access, bukan username "
+                "dan sandi, jadi form ini tidak bisa dipakai. Buka aplikasi "
+                "lewat alamat resminya (domain yang dilindungi Access) dan "
+                "masuk dengan email kantor Anda. Jika ini komputer Anda "
+                "sendiri (localhost), atur AUTH_MODE=lokal di backend/.env "
+                "lalu jalankan ulang API.")
+    return ("Login sedang tidak aktif di proses API ini (mode development), "
+            "jadi tidak perlu masuk. Bila form ini tetap muncul, muat ulang "
+            "halaman; kalau masih muncul, jalankan ulang start-web.bat.")
+
+
 def pasang_router_auth(app, ambil_session, cfg):
     router = APIRouter(prefix="/api/auth")
     dep = Depends(ambil_session)
     lokal_aktif = cfg.mode == "lokal" and not cfg.auth_disabled
 
+    @router.get("/mode")
+    def mode_login():
+        """Cara login yang berlaku di proses ini — TANPA login, tanpa rahasia.
+
+        Dipakai tampilan web: bila mode Access, form username+sandi tidak akan
+        pernah berhasil, jadi form itu tidak ditampilkan.
+        """
+        from .auth import info_mode
+        return info_mode(cfg)
+
     @router.post("/login")
     def login(data: LoginMasuk, response: Response, session: Session = dep):
+        if not lokal_aktif:
+            raise HTTPException(422, _pesan_bukan_lokal(cfg))
         p = session.get(Pengguna, data.username.strip().lower())
         if p is None or not p.aktif or not cek_sandi(data.sandi, p.hash_sandi):
             time.sleep(0.5)  # perlambat percobaan tebak sandi

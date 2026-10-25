@@ -60,6 +60,17 @@ class KursMasuk(BaseModel):
     pengisi: str = "?"
 
 
+def _dibuka_dari_komputer_sendiri(request: Request) -> bool:
+    """True bila permintaan datang dari browser di komputer yang sama
+    (localhost / 127.0.0.1). Dipakai untuk memberi petunjuk yang tepat saat
+    mode login tidak cocok dengan cara aplikasi dibuka."""
+    host = (request.url.hostname or "").lower()
+    if host in ("localhost", "127.0.0.1", "::1", "0.0.0.0"):
+        return True
+    klien = request.client.host if request.client else ""
+    return klien in ("127.0.0.1", "::1", "localhost")
+
+
 def _catat_input_manual(session: Session, jenis: str, isi: dict, pengisi: str) -> int:
     """Catat input manual ke lapisan raw (jejak: siapa, kapan, apa)."""
     payload = json.dumps(isi, default=str, ensure_ascii=False, sort_keys=True)
@@ -86,7 +97,7 @@ def buat_app(engine: Engine | None = None) -> FastAPI:
     SessionLocal = buat_session_factory(engine)
 
     # Di produksi, halaman dokumentasi otomatis dimatikan.
-    app = FastAPI(title="OP Margin API", version="0.5.0",
+    app = FastAPI(title="OP Margin API", version="0.6.1",
                   docs_url=None if cfg_auth.produksi else "/docs",
                   redoc_url=None,
                   openapi_url=None if cfg_auth.produksi else "/openapi.json")
@@ -121,10 +132,18 @@ def buat_app(engine: Engine | None = None) -> FastAPI:
             token = request.headers.get("Cf-Access-Jwt-Assertion") \
                 or request.cookies.get("CF_Authorization")
             if not token:
-                return JSONResponse(status_code=401, content={
-                    "detail": "Belum login. Akses halaman lewat alamat resmi "
-                              "aplikasi (Cloudflare Access) lalu masuk dengan "
-                              "email kantor Anda."})
+                pesan = ("Belum login. Akses halaman lewat alamat resmi "
+                         "aplikasi (Cloudflare Access) lalu masuk dengan "
+                         "email kantor Anda.")
+                if _dibuka_dari_komputer_sendiri(request) and not cfg_auth.produksi:
+                    pesan += (" CATATAN: proses API ini berjalan di komputer "
+                              "Anda sendiri dengan mode login Cloudflare "
+                              "Access, dan Access tidak bisa dipakai di "
+                              "localhost. Untuk memakai aplikasi di komputer "
+                              "ini, isi backend/.env dengan AUTH_MODE=lokal "
+                              "(lihat backend/.env.example) lalu jalankan "
+                              "ulang API.")
+                return JSONResponse(status_code=401, content={"detail": pesan})
             try:
                 klaim = verifikator.verifikasi(token)
             except _jwt.ExpiredSignatureError:
@@ -138,8 +157,16 @@ def buat_app(engine: Engine | None = None) -> FastAPI:
             request.state.email = klaim.get("email")
             return await call_next(request)
     elif not cfg_auth.produksi:
-        print("PERINGATAN: autentikasi NONAKTIF (mode development). "
-              "Jangan dipakai di produksi.")
+        if cfg_auth.aktif:
+            print("PERINGATAN: mode login Cloudflare Access AKTIF di luar "
+                  "produksi. Access hanya bekerja lewat domain yang dilindungi "
+                  "Cloudflare, jadi di localhost semua halaman akan muncul "
+                  "'Belum login'. Untuk pemakaian di komputer sendiri, isi "
+                  "backend/.env dengan AUTH_MODE=lokal (lihat "
+                  "backend/.env.example) lalu jalankan ulang API.")
+        else:
+            print("PERINGATAN: autentikasi NONAKTIF (mode development). "
+                  "Jangan dipakai di produksi.")
 
     def ambil_session():
         with SessionLocal() as session:
@@ -207,7 +234,9 @@ def buat_app(engine: Engine | None = None) -> FastAPI:
         (mis. jendela API lama belum ditutup sehingga port 8000 dipakai ulang).
         TANPA data sensitif.
         """
-        return {"status": "ok", "app": "op-margin", "versi": "0.6.0",
+        from .auth import info_mode
+        return {"status": "ok", "app": "op-margin", "versi": "0.6.1",
+                "login": info_mode(cfg_auth),
                 "waktu": dt.datetime.utcnow().isoformat(timespec="seconds") + "Z",
                 "fitur": [
                     "ringkasan", "telusur", "margin-elemen", "5w1h",

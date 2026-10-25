@@ -33,7 +33,7 @@ echo.
 rem ------------------------------------------------------------
 rem  1. Ruang kerja Python (.venv)
 rem ------------------------------------------------------------
-if exist "%VPY%" goto :punya_python
+if exist "%VPY%" goto :cek_mode_env
 
 echo Ruang kerja Python belum ada. Menyiapkan sekarang (sekali saja).
 where py >nul 2>nul
@@ -53,7 +53,7 @@ if errorlevel 1 goto :venv_gagal
 ".venv\Scripts\python.exe" -m pip install --quiet --disable-pip-version-check -r requirements.txt
 if errorlevel 1 goto :venv_gagal
 popd
-goto :punya_python
+goto :cek_mode_env
 
 :venv_gagal
 popd
@@ -70,9 +70,52 @@ echo Saat memasang, centang "Add Python to PATH", lalu jalankan lagi.
 goto :berhenti
 
 rem ------------------------------------------------------------
+rem  1b. Berkas backend\.env - cara login untuk komputer ini
+rem      Tanpa .env, aplikasi bisa masuk mode Cloudflare Access yang
+rem      TIDAK bisa dipakai di localhost ("Belum login ... Cloudflare
+rem      Access"). Jadi .env selalu disiapkan: mode login lokal.
+rem ------------------------------------------------------------
+if not exist "backend\.env" goto :buat_env
+goto :cek_mode_env
+
+:buat_env
+echo Membuat backend\.env (login lokal: username + sandi) - sekali saja.
+pushd backend
+".venv\Scripts\python.exe" -m app.cli atur-login-lokal
+popd
+goto :cek_mode_env
+
+:cek_mode_env
+if not exist "backend\.env" goto :punya_env
+findstr /i /c:"CF_ACCESS_AUD" "backend\.env" >nul 2>nul
+if errorlevel 1 goto :punya_env
+findstr /i /c:"AUTH_MODE=lokal" "backend\.env" >nul 2>nul
+if not errorlevel 1 goto :punya_env
+echo.
+echo ============================================================
+echo PERINGATAN: backend\.env memakai login Cloudflare Access.
+echo Access hanya bekerja lewat domain yang dilindungi Cloudflare,
+echo jadi di localhost SEMUA halaman akan berbunyi "Belum login ...
+echo Cloudflare Access" dan form username+sandi tidak bisa dipakai.
+echo ============================================================
+set "JAWAB="
+set /p "JAWAB=Ubah ke login lokal (username+sandi) sekarang? [Y] ya / [N] biarkan: "
+if /i "%JAWAB%"=="Y" goto :perbaiki_env
+if /i "%JAWAB%"=="T" goto :perbaiki_env
+echo Dibiarkan. Login lokal tidak akan bisa dipakai selama AUTH_MODE
+echo bukan lokal.
+goto :punya_env
+
+:perbaiki_env
+pushd backend
+".venv\Scripts\python.exe" -m app.cli atur-login-lokal
+popd
+
+:punya_env
+
+rem ------------------------------------------------------------
 rem  2. Database + data awal
 rem ------------------------------------------------------------
-:punya_python
 if exist "backend\opmargin.db" goto :punya_db
 echo Database belum ada. Membuat dan memuat data awal dari template.
 pushd backend

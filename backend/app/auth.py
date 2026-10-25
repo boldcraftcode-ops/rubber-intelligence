@@ -26,7 +26,14 @@ import urllib.request
 
 import jwt
 
-JALUR_BEBAS = ("/api/health", "/api/sehat")
+# Jalur yang boleh diakses tanpa login. /api/auth/mode dipakai frontend untuk
+# mengetahui CARA login yang berlaku di proses ini (lokal vs Cloudflare
+# Access), supaya tidak menampilkan form username+sandi pada mode Access.
+JALUR_BEBAS = ("/api/health", "/api/sehat", "/api/auth/mode",
+               # /api/auth/login ikut bebas agar pada mode Access form
+               # username+sandi dijawab dengan penjelasan jelas (422), bukan
+               # 401 "Belum login" yang membingungkan.
+               "/api/auth/login")
 
 
 class KonfigurasiAuth:
@@ -79,6 +86,20 @@ class KonfigurasiAuth:
                 "APP_ENV=produksi tetapi CF_ACCESS_TEAM_DOMAIN / CF_ACCESS_AUD "
                 "belum diisi di .env. Login Cloudflare Access wajib di produksi; "
                 "lihat deploy/cloudflare-pages-access.md.")
+
+
+def info_mode(cfg: "KonfigurasiAuth") -> dict:
+    """Ringkasan cara login yang berlaku — dipakai /api/health dan
+    /api/auth/mode. TANPA data sensitif (tanpa AUD, tanpa SECRET_KEY)."""
+    if cfg.lokal_aktif:
+        mode, cara = "lokal", "username-sandi"
+    elif cfg.aktif:
+        mode, cara = "access", "cloudflare-access"
+    else:
+        mode, cara = "nonaktif", "tanpa-login"
+    return {"mode": mode, "cara": cara,
+            "perlu_login": mode != "nonaktif",
+            "produksi": cfg.produksi}
 
 
 class VerifikatorAccess:
