@@ -63,6 +63,15 @@ class RawBaris(Base):
 # Lapisan CLEAN
 # ----------------------------------------------------------------------------
 class Vendor(Base):
+    """Master vendor/pemasok.
+
+    Kolom profil (alamat, kontak_person, klasifikasi) ditambahkan di v0.10.0
+    atas permintaan pemilik. Klasifikasi memakai kode baku `small_holder`,
+    `small_estate`, `rubber_trader` (lihat core/klasifikasi_vendor.py); kolom
+    lama pada database yang sudah ada ditambahkan otomatis oleh
+    core/skema.py tanpa menghapus data.
+    """
+
     __tablename__ = "vendor"
 
     kode: Mapped[str] = mapped_column(String(20), primary_key=True)
@@ -70,6 +79,9 @@ class Vendor(Base):
     varian_nama: Mapped[str | None] = mapped_column(Text, nullable=True)  # dipisah |
     kategori: Mapped[str | None] = mapped_column(String(100), nullable=True)
     status: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    alamat: Mapped[str | None] = mapped_column(Text, nullable=True)
+    kontak_person: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    klasifikasi: Mapped[str | None] = mapped_column(String(30), nullable=True)
 
 
 class Grade(Base):

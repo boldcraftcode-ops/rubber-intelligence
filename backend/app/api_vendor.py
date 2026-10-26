@@ -14,6 +14,12 @@ Aturan yang dijaga:
   dibersihkan, dan tetap dicatat di audit;
 - impor massal bersifat upsert: kode yang sudah ada diperbarui, kode baru
   ditambahkan, baris rusak dilaporkan per baris (tidak membatalkan yang lain).
+
+Sejak v0.10.0 master vendor juga menyimpan **alamat**, **contact person**, dan
+**klasifikasi** (Small holder / Small estate / Rubber trader). Ejaan bebas
+diterima saat impor; ejaan yang tidak dikenal ditolak per baris dengan pesan
+yang menyebut tiga pilihan itu — bukan disimpan diam-diam sebagai nilai lain.
+Mengosongkan sel di Excel berarti "jangan ubah", sama seperti Kategori.
 """
 from __future__ import annotations
 
@@ -28,10 +34,13 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from .core.alarm import catat_audit
+from .core.klasifikasi_vendor import (bakukan as bakukan_klasifikasi,
+                                      daftar_untuk_layar, label as label_klasifikasi)
 from .models import Pembelian, TiketBaris, Vendor
 
 SHEET = "Master_Vendor"
-KOLOM = ["Kode_Vendor", "Nama_Baku", "Varian_Nama", "Kategori", "Status"]
+KOLOM = ["Kode_Vendor", "Nama_Baku", "Varian_Nama", "Kategori", "Status",
+         "Alamat", "Kontak_Person", "Klasifikasi"]
 STATUS_BAKU = ("aktif", "nonaktif", "diblokir")
 POLA_KODE = re.compile(r"^[A-Z0-9][A-Z0-9._/-]{0,19}$")
 BATAS_IMPOR = 5000
@@ -44,6 +53,9 @@ class VendorMasuk(BaseModel):
     varian_nama: str | None = None
     kategori: str | None = None
     status: str | None = None
+    alamat: str | None = None
+    kontak_person: str | None = None
+    klasifikasi: str | None = None
     pengisi: str = "?"
 
 
@@ -52,6 +64,9 @@ class VendorUbah(BaseModel):
     varian_nama: str | None = None
     kategori: str | None = None
     status: str | None = None
+    alamat: str | None = None
+    kontak_person: str | None = None
+    klasifikasi: str | None = None
     pengisi: str = "?"
 
 
@@ -72,6 +87,14 @@ def _status_baku(status: str | None) -> str:
         raise HTTPException(422, f"Status '{status}' tidak dikenal. Pilih salah "
                                  f"satu: {', '.join(STATUS_BAKU)}.")
     return nilai
+
+
+def _klasifikasi_atau_tolak(nilai: str | None) -> str | None:
+    """Kosong -> None; ejaan tak dikenal -> 422 dengan tiga pilihan."""
+    try:
+        return bakukan_klasifikasi(nilai)
+    except ValueError as e:
+        raise HTTPException(422, str(e))
 
 
 def _periksa_kode(kode: str) -> str:
@@ -122,7 +145,10 @@ def _baris_vendor(session: Session, v: Vendor) -> dict:
         "varian_nama": v.varian_nama, "kategori": v.kategori,
         # Status lama di database bisa tertulis "Aktif"; dibakukan huruf kecil
         # supaya cocok dengan pilihan di layar dan warna penandanya.
-        "status": (v.status or "").strip().lower() or "aktif", **pakai,
+        "status": (v.status or "").strip().lower() or "aktif",
+        "alamat": v.alamat, "kontak_person": v.kontak_person,
+        "klasifikasi": v.klasifikasi,
+        "klasifikasi_label": label_klasifikasi(v.klasifikasi), **pakai,
     }
 
 
@@ -133,11 +159,13 @@ def pasang_router_vendor(app, ambil_session):
     # ------------------------------------------------------------------ daftar
     @router.get("/vendor")
     def daftar_vendor(q: str | None = None, status: str | None = None,
-                      session: Session = dep):
+                      klasifikasi: str | None = None, session: Session = dep):
         """Daftar vendor + berapa banyak data historis yang memakainya.
 
-        `q` mencari di kode, nama baku, dan varian nama (tidak peka huruf
-        besar/kecil). `status` menyaring aktif/nonaktif/diblokir.
+        `q` mencari di kode, nama baku, varian nama, kategori, alamat, contact
+        person, dan label klasifikasi (tidak peka huruf besar/kecil).
+        `status` menyaring aktif/nonaktif/diblokir; `klasifikasi` menyaring
+        small_holder/small_estate/rubber_trader.
         """
         baris = [_baris_vendor(session, v) for v in session.scalars(
             select(Vendor).order_by(Vendor.kode))]
@@ -147,16 +175,46 @@ def pasang_router_vendor(app, ambil_session):
                      if cari in b["kode"].lower()
                      or cari in b["nama_baku"].lower()
                      or cari in (b["varian_nama"] or "").lower()
-                     or cari in (b["kategori"] or "").lower()]
+                     or cari in (b["kategori"] or "").lower()
+                     or cari in (b["alamat"] or "").lower()
+                     or cari in (b["kontak_person"] or "").lower()
+                     or cari in (b["klasifikasi_label"] or "").lower()]
         if status:
             ingin = status.strip().lower()
             baris = [b for b in baris if (b["status"] or "").lower() == ingin]
+        if klasifikasi:
+            ingin = klasifikasi.strip().lower()
+            if ingin in ("-", "kosong", "belum diisi"):
+                baris = [b for b in baris if not b["klasifikasi"]]
+            else:
+                try:
+                    ingin = bakukan_klasifikasi(ingin) or ingin
+                except ValueError:
+                    raise HTTPException(422, str(
+                        ValueError(f"Klasifikasi '{klasifikasi}' tidak dikenal. "
+                                   "Pilih salah satu: Small holder, Small estate, "
+                                   "atau Rubber trader.")))
+                baris = [b for b in baris if b["klasifikasi"] == ingin]
+        ringkas: dict[str, int] = {k: 0 for k in ("small_holder", "small_estate",
+                                                  "rubber_trader", None)}
+        for b in baris:
+            ringkas[b["klasifikasi"] if b["klasifikasi"] in ringkas
+                    else None] = ringkas.get(
+                        b["klasifikasi"] if b["klasifikasi"] in ringkas
+                        else None, 0) + 1
         return {
             "baris": baris,
             "jumlah": len(baris),
             "jumlah_total": session.scalar(
                 select(func.count()).select_from(Vendor)) or 0,
             "status_baku": list(STATUS_BAKU),
+            "klasifikasi_baku": daftar_untuk_layar(),
+            "ringkasan_klasifikasi": {
+                "small_holder": ringkas["small_holder"],
+                "small_estate": ringkas["small_estate"],
+                "rubber_trader": ringkas["rubber_trader"],
+                "belum_diisi": ringkas[None],
+            },
         }
 
     # ------------------------------------------------------------------ tambah
@@ -173,11 +231,14 @@ def pasang_router_vendor(app, ambil_session):
             varian_nama=_bersih(data.varian_nama),
             kategori=_bersih(data.kategori),
             status=_status_baku(data.status),
+            alamat=_bersih(data.alamat),
+            kontak_person=_bersih(data.kontak_person),
+            klasifikasi=_klasifikasi_atau_tolak(data.klasifikasi),
         )
         session.add(v)
         catat_audit(session, data.pengisi, "tambah", "vendor", {
             "kode": kode, "nama_baku": v.nama_baku, "kategori": v.kategori,
-            "status": v.status})
+            "status": v.status, "klasifikasi": v.klasifikasi})
         session.commit()
         return {"status": "tersimpan",
                 "pesan": f"Vendor {kode} — {v.nama_baku} ditambahkan.",
@@ -192,15 +253,22 @@ def pasang_router_vendor(app, ambil_session):
             raise HTTPException(404, f"Vendor '{kode}' tidak ada. Muat ulang "
                                      "halaman: mungkin sudah dihapus.")
         lama = {"nama_baku": v.nama_baku, "varian_nama": v.varian_nama,
-                "kategori": v.kategori, "status": v.status}
+                "kategori": v.kategori, "status": v.status,
+                "alamat": v.alamat, "kontak_person": v.kontak_person,
+                "klasifikasi": v.klasifikasi}
         v.nama_baku = (data.nama_baku or "").strip() or v.nama_baku
         v.varian_nama = _bersih(data.varian_nama)
         v.kategori = _bersih(data.kategori)
         v.status = _status_baku(data.status)
+        v.alamat = _bersih(data.alamat)
+        v.kontak_person = _bersih(data.kontak_person)
+        v.klasifikasi = _klasifikasi_atau_tolak(data.klasifikasi)
         catat_audit(session, data.pengisi, "ubah", "vendor", {
             "kode": kode, "lama": lama,
             "baru": {"nama_baku": v.nama_baku, "varian_nama": v.varian_nama,
-                     "kategori": v.kategori, "status": v.status}})
+                     "kategori": v.kategori, "status": v.status,
+                     "alamat": v.alamat, "kontak_person": v.kontak_person,
+                     "klasifikasi": v.klasifikasi}})
         session.commit()
         return {"status": "tersimpan",
                 "pesan": f"Vendor {kode} diperbarui. Riwayat tiket/pembelian "
@@ -254,11 +322,13 @@ def pasang_router_vendor(app, ambil_session):
         ws.append(KOLOM)
         for v in session.scalars(select(Vendor).order_by(Vendor.kode)):
             ws.append([v.kode, v.nama_baku, v.varian_nama, v.kategori,
-                       v.status or "aktif"])
+                       v.status or "aktif", v.alamat, v.kontak_person,
+                       v.klasifikasi or None])
         if ws.max_row == 1:      # belum ada data: beri satu baris contoh
             ws.append(["V001", "PT Contoh Karet Nusantara", "PT Contoh Karet|CV Contoh",
-                       "nasional", "aktif"])
-        for kolom, lebar in zip("ABCDE", (16, 40, 40, 20, 14)):
+                       "nasional", "aktif", "Jl. Contoh No. 1, Medan",
+                       "Budi — 0812-0000-0000", "small_holder"])
+        for kolom, lebar in zip("ABCDEFGH", (16, 40, 40, 20, 14, 45, 30, 16)):
             ws.column_dimensions[kolom].width = lebar
         ws.freeze_panes = "A2"
 
@@ -273,9 +343,16 @@ def pasang_router_vendor(app, ambil_session):
             ["   muncul di tiket, dipisah tanda | (pipa). Contoh: PT A|CV A."],
             ["4. Kategori bebas (mis. nasional, lokal, koperasi)."],
             ["5. Status: aktif / nonaktif / diblokir. Kosong = aktif."],
-            ["6. Unggah: menu Master Vendor > Bulk import, atau tab Unggah Data."],
+            ["6. Alamat: alamat lengkap vendor (boleh lebih dari satu baris)."],
+            ["7. Kontak_Person: nama orang yang dihubungi, boleh plus nomor HP."],
+            ["8. Klasifikasi: Small holder / Small estate / Rubber trader."],
+            ["   Ejaan lain yang lazim tetap diterima (mis. Smallholder, trader)."],
+            ["   Kosongkan bila belum tahu; ejaan yang tidak dikenal akan DITOLAK"],
+            ["   dengan alasan di laporan impor (baris lain tetap masuk)."],
+            ["9. Mengosongkan sel Alamat/Kontak/Klasifikasi/Kategori = tidak diubah."],
+            ["10. Unggah: menu Master Vendor > Bulk import, atau tab Unggah Data."],
             ["   Kode yang sudah ada akan DIPERBARUI (bukan digandakan)."],
-            ["7. Menghapus vendor tidak dilakukan lewat Excel. Pakai tombol Hapus."],
+            ["11. Menghapus vendor tidak dilakukan lewat Excel. Pakai tombol Hapus."],
         ]:
             panduan.append(teks)
         panduan.column_dimensions["A"].width = 78
@@ -348,6 +425,14 @@ def pasang_router_vendor(app, ambil_session):
                 peta["kategori"] = pos
             elif kunci in ("status",):
                 peta["status"] = pos
+            elif kunci in ("alamat", "address", "alamat_lengkap"):
+                peta["alamat"] = pos
+            elif kunci in ("kontak_person", "kontak", "contact_person",
+                           "contact", "cp"):
+                peta["kontak"] = pos
+            elif kunci in ("klasifikasi", "klasifikasi_vendor", "kategori_vendor",
+                           "classification", "tipe_vendor"):
+                peta["klasifikasi"] = pos
         if "kode" not in peta or "nama" not in peta:
             raise HTTPException(422, "Kolom Kode_Vendor dan Nama_Baku wajib ada "
                                      "di sheet Master_Vendor.")
@@ -396,6 +481,11 @@ def pasang_router_vendor(app, ambil_session):
                               "alasan": f"Status '{status_teks}' tidak dikenal "
                                         f"(aktif/nonaktif/diblokir)."})
                 continue
+            try:
+                klasifikasi = bakukan_klasifikasi(ambil(r, "klasifikasi"))
+            except ValueError as e:
+                tolak.append({"baris": no, "kode": kode, "alasan": str(e)})
+                continue
             dilihat[kode] = no
             v = session.get(Vendor, kode)
             if v is None:
@@ -408,6 +498,15 @@ def pasang_router_vendor(app, ambil_session):
             v.varian_nama = _bersih(ambil(r, "varian"))
             if peta.get("kategori") is not None:
                 v.kategori = _bersih(ambil(r, "kategori"))
+            # Alamat/kontak/klasifikasi: kosong = jangan ubah (sama seperti
+            # Kategori), supaya file yang hanya berisi kode+nama tidak
+            # menghapus profil yang sudah diisi lewat layar.
+            if peta.get("alamat") is not None and _bersih(ambil(r, "alamat")):
+                v.alamat = _bersih(ambil(r, "alamat"))
+            if peta.get("kontak") is not None and _bersih(ambil(r, "kontak")):
+                v.kontak_person = _bersih(ambil(r, "kontak"))
+            if peta.get("klasifikasi") is not None and klasifikasi:
+                v.klasifikasi = klasifikasi
             v.status = status_teks or (v.status or "aktif")
             session.flush()
 

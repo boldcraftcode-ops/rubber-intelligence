@@ -9,7 +9,27 @@ const pengisi = () => {
   try { return localStorage.getItem("op-margin.pengisi") || "?"; } catch { return "?"; }
 };
 
-const KOSONG = { kode: "", nama_baku: "", varian_nama: "", kategori: "", status: "aktif" };
+const KOSONG = {
+  kode: "", nama_baku: "", varian_nama: "", kategori: "", status: "aktif",
+  alamat: "", kontak_person: "", klasifikasi: "",
+};
+
+/* Klasifikasi pemasok: tiga pilihan yang diminta pemilik. Kode dipakai API,
+   label yang dilihat pengguna. */
+const KLASIFIKASI = [
+  { kode: "small_holder", label: "Small holder" },
+  { kode: "small_estate", label: "Small estate" },
+  { kode: "rubber_trader", label: "Rubber trader" },
+];
+
+const WARNA_KLASIFIKASI: Record<string, string> = {
+  small_holder: "bg-[#F0F9FF] text-[#0369A1] border-[#BAE6FD]",
+  small_estate: "bg-[#F5F3FF] text-[#5B21B6] border-[#DDD6FE]",
+  rubber_trader: "bg-[#FFFBEB] text-[#B45309] border-[#FDE68A]",
+};
+
+const labelKlasifikasi = (kode: string | null) =>
+  KLASIFIKASI.find((k) => k.kode === kode)?.label ?? null;
 
 const WARNA_STATUS: Record<string, string> = {
   aktif: "bg-[#ECFDF5] text-[#166534] border-[#A7F3D0]",
@@ -22,6 +42,7 @@ export function KartuDaftarVendor() {
   const qc = useQueryClient();
   const [cari, setCari] = useState("");
   const [saring, setSaring] = useState("");
+  const [saringKlasifikasi, setSaringKlasifikasi] = useState("");
   const [form, setForm] = useState({ ...KOSONG });
   const [ubahKode, setUbahKode] = useState<string | null>(null);
   const [info, setInfo] = useState<{ jenis: "sukses" | "error"; teks: string } | null>(null);
@@ -29,6 +50,7 @@ export function KartuDaftarVendor() {
   const params = new URLSearchParams();
   if (cari.trim()) params.set("q", cari.trim());
   if (saring) params.set("status", saring);
+  if (saringKlasifikasi) params.set("klasifikasi", saringKlasifikasi);
   const url = `/api/vendor${params.toString() ? `?${params.toString()}` : ""}`;
   const q = useQuery({ queryKey: ["vendor", url], queryFn: () => ambilJson(url) });
 
@@ -43,7 +65,10 @@ export function KartuDaftarVendor() {
     mutationFn: () => ubahKode
       ? kirimMetode(`/api/vendor/${encodeURIComponent(ubahKode)}`, "PUT", {
           nama_baku: form.nama_baku, varian_nama: form.varian_nama || null,
-          kategori: form.kategori || null, status: form.status, pengisi: pengisi(),
+          kategori: form.kategori || null, status: form.status,
+          alamat: form.alamat || null,
+          kontak_person: form.kontak_person || null,
+          klasifikasi: form.klasifikasi || null, pengisi: pengisi(),
         })
       : kirimMetode("/api/vendor", "POST", { ...form, pengisi: pengisi() }),
     onSuccess: (d) => {
@@ -66,7 +91,9 @@ export function KartuDaftarVendor() {
   const mulaiUbah = (b: any) => {
     setUbahKode(b.kode);
     setForm({ kode: b.kode, nama_baku: b.nama_baku, varian_nama: b.varian_nama ?? "",
-              kategori: b.kategori ?? "", status: b.status ?? "aktif" });
+              kategori: b.kategori ?? "", status: b.status ?? "aktif",
+              alamat: b.alamat ?? "", kontak_person: b.kontak_person ?? "",
+              klasifikasi: b.klasifikasi ?? "" });
     setInfo(null);
   };
 
@@ -76,13 +103,13 @@ export function KartuDaftarVendor() {
 
   return (
     <Kartu idMetrik="master_vendor" judul="Daftar vendor"
-           keterangan="Kode vendor adalah kunci yang dipakai tiket intake dan pembelian. Menambah/mengubah di sini langsung berlaku; riwayat lama tidak berubah."
+           keterangan="Kode vendor adalah kunci yang dipakai tiket intake dan pembelian. Selain itu tersimpan alamat, contact person, dan klasifikasi pemasok (Small holder / Small estate / Rubber trader). Menambah/mengubah di sini langsung berlaku; riwayat lama tidak berubah."
            anak={
       <>
         <div className="mb-3 flex flex-wrap items-end gap-2">
           <div className="flex-1 min-w-48">
             <label className={kelasLabel}>Cari</label>
-            <input className={kelasInput} placeholder="kode, nama, varian, atau kategori"
+            <input className={kelasInput} placeholder="kode, nama, klasifikasi, kontak, alamat"
                    value={cari} onChange={(e) => setCari(e.target.value)} />
           </div>
           <div>
@@ -95,17 +122,48 @@ export function KartuDaftarVendor() {
               ))}
             </select>
           </div>
+          <div>
+            <label className={kelasLabel}>Klasifikasi</label>
+            <select className={kelasInput + " min-w-40"} value={saringKlasifikasi}
+                    onChange={(e) => setSaringKlasifikasi(e.target.value)}>
+              <option value="">Semua klasifikasi</option>
+              {KLASIFIKASI.map((k) => (
+                <option key={k.kode} value={k.kode}>{k.label}</option>
+              ))}
+              <option value="-">Belum diisi</option>
+            </select>
+          </div>
           <p className="pb-2 text-xs text-[#64676C]">
             {q.data ? `${q.data.jumlah} dari ${q.data.jumlah_total} vendor` : "memuat…"}
           </p>
         </div>
 
+        {q.data?.ringkasan_klasifikasi && (
+          <p className="mb-2 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-[#64676C]">
+            <span className="font-semibold text-[#1D2434]">Komposisi:</span>
+            {KLASIFIKASI.map((k) => (
+              <span key={k.kode}>
+                {k.label}{" "}
+                <b className="text-[#1D2434]">
+                  {fmtAngka(q.data.ringkasan_klasifikasi[k.kode] ?? 0, 0)}
+                </b>
+              </span>
+            ))}
+            <span>
+              belum diisi{" "}
+              <b className="text-[#1D2434]">
+                {fmtAngka(q.data.ringkasan_klasifikasi.belum_diisi ?? 0, 0)}
+              </b>
+            </span>
+          </p>
+        )}
+
         <div className="max-h-96 overflow-y-auto">
           <table className="w-full text-xs">
             <thead className="sticky top-0 bg-white">
               <tr className="text-left text-[#64676C] border-b">
-                <th className="py-1">Kode</th><th>Nama baku</th><th>Varian nama</th>
-                <th>Kategori</th><th>Status</th>
+                <th className="py-1">Kode</th><th>Nama baku</th><th>Klasifikasi</th>
+                <th>Kontak</th><th>Alamat</th><th>Kategori</th><th>Status</th>
                 <th className="text-right">Tiket</th>
                 <th className="text-right">Ton kering</th>
                 <th>Intake terakhir</th><th></th>
@@ -115,9 +173,29 @@ export function KartuDaftarVendor() {
               {q.data?.baris.map((b: any) => (
                 <tr key={b.kode} className="border-b border-[#EDEFF2]">
                   <td className="py-1.5 font-mono text-[#1D2434]">{b.kode}</td>
-                  <td className="text-[#1D2434]">{b.nama_baku}</td>
-                  <td className="max-w-40 truncate text-[#64676C]" title={b.varian_nama ?? ""}>
-                    {b.varian_nama ?? "–"}
+                  <td className="text-[#1D2434]">
+                    {b.nama_baku}
+                    {b.varian_nama && (
+                      <span className="block max-w-40 truncate text-[10px] text-[#64676C]"
+                            title={b.varian_nama}>
+                        {b.varian_nama}
+                      </span>
+                    )}
+                  </td>
+                  <td>
+                    {b.klasifikasi_label ? (
+                      <span className={`rounded-sm border px-1.5 py-0.5 text-[10px] whitespace-nowrap ${WARNA_KLASIFIKASI[b.klasifikasi] ?? WARNA_STATUS.nonaktif}`}>
+                        {b.klasifikasi_label}
+                      </span>
+                    ) : (
+                      <span className="text-[10px] text-[#9AA0A6]">belum diisi</span>
+                    )}
+                  </td>
+                  <td className="max-w-32 truncate text-[#64676C]" title={b.kontak_person ?? ""}>
+                    {b.kontak_person ?? "–"}
+                  </td>
+                  <td className="max-w-48 truncate text-[#64676C]" title={b.alamat ?? ""}>
+                    {b.alamat ?? "–"}
                   </td>
                   <td className="text-[#64676C]">{b.kategori ?? "–"}</td>
                   <td>
@@ -154,7 +232,7 @@ export function KartuDaftarVendor() {
                 </tr>
               ))}
               {q.data?.baris.length === 0 && (
-                <tr><td colSpan={9} className="py-3 text-[#64676C]">
+                <tr><td colSpan={10} className="py-3 text-[#64676C]">
                   Tidak ada vendor yang cocok. Kosongkan pencarian, atau tambahkan
                   vendor baru di bawah.
                 </td></tr>
@@ -187,10 +265,14 @@ export function KartuDaftarVendor() {
                    onChange={(e) => setForm({ ...form, nama_baku: e.target.value })} />
           </div>
           <div>
-            <label className={kelasLabel}>Kategori</label>
-            <input className={kelasInput} placeholder="nasional / lokal"
-                   value={form.kategori}
-                   onChange={(e) => setForm({ ...form, kategori: e.target.value })} />
+            <label className={kelasLabel}>Klasifikasi</label>
+            <select className={kelasInput} value={form.klasifikasi}
+                    onChange={(e) => setForm({ ...form, klasifikasi: e.target.value })}>
+              <option value="">belum diisi</option>
+              {KLASIFIKASI.map((k) => (
+                <option key={k.kode} value={k.kode}>{k.label}</option>
+              ))}
+            </select>
           </div>
           <div>
             <label className={kelasLabel}>Status</label>
@@ -206,11 +288,32 @@ export function KartuDaftarVendor() {
             {ubahKode ? "Simpan perubahan" : "Tambah vendor"}
           </button>
         </div>
+        <div className="mt-2 grid grid-cols-1 sm:grid-cols-6 gap-2">
+          <div className="sm:col-span-3">
+            <label className={kelasLabel}>Varian nama (nama lain di tiket, pisahkan dengan |)</label>
+            <input className={kelasInput} placeholder="mis. PT Karet Nusantara|CV Karet Nusantara"
+                   value={form.varian_nama}
+                   onChange={(e) => setForm({ ...form, varian_nama: e.target.value })} />
+          </div>
+          <div className="sm:col-span-1">
+            <label className={kelasLabel}>Kategori</label>
+            <input className={kelasInput} placeholder="nasional / lokal"
+                   value={form.kategori}
+                   onChange={(e) => setForm({ ...form, kategori: e.target.value })} />
+          </div>
+          <div className="sm:col-span-2">
+            <label className={kelasLabel}>Contact person</label>
+            <input className={kelasInput} placeholder="nama — nomor HP"
+                   value={form.kontak_person}
+                   onChange={(e) => setForm({ ...form, kontak_person: e.target.value })} />
+          </div>
+        </div>
         <div className="mt-2">
-          <label className={kelasLabel}>Varian nama (nama lain di tiket, pisahkan dengan |)</label>
-          <input className={kelasInput} placeholder="mis. PT Karet Nusantara|CV Karet Nusantara"
-                 value={form.varian_nama}
-                 onChange={(e) => setForm({ ...form, varian_nama: e.target.value })} />
+          <label className={kelasLabel}>Alamat</label>
+          <textarea className={`${kelasInput} min-h-16`} rows={2}
+                    placeholder="mis. Jl. Gatot Subroto No. 12, Medan, Sumatera Utara"
+                    value={form.alamat}
+                    onChange={(e) => setForm({ ...form, alamat: e.target.value })} />
         </div>
         {ubahKode && (
           <button className={`${kelasTombolKecil} mt-2`}

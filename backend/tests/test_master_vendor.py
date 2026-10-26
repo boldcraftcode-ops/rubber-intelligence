@@ -234,7 +234,8 @@ def test_template_bisa_dibuka_dan_berisi_kolom(klien):
     assert "Petunjuk" in wb.sheetnames
     ws = wb["Master_Vendor"]
     assert [c.value for c in ws[1]] == ["Kode_Vendor", "Nama_Baku",
-                                        "Varian_Nama", "Kategori", "Status"]
+                                        "Varian_Nama", "Kategori", "Status",
+                                        "Alamat", "Kontak_Person", "Klasifikasi"]
     assert ws["A2"].value == "V001"          # data yang ada ikut terisi
 
 
@@ -335,3 +336,211 @@ def test_impor_tidak_mengubah_yang_tidak_ada_di_file(klien):
     daftar = {b["kode"]: b for b in klien.get("/api/vendor").json()["baris"]}
     assert daftar["V001"]["nama_baku"] == "PT Tetap"
     assert daftar["V001"]["kategori"] == "nasional"
+
+
+# ================================================ PROFIL VENDOR (v0.10.0)
+# Permintaan pemilik: "tambahkan informasi seperti Address, Contact person,
+# klasifikasi sebagai Small holder, small estate, atau Rubber trader."
+
+
+def test_tambah_vendor_dengan_profil(klien):
+    r = klien.post("/api/vendor", json={
+        "kode": "v010", "nama_baku": "CV Profil", "pengisi": "budi",
+        "alamat": "  Jl. Gatot Subroto No. 12, Medan  ",
+        "kontak_person": "Budi — 0812-1111-2222",
+        "klasifikasi": "Small holder",
+    })
+    assert r.status_code == 200, r.text
+    v = r.json()["vendor"]
+    assert v["alamat"] == "Jl. Gatot Subroto No. 12, Medan"     # tepi dibersihkan
+    assert v["kontak_person"] == "Budi — 0812-1111-2222"
+    assert v["klasifikasi"] == "small_holder"                   # disimpan sebagai kode
+    assert v["klasifikasi_label"] == "Small holder"             # tampil sebagai label
+
+
+@pytest.mark.parametrize("ejaan,kode", [
+    ("Small holder", "small_holder"),
+    ("smallholder", "small_holder"),
+    ("SMALL HOLDER", "small_holder"),
+    ("Kebun Rakyat", "small_holder"),
+    ("Small estate", "small_estate"),
+    ("small-estate", "small_estate"),
+    ("Rubber trader", "rubber_trader"),
+    ("trader", "rubber_trader"),
+    ("Pedagang", "rubber_trader"),
+])
+def test_ejaan_klasifikasi_diterima(klien, ejaan, kode):
+    r = klien.post("/api/vendor", json={"kode": "V1", "nama_baku": "PT Satu",
+                                        "klasifikasi": ejaan})
+    assert r.status_code == 200, r.text
+    assert r.json()["vendor"]["klasifikasi"] == kode
+
+
+def test_klasifikasi_tidak_dikenal_ditolak(klien):
+    r = klien.post("/api/vendor", json={"kode": "V1", "nama_baku": "PT Satu",
+                                        "klasifikasi": "koperasi besar"})
+    assert r.status_code == 422
+    detail = r.json()["detail"]
+    assert "Small holder" in detail and "Rubber trader" in detail
+    assert klien.get("/api/vendor").json()["baris"] == []
+
+
+def test_klasifikasi_kosong_boleh(klien):
+    r = klien.post("/api/vendor", json={"kode": "V1", "nama_baku": "PT Satu",
+                                        "klasifikasi": ""})
+    assert r.status_code == 200
+    assert r.json()["vendor"]["klasifikasi"] is None
+    assert r.json()["vendor"]["klasifikasi_label"] is None
+
+
+def test_ubah_profil_dan_audit_menyebut_nilai_lama_baru(klien):
+    klien.post("/api/vendor", json={"kode": "V1", "nama_baku": "PT Satu",
+                                    "alamat": "Jl. Lama"})
+    r = klien.put("/api/vendor/V1", json={
+        "nama_baku": "PT Satu", "alamat": "Jl. Baru No. 5",
+        "kontak_person": "Siti", "klasifikasi": "rubber_trader"})
+    assert r.status_code == 200, r.text
+    v = r.json()["vendor"]
+    assert (v["alamat"], v["kontak_person"], v["klasifikasi"]) == \
+        ("Jl. Baru No. 5", "Siti", "rubber_trader")
+    # mengosongkan = menghapus isian (bukan menyimpan string kosong)
+    r2 = klien.put("/api/vendor/V1", json={"nama_baku": "PT Satu",
+                                           "alamat": "", "kontak_person": "",
+                                           "klasifikasi": ""})
+    v2 = r2.json()["vendor"]
+    assert (v2["alamat"], v2["kontak_person"], v2["klasifikasi"]) == (None, None, None)
+
+
+def test_daftar_saring_klasifikasi_dan_ringkasan(klien):
+    for kode, kelas in [("V1", "small_holder"), ("V2", "small_holder"),
+                        ("V3", "small_estate"), ("V4", "rubber_trader"),
+                        ("V5", "")]:
+        klien.post("/api/vendor", json={"kode": kode, "nama_baku": f"PT {kode}",
+                                        "klasifikasi": kelas})
+    semua = klien.get("/api/vendor").json()
+    assert semua["ringkasan_klasifikasi"] == {
+        "small_holder": 2, "small_estate": 1, "rubber_trader": 1, "belum_diisi": 1}
+    assert [k["kode"] for k in semua["klasifikasi_baku"]] == \
+        ["small_holder", "small_estate", "rubber_trader"]
+
+    saring = klien.get("/api/vendor?klasifikasi=small_holder").json()
+    assert {b["kode"] for b in saring["baris"]} == {"V1", "V2"}
+    # saringan menerima label maupun kode, tidak peka huruf besar/kecil
+    assert {b["kode"] for b in
+            klien.get("/api/vendor?klasifikasi=Rubber%20trader").json()["baris"]} == {"V4"}
+    assert [b["kode"] for b in
+            klien.get("/api/vendor?klasifikasi=-").json()["baris"]] == ["V5"]
+    assert klien.get("/api/vendor?klasifikasi=entah").status_code == 422
+
+
+def test_cari_menemukan_alamat_kontak_dan_klasifikasi(klien):
+    klien.post("/api/vendor", json={"kode": "V1", "nama_baku": "PT Alpha",
+                                    "alamat": "Jl. Medan Baru", "kontak_person": "Siti",
+                                    "klasifikasi": "rubber_trader"})
+    assert [b["kode"] for b in klien.get("/api/vendor?q=medan").json()["baris"]] == ["V1"]
+    assert [b["kode"] for b in klien.get("/api/vendor?q=siti").json()["baris"]] == ["V1"]
+    assert [b["kode"] for b in klien.get("/api/vendor?q=trader").json()["baris"]] == ["V1"]
+
+
+def test_template_memuat_kolom_profil_dan_petunjuk(klien):
+    klien.post("/api/vendor", json={"kode": "V001", "nama_baku": "PT Alpha",
+                                    "alamat": "Jl. Contoh 9",
+                                    "kontak_person": "Budi", "klasifikasi": "small_estate"})
+    wb = openpyxl.load_workbook(io.BytesIO(klien.get("/api/vendor/template").content))
+    ws = wb["Master_Vendor"]
+    assert [c.value for c in ws[1]][-3:] == ["Alamat", "Kontak_Person", "Klasifikasi"]
+    assert ws["F2"].value == "Jl. Contoh 9"
+    assert ws["G2"].value == "Budi"
+    assert ws["H2"].value == "small_estate"
+    petunjuk = "\n".join(str(c.value or "") for (c,) in wb["Petunjuk"].iter_rows())
+    assert "Small holder" in petunjuk and "Rubber trader" in petunjuk
+
+
+def _xlsx_profil(baris: list[list]) -> bytes:
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Master_Vendor"
+    ws.append(["Kode_Vendor", "Nama_Baku", "Alamat", "Kontak_Person", "Klasifikasi"])
+    for b in baris:
+        ws.append(b)
+    buf = io.BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
+
+
+def test_impor_profil_alias_diterima(klien):
+    isi = _xlsx_profil([
+        ["V001", "PT Alpha", "Jl. Satu 1", "Budi — 0812", "Smallholder"],
+        ["V002", "CV Beta", None, None, "Rubber Trader"],
+        ["V003", "PT Gamma", "Jl. Tiga 3", "Siti", "small estate"],
+    ])
+    d = _unggah(klien, isi).json()
+    assert (d["ditambah"], d["diperbarui"], d["ditolak"]) == (3, 0, 0)
+    daftar = {b["kode"]: b for b in klien.get("/api/vendor").json()["baris"]}
+    assert daftar["V001"]["klasifikasi"] == "small_holder"
+    assert daftar["V001"]["alamat"] == "Jl. Satu 1"
+    assert daftar["V001"]["kontak_person"] == "Budi — 0812"
+    assert daftar["V002"]["klasifikasi"] == "rubber_trader"
+    assert daftar["V003"]["klasifikasi"] == "small_estate"
+
+
+def test_impor_klasifikasi_salah_ditolak_per_baris(klien):
+    isi = _xlsx_profil([
+        ["V001", "PT Baik", None, None, "small_holder"],
+        ["V002", "PT Salah", None, None, "koperasi"],
+        ["V003", "PT Baik 2", None, None, None],
+    ])
+    d = _unggah(klien, isi).json()
+    assert d["ditambah"] == 2
+    assert d["ditolak"] == 1
+    salah = [p for p in d["peringatan"] if p["kode"] == "V002"][0]
+    assert "Small holder" in salah["alasan"]
+    assert {b["kode"] for b in klien.get("/api/vendor").json()["baris"]} == \
+        {"V001", "V003"}
+
+
+def test_impor_tidak_menghapus_profil_yang_tidak_ada_di_file(klien):
+    """File berisi kode+nama saja tidak boleh menghapus alamat/kontak."""
+    klien.post("/api/vendor", json={"kode": "V001", "nama_baku": "PT Alpha",
+                                    "alamat": "Jl. Penting", "kontak_person": "Budi",
+                                    "klasifikasi": "small_holder"})
+    isi = _xlsx(baris=[["V001", "PT Alpha Baru", None, None, "aktif"]])
+    assert _unggah(klien, isi).json()["diperbarui"] == 1
+    v = klien.get("/api/vendor").json()["baris"][0]
+    assert v["nama_baku"] == "PT Alpha Baru"
+    assert v["alamat"] == "Jl. Penting"
+    assert v["kontak_person"] == "Budi"
+    assert v["klasifikasi"] == "small_holder"
+
+
+def test_impor_template_utama_juga_mengisi_profil():
+    """Sheet Master_Vendor di template utama (Unggah Data) ikut mengisi profil."""
+    import tempfile
+
+    from app.importer.template import impor_template
+    from sqlalchemy import create_engine, select
+    from sqlalchemy.orm import sessionmaker
+
+    from app.models import Base, Vendor
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Master_Vendor"
+    ws.append(["Kode_Vendor", "Nama_Baku", "Varian_Nama", "Kategori", "Status",
+               "Alamat", "Kontak_Person", "Klasifikasi"])
+    ws.append(["V100", "PT Profil", None, "lokal", "aktif",
+               "Jl. Uji 10", "Rina — 0813", "Small Estate"])
+    ws.append(["V101", "PT Salah Kelas", None, None, None, None, None, "entah"])
+    with tempfile.TemporaryDirectory() as tmp:
+        path = f"{tmp}/profil.xlsx"
+        wb.save(path)
+        eng = create_engine(f"sqlite:///{tmp}/p.db", future=True)
+        Base.metadata.create_all(eng)
+        with sessionmaker(bind=eng, future=True)() as s:
+            hasil = impor_template(path, s, pengunggah="pytest")
+            assert hasil.jumlah["vendor"] == 1          # V101 ditolak
+            assert hasil.ditolak == {"Master_Vendor": 1}
+            v = s.scalars(select(Vendor).where(Vendor.kode == "V100")).one()
+            assert v.klasifikasi == "small_estate"
+            assert v.kontak_person == "Rina — 0813"
+            assert v.alamat == "Jl. Uji 10"

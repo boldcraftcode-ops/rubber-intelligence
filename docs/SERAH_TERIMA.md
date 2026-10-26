@@ -9,7 +9,7 @@ Kalau Anda hanya punya 15 menit, baca bagian **1 (Status)**, **3 (Cara
 menjalankan)**, dan **7 (Aturan yang tidak boleh dilanggar)**. Selebihnya bisa
 dibaca saat mengerjakan tugas pertama.
 
-Terakhir diperbarui: **2026-10-26**, versi kode **0.9.9**.
+Terakhir diperbarui: **2026-10-26**, versi kode **0.10.0**.
 
 ---
 
@@ -36,11 +36,11 @@ ini setiap hari untuk memutuskan **harga beli maksimum** yang masih aman.
 
 | Hal | Nilai |
 |---|---|
-| Versi kode | **0.9.9** (`VERSI.txt`, `backend/app/versi.py`, `frontend/src/versi.ts`) |
+| Versi kode | **0.10.0** (`VERSI.txt`, `backend/app/versi.py`, `frontend/src/versi.ts`) |
 | Branch kerja | `arena/18670644-rubber-intelligence` |
 | Pull request | **#1 masih terbuka** — https://github.com/boldcraftcode-ops/rubber-intelligence/pull/1 |
 | Branch `main` | belum memuat pekerjaan v0.7.x–v0.8.x |
-| Unit test | **376 lulus** (`cd backend && .venv/bin/python -m pytest -q`) |
+| Unit test | **402 lulus** (`cd backend && .venv/bin/python -m pytest -q`) |
 | Build frontend | bersih, ±3,3 detik (`cd frontend && npm run build`) |
 | Database | SQLite `backend/opmargin.db` (tidak masuk Git) |
 
@@ -104,7 +104,7 @@ Login awal: **`admin` / `admin123`** (dari `ADMIN_SANDI_AWAL` di
 
 ```bash
 cd backend
-.venv/bin/python -m pytest -q                                  # 376 tes
+.venv/bin/python -m pytest -q                                  # 402 tes
 .venv/bin/python -m app.cli diagnosa                            # laporan kesehatan
 .venv/bin/python -m app.cli reset-sandi admin                   # lupa sandi
 .venv/bin/python -m app.cli atur-login-lokal                    # pastikan mode login benar
@@ -156,7 +156,7 @@ rubber-intelligence/
 │   │       ├── kualitas.py     deteksi data terlambat/aneh
 │   │       └── alarm.py        evaluasi alarm + audit
 │   ├── semantic/metrics.yaml   definisi metrik (rujukan, dibaca fase API)
-│   ├── tests/                  376 tes, termasuk kasus emas Excel lama
+│   ├── tests/                  402 tes, termasuk kasus emas Excel lama
 │   ├── unggahan/               berkas Excel yang diunggah lewat web
 │   └── .env.example            contoh setelan (JANGAN commit .env asli)
 └── frontend/
@@ -708,6 +708,64 @@ harus ikut dibawa lewat folder `bahan-offline`. Memperbarui aplikasi di PC
 luring = ulangi Tahap 1 di PC berinternet, lalu salin kode + `bahan-offline`
 lagi (jangan `git pull` di PC luring).
 
+### Master Vendor: alamat, contact person, klasifikasi (v0.10.0)
+
+Permintaan pemilik: *"untuk master vendor, tambahkan informasi seperti Address,
+Contact person, klasifikasi sebagai Small holder, small estate, atau Rubber
+trader"*.
+
+**Skema.** `vendor` mendapat tiga kolom baru, semuanya boleh kosong:
+`alamat` (TEXT), `kontak_person` (VARCHAR 200), `klasifikasi` (VARCHAR 30).
+Klasifikasi disimpan sebagai **kode baku** — `small_holder`, `small_estate`,
+`rubber_trader` — dan label tampilan (`Small holder`, …) dibuat oleh
+`core/klasifikasi_vendor.py`. Kode dipakai untuk saringan, bukan label, supaya
+ejaan tampilan bisa diubah tanpa mengubah data.
+
+**Migrasi database yang sudah berisi data.** `create_all()` tidak menambah
+kolom pada tabel yang sudah ada, jadi `core/skema.py` memeriksa kolom nyata di
+database lalu menjalankan `ALTER TABLE vendor ADD COLUMN …` hanya untuk yang
+belum ada. Dipanggil sekali saat aplikasi start (`buat_app`), idempoten, tanpa
+menghapus/mengubah baris. Ini penting karena PC pengguna sudah punya
+`opmargin.db` berisi data — bukan database baru.
+
+**Aturan klasifikasi (dijaga tes).**
+- Ejaan bebas diterima: `Smallholder`, `small-holder`, `SMALL HOLDER`,
+  `Kebun Rakyat`, `trader`, `Pedagang`, dll. (lihat `_ALIAS`).
+- Ejaan yang tidak dikenal → **422** saat simpan lewat API, dan **baris
+  ditolak** (bukan menghentikan file) saat impor, dengan alasan yang menyebut
+  tiga pilihan resmi. Klasifikasi tidak pernah ditebak.
+- Kosong = belum diisi; di layar muncul sebagai `belum diisi` dan bisa
+  disaring untuk melihat vendor yang perlu dilengkapi.
+
+**API.** `POST /api/vendor` dan `PUT /api/vendor/{kode}` menerima `alamat`,
+`kontak_person`, `klasifikasi`; balasan vendor memuat `klasifikasi_label`.
+`GET /api/vendor` menambah saringan `?klasifikasi=` (kode, label, atau `-` untuk
+yang belum diisi), pencarian `?q=` ikut menelusuri alamat/contact
+person/klasifikasi, dan balasan memuat `klasifikasi_baku` (pilihan dropdown)
+serta `ringkasan_klasifikasi` (jumlah per jenis + belum diisi). Audit mencatat
+nilai lama & baru termasuk tiga kolom ini.
+
+**Excel.** Template bulk import (`GET /api/vendor/template`) menambah kolom
+`Alamat`, `Kontak_Person`, `Klasifikasi` (kolom ke-6..8) dan petunjuknya
+diperbarui; header alias juga dikenali saat impor (`Address`, `Contact`,
+`Klasifikasi_Vendor`, `Classification`, dll.). Kosong = jangan ubah. Sheet
+`Master_Vendor` di template utama (lewat tab Unggah Data) juga mengisi ketiga
+kolom ini dengan aturan yang sama.
+
+**Layar.** Daftar vendor menampilkan kolom **Klasifikasi** (penanda berwarna),
+**Kontak**, dan **Alamat**; varian nama pindah menjadi baris kecil di bawah
+nama baku (kolom tabel tidak bertambah lebar). Di atas tabel ada baris
+**Komposisi** per klasifikasi dan saringan klasifikasi. Formulir menambah
+pilihan klasifikasi + isian contact person + kotak alamat.
+
+**Tes.** `tests/test_master_vendor.py` bertambah 20 tes (ejaan klasifikasi,
+penolakan ejaan salah, kosong, ubah/audit, saringan & ringkasan, pencarian,
+template, impor, impor tidak menghapus profil, sheet Master_Vendor di template
+utama), dan file baru `tests/test_skema_kolom_baru.py` (6 tes) menguji
+migrasi: kolom terdeteksi, data lama utuh, idempoten, aplikasi menyesuaikan
+sendiri saat start di database versi lama, serta nama kolom di `KOLOM_BARU`
+selalu ada di model.
+
 ---
 
 ## 6b. Deploy lewat Cloudflare Tunnel (masih hidup, penting)
@@ -840,7 +898,7 @@ Semua ini lahir dari kegagalan nyata, bukan kehati-hatian berlebihan.
    kode salah. Perbaikannya: `hentikan-api.bat` lalu `start-web.bat`.
 6. **Selalu jalankan `npm run build` (bukan hanya `vite build`)** — skrip npm
    memakai `tsc -b`, jadi error tipe ikut tertangkap.
-7. **376 tes harus tetap lulus.** Tes "kasus emas"
+7. **402 tes harus tetap lulus.** Tes "kasus emas"
    (`tests/test_data_awal.py`, `tests/test_bridge_doc.py`) mencocokkan hasil
    dengan Excel lama sampai beberapa desimal. Kalau tes emas gagal, hampir pasti rumus
    yang diubah, bukan tesnya.
@@ -932,13 +990,13 @@ pernah membuat label dan ikon tertukar; ganti blok utuhnya.
 ### Rilis versi baru (prosedur yang sudah terbukti)
 ```bash
 # 1. pastikan bersih
-cd backend && .venv/bin/python -m pytest -q          # 376 passed
+cd backend && .venv/bin/python -m pytest -q          # 402 passed
 cd ../frontend && npm run build                       # bersih
 
 # 2. naikkan versi di 6 berkas (isi dua variabel, sisanya otomatis)
 cd ..
 LAMA=$(tr -d '\r\n' < VERSI.txt)     # versi yang masih terpakai
-BARU=0.9.9                            # <- tulis versi baru di sini
+BARU=0.10.0                            # <- tulis versi baru di sini
 for f in VERSI.txt backend/app/versi.py frontend/src/versi.ts \
          docs/CARA_MENJALANKAN.md diagnosa.bat hentikan-api.bat; do
   sed -i "s/$LAMA/$BARU/g" "$f"

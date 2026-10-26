@@ -23,6 +23,7 @@ from sqlalchemy.orm import Session
 
 from ..core.alarm import evaluasi_alarm
 from ..mart import bangun_mart
+from ..core.klasifikasi_vendor import bakukan as bakukan_klasifikasi
 from ..models import (
     AturanStokHarga,
     Grade,
@@ -200,11 +201,26 @@ def impor_template(path: str, session: Session, pengunggah: str = "?",
         if not kode:
             tolak("Master_Vendor", i, "KODE_KOSONG", "Kolom Kode_Vendor kosong.")
             continue
+        # Klasifikasi divalidasi lebih dulu: ejaan yang tidak dikenal membuat
+        # baris ini ditolak (bukan disimpan sebagai nilai lain).
+        try:
+            klasifikasi = bakukan_klasifikasi(ambil("klasifikasi"))
+        except ValueError as e:
+            tolak("Master_Vendor", i, "KLASIFIKASI_SALAH", str(e))
+            continue
         v = session.get(Vendor, kode) or Vendor(kode=kode, nama_baku="")
         v.nama_baku = ke_teks(ambil("nama_baku")) or kode
         v.varian_nama = ke_teks(ambil("varian_nama"))
         v.kategori = ke_teks(ambil("kategori"))
         v.status = ke_teks(ambil("status"))
+        # Profil (v0.10.0): kosong = jangan ubah, supaya unggahan yang hanya
+        # berisi kode/nama tidak menghapus alamat/kontak/klasifikasi.
+        if ke_teks(ambil("alamat")):
+            v.alamat = ke_teks(ambil("alamat"))
+        if ke_teks(ambil("kontak_person")) or ke_teks(ambil("kontak")):
+            v.kontak_person = ke_teks(ambil("kontak_person")) or ke_teks(ambil("kontak"))
+        if klasifikasi:
+            v.klasifikasi = klasifikasi
         session.merge(v)
         n += 1
     hasil.jumlah["vendor"] = n

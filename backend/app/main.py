@@ -37,6 +37,7 @@ from .auth import KonfigurasiAuth
 from .core.alarm import evaluasi_alarm
 from .core.kualitas import data_terlambat
 from .core.lookup import kurs_pada, sicom_pada
+from .core.skema import pastikan_kolom_baru
 from .db import buat_engine, buat_session_factory
 from .mart import bangun_mart
 from .models import (Base, Grade, Kurs, MartHarian, Pembelian, RawBaris,
@@ -131,6 +132,9 @@ def buat_app(engine: Engine | None = None) -> FastAPI:
 
     engine = engine or buat_engine()
     Base.metadata.create_all(engine)
+    # Database yang sudah ada tidak ikut berubah lewat create_all: tambahkan
+    # kolom baru (mis. profil vendor) tanpa menyentuh data lama.
+    pastikan_kolom_baru(engine)
     SessionLocal = buat_session_factory(engine)
 
     # Di produksi, halaman dokumentasi otomatis dimatikan.
@@ -245,6 +249,7 @@ def buat_app(engine: Engine | None = None) -> FastAPI:
                     "alarm-tindakan", "stok-margin-panduan",
                     "input-harian", "input-stok", "input-pembelian",
                     "unggah-pratinjau", "unggah-mismatch-xlsx",
+                    "vendor-profil",
                 ],
                 # versi kode ikut dilaporkan supaya mudah membandingkan
                 # folder yang dijalankan dengan kode terbaru di repo

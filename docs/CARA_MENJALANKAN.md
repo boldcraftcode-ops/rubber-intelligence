@@ -287,6 +287,33 @@ kategori, dan status, serta menghapus vendor yang belum dipakai. Kolom **Tiket**
 dan **Ton kering** pada daftar menunjukkan vendor mana yang benar-benar dipakai,
 jadi salah ketik kode langsung kelihatan.
 
+**Profil pemasok (sejak v0.10.0).** Selain kode, nama, kategori, dan status,
+tiap vendor menyimpan tiga informasi tambahan — semuanya **boleh kosong**:
+
+| Isian | Keterangan |
+|---|---|
+| **Alamat** | alamat lengkap vendor (boleh dua baris) |
+| **Contact person** | nama orang yang dihubungi; nomor HP boleh ditulis di situ, mis. `Budi — 0812-1111-2222` |
+| **Klasifikasi** | **Small holder**, **Small estate**, atau **Rubber trader** |
+
+Klasifikasi dipilih dari daftar (tidak diketik bebas) di layar. Saat impor
+Excel, ejaan lain yang lazim tetap diterima — `Smallholder`, `small-holder`,
+`Kebun Rakyat`, `trader`, `Pedagang` — tetapi ejaan yang tidak dikenal
+**ditolak per baris** dengan alasan yang menyebut tiga pilihan itu, dan baris
+lain tetap masuk. Klasifikasi sengaja tidak ditebak: angka komposisi pemasok
+(kebun rakyat vs kebun besar vs pedagang) hanya berguna kalau isinya benar.
+
+Di atas daftar ada baris **Komposisi** (jumlah tiap klasifikasi + yang belum
+diisi) dan saringan **Klasifikasi**, sehingga bisa langsung dilihat berapa
+banyak pemasok tiap jenis. Kotak **Cari** sekarang juga menelusuri alamat,
+contact person, dan klasifikasi.
+
+Di Excel, tiga kolom baru ada di kanan: `Alamat`, `Kontak_Person`,
+`Klasifikasi`. Mengosongkan selnya berarti **tidak diubah** (bukan dihapus) —
+sama seperti Kategori — supaya file yang hanya berisi kode + nama tidak
+menghapus profil yang sudah diisi lewat layar. Untuk benar-benar mengosongkan,
+pakai tombol **ubah** di layar lalu kosongkan isiannya.
+
 Untuk banyak vendor sekaligus: klik **Unduh template** di kartu *Bulk import*,
 isi di Excel, lalu unggah kembali di kartu yang sama. Kode yang sudah ada akan
 **diperbarui**, bukan digandakan.
@@ -301,7 +328,7 @@ kode akan membuat tonase historis kehilangan pemiliknya di laporan.
 python -m pytest
 ```
 
-Harus tertulis `376 passed`. Pengujian mencakup semua kasus uji emas:
+Harus tertulis `402 passed`. Pengujian mencakup semua kasus uji emas:
 harian 3 Jan 2026, bulan Jan/Feb 2026, Jan 2023, Mar 2020 (kurs berubah
 tengah bulan), Apr 2022 (koreksi salah ketik Excel), Days/rasio stok,
 dan perencanaan Jan 2027.
@@ -468,7 +495,7 @@ Bacanya:
 
 | Yang tertulis | Artinya | Tindakan |
 |---|---|---|
-| `mode login : lokal (username-sandi)` dan API menjawab `0.9.9` + `lokal` | sudah benar | login dengan akun Anda (Ctrl+F5 dulu) |
+| `mode login : lokal (username-sandi)` dan API menjawab `0.10.0` + `lokal` | sudah benar | login dengan akun Anda (Ctrl+F5 dulu) |
 | API menjawab `mode: nonaktif` | `AUTH_DISABLED=true` masih ada di `.env` | hapus baris itu, lalu jalankan `start-web.bat` lagi |
 | API tidak menjawab / `404` di `/api/auth/mode` | prosesnya **kode lama** | tutup jendela API lama, jalankan `start-web.bat` lagi |
 | bagian [2] tidak ada akun, atau sandi lupa | akun belum dibuat / sandi salah | `python -m app.cli reset-sandi admin` (dari folder `backend`) |
@@ -494,11 +521,11 @@ Perbaikan:
    melaporkan apakah **port 8000 dan 5173 sudah BEBAS**. Kalau ada yang gagal
    ditutup, skrip mengatakannya (tidak diam-diam).
 2. Jalankan **`start-web.bat`** dari folder aplikasi yang benar — folder yang
-   `VERSI.txt`-nya berisi `0.9.9`. Tunggu tulisan **`API siap: kode 0.9.9`**.
+   `VERSI.txt`-nya berisi `0.10.0`. Tunggu tulisan **`API siap: kode 0.10.0`**.
 3. Buka `http://localhost:5173`, tekan **Ctrl+F5**.
 
 Cek cepat kapan saja: `http://localhost:8000/api/health` — nilai `versi` dan
-`kode` harus `0.9.9`, dan `folder` harus menunjuk folder aplikasi Anda.
+`kode` harus `0.10.0`, dan `folder` harus menunjuk folder aplikasi Anda.
 
 ## Cara tercepat membereskan: `perbaiki.bat`
 
@@ -555,7 +582,7 @@ berkas ini dari folder lama ke folder baru **sebelum** menjalankan
 - `backend\.env` — setelan login (opsional; bila tidak ada, dibuat otomatis)
 
 Cara memastikan folder baru benar-benar versi terbaru: lihat **`VERSI.txt`** di
-akar folder (versi terbaru saat dokumen ini ditulis: **0.9.9**), atau buka
+akar folder (versi terbaru saat dokumen ini ditulis: **0.10.0**), atau buka
 `http://localhost:8000/api/health` dan periksa `"versi"` serta `"kode"`.
 
 ## Login berhasil tetapi kembali ke form login lagi
