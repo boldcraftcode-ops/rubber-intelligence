@@ -364,13 +364,28 @@ sudah diuji). Setelah pembaruan skrip, salin versi aplikasi terbaru ke PC
 luring; wheelhouse lama boleh dipakai bila memang dibuat untuk Python 3.11
 Windows 64-bit.
 
+### Perbaikan unggah dari pratinjau pada Windows (v0.11.2)
+
+Jika setelah menekan **Konfirmasi simpan** keluar `WinError 32` atau pesan
+`file sedang digunakan`, tutup Excel/file manager bila file pratinjau sedang
+terbuka, lalu pasang versi aplikasi **0.11.2**. Penyebab yang diperbaiki ada
+di aplikasi: workbook Excel yang dibaca saat pratinjau belum ditutup, sehingga
+Windows masih mengunci file ketika aplikasi hendak memindahkannya ke arsip
+unggahan.
+
+Versi 0.11.2 menutup semua workbook setelah pemeriksaan selesai (termasuk
+jalur unggah tiket) dan menampilkan pesan yang dapat dibaca jika Windows masih
+mengunci file. Setelah memperbarui kode, buka ulang aplikasi dan unggah ulang
+file bila pratinjau lama sudah kedaluwarsa. Database tidak perlu dihapus atau
+dibangun ulang.
+
 ## 5. Menjalankan pengujian (memastikan rumus persis Excel lama)
 
 ```powershell
 python -m pytest
 ```
 
-Harus tertulis `414 passed`. Pengujian mencakup semua kasus uji emas:
+Harus tertulis `416 passed`. Pengujian mencakup semua kasus uji emas:
 harian 3 Jan 2026, bulan Jan/Feb 2026, Jan 2023, Mar 2020 (kurs berubah
 tengah bulan), Apr 2022 (koreksi salah ketik Excel), Days/rasio stok,
 dan perencanaan Jan 2027.
@@ -537,7 +552,7 @@ Bacanya:
 
 | Yang tertulis | Artinya | Tindakan |
 |---|---|---|
-| `mode login : lokal (username-sandi)` dan API menjawab `0.11.1` + `lokal` | sudah benar | login dengan akun Anda (Ctrl+F5 dulu) |
+| `mode login : lokal (username-sandi)` dan API menjawab `0.11.2` + `lokal` | sudah benar | login dengan akun Anda (Ctrl+F5 dulu) |
 | API menjawab `mode: nonaktif` | `AUTH_DISABLED=true` masih ada di `.env` | hapus baris itu, lalu jalankan `start-web.bat` lagi |
 | API tidak menjawab / `404` di `/api/auth/mode` | prosesnya **kode lama** | tutup jendela API lama, jalankan `start-web.bat` lagi |
 | bagian [2] tidak ada akun, atau sandi lupa | akun belum dibuat / sandi salah | `python -m app.cli reset-sandi admin` (dari folder `backend`) |
@@ -563,11 +578,11 @@ Perbaikan:
    melaporkan apakah **port 8000 dan 5173 sudah BEBAS**. Kalau ada yang gagal
    ditutup, skrip mengatakannya (tidak diam-diam).
 2. Jalankan **`start-web.bat`** dari folder aplikasi yang benar — folder yang
-   `VERSI.txt`-nya berisi `0.11.1`. Tunggu tulisan **`API siap: kode 0.11.1`**.
+   `VERSI.txt`-nya berisi `0.11.2`. Tunggu tulisan **`API siap: kode 0.11.2`**.
 3. Buka `http://localhost:5173`, tekan **Ctrl+F5**.
 
 Cek cepat kapan saja: `http://localhost:8000/api/health` — nilai `versi` dan
-`kode` harus `0.11.1`, dan `folder` harus menunjuk folder aplikasi Anda.
+`kode` harus `0.11.2`, dan `folder` harus menunjuk folder aplikasi Anda.
 
 ## Cara tercepat membereskan: `perbaiki.bat`
 
@@ -624,7 +639,7 @@ berkas ini dari folder lama ke folder baru **sebelum** menjalankan
 - `backend\.env` — setelan login (opsional; bila tidak ada, dibuat otomatis)
 
 Cara memastikan folder baru benar-benar versi terbaru: lihat **`VERSI.txt`** di
-akar folder (versi terbaru saat dokumen ini ditulis: **0.11.1**), atau buka
+akar folder (versi terbaru saat dokumen ini ditulis: **0.11.2**), atau buka
 `http://localhost:8000/api/health` dan periksa `"versi"` serta `"kode"`.
 
 ## Login berhasil tetapi kembali ke form login lagi

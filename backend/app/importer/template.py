@@ -101,6 +101,33 @@ def _buat_unggahan(path: str, session: Session, pengunggah: str,
 
 def impor_template(path: str, session: Session, pengunggah: str = "?",
                    *, simpan: bool = True, kemajuan=None) -> HasilImpor:
+    """Impor template dan tutup semua workbook sebelum kembali ke pemanggil.
+
+    Pada Windows file preview harus dapat dipindahkan setelah endpoint ini
+    selesai. Workbook openpyxl yang tidak ditutup mengunci file .xlsx dan
+    menyebabkan shutil.move gagal dengan WinError 32 saat konfirmasi.
+    """
+    workbook: list = []
+    try:
+        return _impor_template_impl(path, session, pengunggah,
+                                    simpan=simpan, kemajuan=kemajuan,
+                                    _workbook=workbook)
+    finally:
+        _tutup_workbook(workbook)
+
+
+def _tutup_workbook(workbook: list) -> None:
+    for wb in reversed(workbook):
+        try:
+            wb.close()
+        except Exception:
+            # Jangan menutupi galat impor utama karena kegagalan saat menutup.
+            pass
+
+
+def _impor_template_impl(path: str, session: Session, pengunggah: str = "?",
+                         *, simpan: bool = True, kemajuan=None,
+                         _workbook: list | None = None) -> HasilImpor:
     """Impor file template.
 
     `simpan=False` dipakai layar **pratinjau**: semua validasi tetap jalan,
@@ -110,10 +137,12 @@ def impor_template(path: str, session: Session, pengunggah: str = "?",
     `kemajuan(pesan)` opsional, dipanggil tiap kali satu sheet mulai diperiksa
     (dipakai progress bar di layar unggah).
     """
+    _workbook = _workbook if _workbook is not None else []
     hasil = HasilImpor()
     unggahan = _buat_unggahan(path, session, pengunggah, hasil)
 
     wb_raw = openpyxl.load_workbook(path, read_only=True, data_only=True)
+    _workbook.append(wb_raw)
     _simpan_raw(wb_raw, session, unggahan.id)
     wb = wb_raw
 
@@ -246,6 +275,7 @@ def impor_template(path: str, session: Session, pengunggah: str = "?",
     # dihitung dari jumlah Dry tiket pada tanggal itu.
     if "Intake_Tiket" in wb_raw.sheetnames:
         wb2 = openpyxl.load_workbook(path, data_only=True)
+        _workbook.append(wb2)
         hasil.jumlah["tiket_baris"] = impor_sheet_tiket(
             wb2["Intake_Tiket"], session, unggahan.id, hasil.peringatan)
         session.flush()
@@ -530,17 +560,33 @@ def impor_template(path: str, session: Session, pengunggah: str = "?",
 
 def impor_master_data(path: str, session: Session, pengunggah: str = "?",
                       *, simpan: bool = True, kemajuan=None) -> HasilImpor:
+    """Impor Master Data dan tutup workbook setelah selesai/galat."""
+    workbook: list = []
+    try:
+        return _impor_master_data_impl(path, session, pengunggah,
+                                       simpan=simpan, kemajuan=kemajuan,
+                                       _workbook=workbook)
+    finally:
+        _tutup_workbook(workbook)
+
+
+def _impor_master_data_impl(path: str, session: Session, pengunggah: str = "?",
+                            *, simpan: bool = True, kemajuan=None,
+                            _workbook: list | None = None) -> HasilImpor:
     """Impor file ekspor 'Master Data' (bisa beberapa sheet tiket dalam satu file).
 
     `simpan=False` = mode pratinjau (lihat `impor_template`).
     """
+    _workbook = _workbook if _workbook is not None else []
     hasil = HasilImpor()
     unggahan = _buat_unggahan(path, session, pengunggah, hasil)
 
     wb_raw = openpyxl.load_workbook(path, read_only=True, data_only=True)
+    _workbook.append(wb_raw)
     _simpan_raw(wb_raw, session, unggahan.id)
 
     wb = openpyxl.load_workbook(path, data_only=True)
+    _workbook.append(wb)
     total = 0
     sebelum = len(hasil.peringatan)
     for nama in wb.sheetnames:

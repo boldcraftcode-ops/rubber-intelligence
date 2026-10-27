@@ -81,6 +81,25 @@ def _hitung(Sesi, model) -> int:
 
 # --------------------------------------------------------------- pratinjau
 
+def test_pratinjau_menutup_workbook_sebelum_file_dipindah(klien, monkeypatch):
+    """Windows mengunci .xlsx sampai semua workbook openpyxl ditutup."""
+    c, _, _ = klien
+    asli = openpyxl.load_workbook
+    penutup = []
+
+    def pantau(*args, **kwargs):
+        wb = asli(*args, **kwargs)
+        from unittest.mock import Mock
+        wb.close = Mock(wraps=wb.close)
+        penutup.append(wb.close)
+        return wb
+
+    monkeypatch.setattr(openpyxl, "load_workbook", pantau)
+    r = _pratinjau(c, _xlsx_stok(dengan_mismatch=False))
+    assert r.status_code == 200, r.text
+    assert penutup and all(tutup.call_count == 1 for tutup in penutup)
+
+
 def test_pratinjau_tidak_menyimpan_apa_pun(klien):
     c, Sesi, _ = klien
     r = _pratinjau(c, _xlsx_stok())
@@ -176,6 +195,21 @@ def test_unduh_mismatch_tanpa_baris_bermasalah(klien):
 
 
 # --------------------------------------------------------------- konfirmasi
+
+def test_file_preview_terkunci_memberi_pesan_terbaca_dan_tidak_menghapus(klien, monkeypatch):
+    c, Sesi, folder = klien
+    token = _pratinjau(c, _xlsx_stok(dengan_mismatch=False)).json()["token"]
+
+    def terkunci(*args, **kwargs):
+        raise PermissionError("file sedang digunakan")
+
+    monkeypatch.setattr("app.api_unggah.shutil.move", terkunci)
+    r = c.post(f"/api/unggah/pratinjau/{token}/konfirmasi")
+    assert r.status_code == 423
+    assert "masih sedang dipakai" in r.json()["detail"]
+    assert _hitung(Sesi, Stok) == 0
+    assert list(folder.rglob("*.xlsx"))
+
 
 def test_konfirmasi_baru_menyimpan_ke_database(klien):
     c, Sesi, folder = klien
