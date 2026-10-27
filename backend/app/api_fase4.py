@@ -18,6 +18,7 @@ from .core.lookup import kurs_pada, parameter_pada, sicom_pada
 from .core.perencanaan import hitung_rencana
 from .core.rekomendasi import rekomendasi_harga
 from .core.stok_margin import analisis_stok_margin
+from .core.tindakan_alarm import tindakan_untuk
 from .mart import bangun_mart
 from .models import (
     Alarm,
@@ -304,8 +305,59 @@ def pasang_router_fase4(app, ambil_session):
 
     # ------------------------------------------------------------ analisis stok vs margin
     @router.get("/analisis/stok-margin")
-    def stok_vs_margin(session: Session = dep):
-        return analisis_stok_margin(session)
+    def stok_vs_margin(tahun: int | None = None, format: str | None = None,
+                       session: Session = dep):
+        """Hubungan rasio stok vs OP Margin, siap dibaca.
+
+        `tahun` menyaring titik & ringkasan yang ditampilkan (perbandingan antar
+        tahun tetap dikirim di `per_tahun`). `format=xlsx` untuk ekspor Excel.
+        """
+        hasil = analisis_stok_margin(session, tahun)
+        if format == "xlsx":
+            return _xlsx_stok_margin(hasil)
+        return hasil
+    
+    def _xlsx_stok_margin(hasil: dict):
+        import io
+
+        import openpyxl
+        from fastapi.responses import StreamingResponse
+
+        wb = openpyxl.Workbook()
+        ws = wb.active
+        ws.title = "Data bulanan"
+        ws.append(["Tahun", "Bulan", "Rasio stok / safety",
+                   "OP Margin (USc/kg)", "Ton"])
+        for t in hasil["titik"]:
+            ws.append([t["tahun"], t["bulan"], t["rasio_stok"],
+                       t["op_margin"], t["ton"]])
+
+        ws2 = wb.create_sheet("Ringkasan")
+        ws2.append(["Keterangan", "Nilai"])
+        ws2.append(["Bulan berdata", hasil["jumlah_bulan"]])
+        ws2.append(["Korelasi (Pearson)", hasil["korelasi"]])
+        ws2.append(["Rasio stok rata-rata", hasil["rasio_rata"]])
+        ws2.append(["Margin rata-rata (USc/kg)", hasil["margin_rata"]])
+        for k in hasil["kelompok"]:
+            ws2.append([k["label"] + " - jumlah bulan", k["jumlah_bulan"]])
+            ws2.append([k["label"] + " - margin rata-rata", k["margin_rata"]])
+        ws2.append([])
+        ws2.append(["Korelasi per tahun", "Korelasi"])
+        for p in hasil["per_tahun"]:
+            ws2.append([p["tahun"], p["korelasi"]])
+        ws2.append([])
+        ws2.append(["Catatan", hasil["catatan"]])
+
+        buf = io.BytesIO()
+        wb.save(buf)
+        buf.seek(0)
+        nama = ("stok_vs_margin_" + str(hasil["tahun"]) + ".xlsx"
+                if hasil["tahun"] else "stok_vs_margin.xlsx")
+        return StreamingResponse(
+            buf,
+            media_type="application/vnd.openxmlformats-officedocument."
+                       "spreadsheetml.sheet",
+            headers={"Content-Disposition": f'attachment; filename="{nama}"'})
 
     # ------------------------------------------------------------ perencanaan
     @router.get("/rencana/{tahun_target}")
@@ -363,12 +415,19 @@ def pasang_router_fase4(app, ambil_session):
     def daftar_alarm(session: Session = dep):
         pastikan_pengaturan(session)
         session.commit()
-        return {
-            "alarm": [{
+        # `tindakan` = ke halaman mana alarm ini dibereskan + langkahnya, supaya
+        # pengguna tidak menebak dari mana membetulkan datanya.
+        daftar = []
+        for a in session.scalars(select(Alarm).order_by(Alarm.kode)):
+            t = tindakan_untuk(a.kode, a.tanggal_data, a.pesan)
+            daftar.append({
                 "kode": a.kode, "pesan": a.pesan,
                 "tanggal_data": a.tanggal_data.isoformat() if a.tanggal_data else None,
                 "dievaluasi_pada": a.dievaluasi_pada.isoformat(timespec="seconds"),
-            } for a in session.scalars(select(Alarm).order_by(Alarm.kode))],
+                "kategori": t["kategori"], "tindakan": t,
+            })
+        return {
+            "alarm": daftar,
             "pengaturan": [{
                 "kode": p.kode, "aktif": p.aktif, "ambang": p.ambang,
                 "satuan": p.satuan, "keterangan": p.keterangan,

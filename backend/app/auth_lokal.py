@@ -80,11 +80,35 @@ def _baca_token(token: str, secret: str) -> dict:
                       options={"require": ["exp", "sub"]})
 
 
-def _pasang_cookie(response: Response, token: str, produksi: bool) -> None:
+def _pasang_cookie(response: Response, token: str, cfg) -> None:
+    """Pasang cookie sesi.
+
+    samesite/secure mengikuti setelan (lihat auth.KonfigurasiAuth):
+    bawaan "lax" + Secure di produksi. Bila tampilan web dan API berada di
+    situs berbeda, setel COOKIE_SAMESITE=none; Secure otomatis menyala.
+    """
     response.set_cookie(
         COOKIE_SESI, token, max_age=SESI_JAM * 3600, httponly=True,
-        samesite="lax",  # frontend & api satu site (subdomain sama) -> aman
-        secure=produksi, path="/")
+        samesite=cfg.cookie_samesite,
+        secure=cfg.cookie_secure, path="/")
+
+
+def _token_dari_permintaan(request: Request) -> str | None:
+    """Token sesi dari cookie, atau dari header Authorization: Bearer.
+
+    Cookie (HttpOnly) adalah cara utama. Header dipakai sebagai CADANGAN untuk
+    lingkungan yang memblokir cookie pihak ketiga — mis. aplikasi yang dibuka
+    di dalam iframe (halaman preview/embed) atau browser yang memblokir cookie
+    lintas situs. Tanpa cadangan ini, login berhasil (200) tetapi permintaan
+    berikutnya 401 karena cookie tidak pernah dikirim.
+    """
+    token = request.cookies.get(COOKIE_SESI)
+    if token:
+        return token
+    kepala = request.headers.get("authorization", "")
+    if kepala.lower().startswith("bearer "):
+        return kepala[7:].strip() or None
+    return None
 
 
 # ----------------------------------------------------------------------------
@@ -98,7 +122,7 @@ def pasang_middleware_lokal(app, cfg) -> None:
         jalur = request.url.path
         if not jalur.startswith("/api") or jalur in JALUR_BEBAS_LOKAL:
             return await call_next(request)
-        token = request.cookies.get(COOKIE_SESI)
+        token = _token_dari_permintaan(request)
         if not token:
             return JSONResponse(status_code=401, content={
                 "detail": "Belum login. Masukkan username dan sandi Anda."})
@@ -208,10 +232,15 @@ def pasang_router_auth(app, ambil_session, cfg):
         p.login_terakhir = dt.datetime.utcnow()
         catat_audit(session, p.username, "login", "auth", {"nama": p.nama})
         session.commit()
-        _pasang_cookie(response, _buat_token(p, cfg.secret), cfg.produksi)
+        token = _buat_token(p, cfg.secret)
+        _pasang_cookie(response, token, cfg)
         return {"status": "ok", "username": p.username, "nama": p.nama,
                 "peran": p.peran,
-                "pesan": f"Selamat datang, {p.nama}."}
+                "pesan": f"Selamat datang, {p.nama}.",
+                # Cadangan bila cookie diblokir (iframe / lintas situs).
+                # Tampilan web menyimpannya dan mengirimnya lewat header
+                # Authorization: Bearer.
+                "token": token}
 
     @router.post("/logout")
     def logout(response: Response):

@@ -23,6 +23,7 @@ from sqlalchemy.orm import Session
 
 from ..core.alarm import evaluasi_alarm
 from ..mart import bangun_mart
+from ..core.klasifikasi_vendor import bakukan as bakukan_klasifikasi
 from ..models import (
     AturanStokHarga,
     Grade,
@@ -51,6 +52,9 @@ class HasilImpor:
     ditolak: dict[str, int] = field(default_factory=dict)
     peringatan: list[str] = field(default_factory=list)
     duplikat_file: bool = False
+    #: Rincian per kejadian, dipakai layar pratinjau & unduhan Excel
+    #: "data mismatch": {jenis, sheet, baris, kode, pesan, nilai[]}
+    rincian: list[dict] = field(default_factory=list)
 
 
 def _peta_header(baris) -> dict[str, int]:
@@ -95,7 +99,17 @@ def _buat_unggahan(path: str, session: Session, pengunggah: str,
     return unggahan
 
 
-def impor_template(path: str, session: Session, pengunggah: str = "?") -> HasilImpor:
+def impor_template(path: str, session: Session, pengunggah: str = "?",
+                   *, simpan: bool = True, kemajuan=None) -> HasilImpor:
+    """Impor file template.
+
+    `simpan=False` dipakai layar **pratinjau**: semua validasi tetap jalan,
+    tetapi mart/alarm tidak dihitung dan transaksi tidak di-commit — pemanggil
+    wajib `rollback()` supaya tidak ada satu baris pun yang masuk database.
+
+    `kemajuan(pesan)` opsional, dipanggil tiap kali satu sheet mulai diperiksa
+    (dipakai progress bar di layar unggah).
+    """
     hasil = HasilImpor()
     unggahan = _buat_unggahan(path, session, pengunggah, hasil)
 
@@ -103,21 +117,33 @@ def impor_template(path: str, session: Session, pengunggah: str = "?") -> HasilI
     _simpan_raw(wb_raw, session, unggahan.id)
     wb = wb_raw
 
-    def catat(sheet: str, baris_ke: int | None, kode: str, pesan: str):
+    nilai_baris: dict[tuple[str, int], list[str]] = {}
+    sheet_dilapor: set[str] = set()
+
+    def catat(sheet: str, baris_ke: int | None, kode: str, pesan: str,
+              jenis: str = "peringatan"):
         lokasi = f"[{sheet}" + (f" baris {baris_ke}" if baris_ke else "") + "]"
         hasil.peringatan.append(f"{lokasi} {pesan}")
         session.add(PeringatanData(unggahan_id=unggahan.id, sheet=sheet,
                                    baris_ke=baris_ke, kode=kode, pesan=pesan))
+        hasil.rincian.append({
+            "jenis": jenis, "sheet": sheet, "baris": baris_ke, "kode": kode,
+            "pesan": pesan,
+            "nilai": nilai_baris.get((sheet, baris_ke or 0), []),
+        })
 
     def tolak(sheet: str, baris_ke: int, kode: str, pesan: str):
         hasil.ditolak[sheet] = hasil.ditolak.get(sheet, 0) + 1
         catat(sheet, baris_ke, kode, pesan + " Baris DITOLAK (tidak dimuat); "
-              "perbaiki lalu unggah ulang.")
+              "perbaiki lalu unggah ulang.", jenis="ditolak")
 
     def baca(nama_sheet: str):
         """Generator (nomor_baris, ambil, baris_mentah) untuk sheet berheader baris 1."""
         if nama_sheet not in wb.sheetnames:
             return
+        if kemajuan is not None and nama_sheet not in sheet_dilapor:
+            sheet_dilapor.add(nama_sheet)
+            kemajuan(f"Memeriksa sheet {nama_sheet}")
         ws = wb[nama_sheet]
         peta: dict[str, int] = {}
         for i, baris in enumerate(ws.iter_rows(values_only=True), start=1):
@@ -126,6 +152,8 @@ def impor_template(path: str, session: Session, pengunggah: str = "?") -> HasilI
                 continue
             if baris_kosong(baris) or _baris_catatan(baris):
                 continue
+            nilai_baris[(nama_sheet, i)] = [
+                "" if v is None else str(v) for v in baris]
 
             def ambil(nama, _baris=baris, _peta=peta):
                 idx = _peta.get(nama)
@@ -173,11 +201,26 @@ def impor_template(path: str, session: Session, pengunggah: str = "?") -> HasilI
         if not kode:
             tolak("Master_Vendor", i, "KODE_KOSONG", "Kolom Kode_Vendor kosong.")
             continue
+        # Klasifikasi divalidasi lebih dulu: ejaan yang tidak dikenal membuat
+        # baris ini ditolak (bukan disimpan sebagai nilai lain).
+        try:
+            klasifikasi = bakukan_klasifikasi(ambil("klasifikasi"))
+        except ValueError as e:
+            tolak("Master_Vendor", i, "KLASIFIKASI_SALAH", str(e))
+            continue
         v = session.get(Vendor, kode) or Vendor(kode=kode, nama_baku="")
         v.nama_baku = ke_teks(ambil("nama_baku")) or kode
         v.varian_nama = ke_teks(ambil("varian_nama"))
         v.kategori = ke_teks(ambil("kategori"))
         v.status = ke_teks(ambil("status"))
+        # Profil (v0.10.0): kosong = jangan ubah, supaya unggahan yang hanya
+        # berisi kode/nama tidak menghapus alamat/kontak/klasifikasi.
+        if ke_teks(ambil("alamat")):
+            v.alamat = ke_teks(ambil("alamat"))
+        if ke_teks(ambil("kontak_person")) or ke_teks(ambil("kontak")):
+            v.kontak_person = ke_teks(ambil("kontak_person")) or ke_teks(ambil("kontak"))
+        if klasifikasi:
+            v.klasifikasi = klasifikasi
         session.merge(v)
         n += 1
     hasil.jumlah["vendor"] = n
@@ -476,14 +519,21 @@ def impor_template(path: str, session: Session, pengunggah: str = "?") -> HasilI
     hasil.jumlah["perencanaan"] = n
 
     session.flush()
-    bangun_mart(session)
-    evaluasi_alarm(session)  # alarm dievaluasi setelah tiap unggahan
-    session.commit()
+    if simpan:
+        bangun_mart(session)
+        evaluasi_alarm(session)  # alarm dievaluasi setelah tiap unggahan
+        session.commit()
+    elif kemajuan is not None:
+        kemajuan("Validasi selesai")
     return hasil
 
 
-def impor_master_data(path: str, session: Session, pengunggah: str = "?") -> HasilImpor:
-    """Impor file ekspor 'Master Data' (bisa beberapa sheet tiket dalam satu file)."""
+def impor_master_data(path: str, session: Session, pengunggah: str = "?",
+                      *, simpan: bool = True, kemajuan=None) -> HasilImpor:
+    """Impor file ekspor 'Master Data' (bisa beberapa sheet tiket dalam satu file).
+
+    `simpan=False` = mode pratinjau (lihat `impor_template`).
+    """
     hasil = HasilImpor()
     unggahan = _buat_unggahan(path, session, pengunggah, hasil)
 
@@ -492,12 +542,29 @@ def impor_master_data(path: str, session: Session, pengunggah: str = "?") -> Has
 
     wb = openpyxl.load_workbook(path, data_only=True)
     total = 0
+    sebelum = len(hasil.peringatan)
     for nama in wb.sheetnames:
+        if kemajuan is not None:
+            kemajuan(f"Memeriksa sheet {nama}")
         total += impor_sheet_tiket(wb[nama], session, unggahan.id, hasil.peringatan)
     hasil.jumlah["tiket_baris"] = total
 
+    # Peringatan tiket dicatat sebagai rincian supaya bisa diunduh sebagai
+    # daftar "periksa lagi" (bukan mismatch: barisnya tetap dimuat).
+    for pesan in hasil.peringatan[sebelum:]:
+        lokasi = pesan.split("]", 1)[0].lstrip("[")
+        bagian = lokasi.split(" baris ")
+        hasil.rincian.append({
+            "jenis": "peringatan", "sheet": bagian[0],
+            "baris": int(bagian[1]) if len(bagian) > 1 and bagian[1].isdigit() else None,
+            "kode": "PERIKSA", "pesan": pesan, "nilai": [],
+        })
+
     session.flush()
-    bangun_mart(session)
-    evaluasi_alarm(session)  # alarm dievaluasi setelah tiap unggahan
-    session.commit()
+    if simpan:
+        bangun_mart(session)
+        evaluasi_alarm(session)  # alarm dievaluasi setelah tiap unggahan
+        session.commit()
+    elif kemajuan is not None:
+        kemajuan("Validasi selesai")
     return hasil

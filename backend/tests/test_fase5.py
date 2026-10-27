@@ -115,9 +115,13 @@ def test_health_terbuka_tanpa_login(dengan_auth):
     isi = r.json()
     assert isi["status"] == "ok"
     # "fitur"/"login"/"kode" = identitas proses (bukan data bisnis), dipakai
-    # untuk mendiagnosis "API masih versi lama".
+    # untuk mendiagnosis "API masih versi lama". "web_statistik" = folder
+    # frontend/dist bila mode satu-origin aktif; hanya jalur folder, bukan data.
+    # Daftar ini SENGAJA tertutup: kunci baru harus disetujui di sini supaya
+    # tidak ada data bisnis yang bocor lewat /api/health.
     assert set(isi) <= {"status", "app", "versi", "waktu", "fitur",
-                        "login", "kode", "folder", "pid", "mulai"}
+                        "login", "kode", "folder", "pid", "mulai",
+                        "web_statistik"}
     assert all(isinstance(x, str) and "/" not in x for x in isi.get("fitur", []))
     assert isi["login"]["cara"] == "username-sandi"
 
