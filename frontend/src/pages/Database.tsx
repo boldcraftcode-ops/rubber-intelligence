@@ -11,6 +11,7 @@ const NAMA_TABEL: Record<string, string> = {
   raw_unggahan: "Riwayat unggahan (raw)",
   raw_baris: "Baris mentah (raw)",
   vendor: "Vendor",
+  collector: "Collector",
   grade: "Grade",
   tiket_baris: "Baris tiket intake",
   pembelian: "Pembelian",

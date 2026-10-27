@@ -190,6 +190,10 @@ def buat_app(engine: Engine | None = None) -> FastAPI:
     from .api_vendor import pasang_router_vendor
     pasang_router_vendor(app, ambil_session)
 
+    # Master Collector (afiliasi vendor + wilayah operasional)
+    from .api_collector import pasang_router_collector
+    pasang_router_collector(app, ambil_session)
+
     # Rute modul Database (info, kosongkan, ekspor, impor)
     from .api_database import pasang_router_database
     pasang_router_database(app, ambil_session, engine)
@@ -250,6 +254,7 @@ def buat_app(engine: Engine | None = None) -> FastAPI:
                     "input-harian", "input-stok", "input-pembelian",
                     "unggah-pratinjau", "unggah-mismatch-xlsx",
                     "vendor-profil",
+                    "master-collector",
                 ],
                 # versi kode ikut dilaporkan supaya mudah membandingkan
                 # folder yang dijalankan dengan kode terbaru di repo

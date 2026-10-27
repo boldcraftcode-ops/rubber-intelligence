@@ -84,6 +84,22 @@ class Vendor(Base):
     klasifikasi: Mapped[str | None] = mapped_column(String(30), nullable=True)
 
 
+class Collector(Base):
+    """Kolektor perorangan yang terafiliasi ke satu vendor."""
+
+    __tablename__ = "collector"
+    __table_args__ = (UniqueConstraint("nik", name="uq_collector_nik"),)
+
+    kode: Mapped[str] = mapped_column(String(20), primary_key=True)
+    nama: Mapped[str] = mapped_column(String(200))
+    nik: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    no_hp: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    kode_vendor: Mapped[str] = mapped_column(ForeignKey("vendor.kode"), index=True)
+    provinsi: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    kabupaten_kota: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    desa: Mapped[str | None] = mapped_column(String(120), nullable=True)
+
+
 class Grade(Base):
     __tablename__ = "grade"
 

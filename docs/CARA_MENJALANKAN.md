@@ -322,13 +322,36 @@ Vendor yang sudah dipakai tiket **tidak bisa dihapus** — aplikasi menolak dan
 menyarankan mengubah statusnya menjadi `nonaktif`. Ini disengaja: menghapus
 kode akan membuat tonase historis kehilangan pemiliknya di laporan.
 
+### Master Collector (sejak v0.11.0)
+
+Menu **Master Collector** ada di grup **Master Data**. Collector adalah
+perorangan yang harus terafiliasi ke satu vendor yang sudah terdaftar. Data
+meliputi **Kode kolektor**, **Nama kolektor**, **NIK**, **No HP**, **Afiliasi
+Vendor**, serta wilayah operasional berupa **Provinsi → Kabupaten/Kota → Desa**.
+Wilayah diisi pada tiga kotak terpisah agar mudah dicari dan difilter.
+
+Kode kolektor dan nama wajib diisi; afiliasi vendor wajib dipilih. NIK boleh
+kosong, tetapi bila diisi harus tepat 16 angka dan tidak boleh sama dengan NIK
+collector lain. NIK disimpan sebagai teks agar tidak berubah format. Vendor
+yang masih memiliki collector terafiliasi tidak dapat dihapus; pindahkan
+afiliasi atau hapus collector lebih dulu.
+
+Formulir **Tambah/Ubah/Hapus** dan pencarian ada di kartu Daftar Collector.
+Untuk Excel, gunakan **Unduh template** pada kartu Bulk import Collector.
+Header sheet `Master_Collector`: `Kode_Kolektor`, `Nama_Kolektor`, `NIK`,
+`No_HP`, `Afiliasi_Vendor`, `Provinsi`, `Kabupaten_Kota`, `Desa`. Afiliasi
+memakai kode vendor yang sudah ada. Kode collector yang sudah terdaftar akan
+diperbarui; sel opsional yang kosong tidak menghapus data tersimpan. Baris
+salah (mis. NIK tidak 16 angka atau kode vendor tidak ada) ditolak sendiri,
+sedangkan baris lain yang benar tetap diproses.
+
 ## 5. Menjalankan pengujian (memastikan rumus persis Excel lama)
 
 ```powershell
 python -m pytest
 ```
 
-Harus tertulis `402 passed`. Pengujian mencakup semua kasus uji emas:
+Harus tertulis `412 passed`. Pengujian mencakup semua kasus uji emas:
 harian 3 Jan 2026, bulan Jan/Feb 2026, Jan 2023, Mar 2020 (kurs berubah
 tengah bulan), Apr 2022 (koreksi salah ketik Excel), Days/rasio stok,
 dan perencanaan Jan 2027.
@@ -495,7 +518,7 @@ Bacanya:
 
 | Yang tertulis | Artinya | Tindakan |
 |---|---|---|
-| `mode login : lokal (username-sandi)` dan API menjawab `0.10.0` + `lokal` | sudah benar | login dengan akun Anda (Ctrl+F5 dulu) |
+| `mode login : lokal (username-sandi)` dan API menjawab `0.11.0` + `lokal` | sudah benar | login dengan akun Anda (Ctrl+F5 dulu) |
 | API menjawab `mode: nonaktif` | `AUTH_DISABLED=true` masih ada di `.env` | hapus baris itu, lalu jalankan `start-web.bat` lagi |
 | API tidak menjawab / `404` di `/api/auth/mode` | prosesnya **kode lama** | tutup jendela API lama, jalankan `start-web.bat` lagi |
 | bagian [2] tidak ada akun, atau sandi lupa | akun belum dibuat / sandi salah | `python -m app.cli reset-sandi admin` (dari folder `backend`) |
@@ -521,11 +544,11 @@ Perbaikan:
    melaporkan apakah **port 8000 dan 5173 sudah BEBAS**. Kalau ada yang gagal
    ditutup, skrip mengatakannya (tidak diam-diam).
 2. Jalankan **`start-web.bat`** dari folder aplikasi yang benar — folder yang
-   `VERSI.txt`-nya berisi `0.10.0`. Tunggu tulisan **`API siap: kode 0.10.0`**.
+   `VERSI.txt`-nya berisi `0.11.0`. Tunggu tulisan **`API siap: kode 0.11.0`**.
 3. Buka `http://localhost:5173`, tekan **Ctrl+F5**.
 
 Cek cepat kapan saja: `http://localhost:8000/api/health` — nilai `versi` dan
-`kode` harus `0.10.0`, dan `folder` harus menunjuk folder aplikasi Anda.
+`kode` harus `0.11.0`, dan `folder` harus menunjuk folder aplikasi Anda.
 
 ## Cara tercepat membereskan: `perbaiki.bat`
 
@@ -582,7 +605,7 @@ berkas ini dari folder lama ke folder baru **sebelum** menjalankan
 - `backend\.env` — setelan login (opsional; bila tidak ada, dibuat otomatis)
 
 Cara memastikan folder baru benar-benar versi terbaru: lihat **`VERSI.txt`** di
-akar folder (versi terbaru saat dokumen ini ditulis: **0.10.0**), atau buka
+akar folder (versi terbaru saat dokumen ini ditulis: **0.11.0**), atau buka
 `http://localhost:8000/api/health` dan periksa `"versi"` serta `"kode"`.
 
 ## Login berhasil tetapi kembali ke form login lagi

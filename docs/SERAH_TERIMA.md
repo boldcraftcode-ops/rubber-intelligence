@@ -9,7 +9,7 @@ Kalau Anda hanya punya 15 menit, baca bagian **1 (Status)**, **3 (Cara
 menjalankan)**, dan **7 (Aturan yang tidak boleh dilanggar)**. Selebihnya bisa
 dibaca saat mengerjakan tugas pertama.
 
-Terakhir diperbarui: **2026-10-26**, versi kode **0.10.0**.
+Terakhir diperbarui: **2026-10-27**, versi kode **0.11.0**.
 
 ---
 
@@ -32,15 +32,15 @@ ini setiap hari untuk memutuskan **harga beli maksimum** yang masih aman.
 
 ---
 
-## 2. Status per 2026-10-26
+## 2. Status per 2026-10-27
 
 | Hal | Nilai |
 |---|---|
-| Versi kode | **0.10.0** (`VERSI.txt`, `backend/app/versi.py`, `frontend/src/versi.ts`) |
+| Versi kode | **0.11.0** (`VERSI.txt`, `backend/app/versi.py`, `frontend/src/versi.ts`) |
 | Branch kerja | `arena/18670644-rubber-intelligence` |
 | Pull request | **#1 masih terbuka** — https://github.com/boldcraftcode-ops/rubber-intelligence/pull/1 |
 | Branch `main` | belum memuat pekerjaan v0.7.x–v0.8.x |
-| Unit test | **402 lulus** (`cd backend && .venv/bin/python -m pytest -q`) |
+| Unit test | **412 lulus** (`cd backend && .venv/bin/python -m pytest -q`) |
 | Build frontend | bersih, ±3,3 detik (`cd frontend && npm run build`) |
 | Database | SQLite `backend/opmargin.db` (tidak masuk Git) |
 
@@ -104,7 +104,7 @@ Login awal: **`admin` / `admin123`** (dari `ADMIN_SANDI_AWAL` di
 
 ```bash
 cd backend
-.venv/bin/python -m pytest -q                                  # 402 tes
+.venv/bin/python -m pytest -q                                  # 412 tes
 .venv/bin/python -m app.cli diagnosa                            # laporan kesehatan
 .venv/bin/python -m app.cli reset-sandi admin                   # lupa sandi
 .venv/bin/python -m app.cli atur-login-lokal                    # pastikan mode login benar
@@ -156,7 +156,7 @@ rubber-intelligence/
 │   │       ├── kualitas.py     deteksi data terlambat/aneh
 │   │       └── alarm.py        evaluasi alarm + audit
 │   ├── semantic/metrics.yaml   definisi metrik (rujukan, dibaca fase API)
-│   ├── tests/                  402 tes, termasuk kasus emas Excel lama
+│   ├── tests/                  412 tes, termasuk kasus emas Excel lama
 │   ├── unggahan/               berkas Excel yang diunggah lewat web
 │   └── .env.example            contoh setelan (JANGAN commit .env asli)
 └── frontend/
@@ -766,6 +766,45 @@ migrasi: kolom terdeteksi, data lama utuh, idempoten, aplikasi menyesuaikan
 sendiri saat start di database versi lama, serta nama kolom di `KOLOM_BARU`
 selalu ada di model.
 
+### Master Collector: individu terafiliasi vendor + wilayah (v0.11.0)
+
+Permintaan pemilik: menambah menu **Master Collector** di grup Master Data;
+collector adalah orang perseorangan yang terafiliasi ke satu vendor, dengan
+NIK, nomor HP, dan wilayah operasional sesuai Provinsi, Kabupaten/Kota, Desa.
+
+**Skema.** Tabel baru `collector`: `kode` (PK), `nama`, `nik`, `no_hp`,
+`kode_vendor` (FK ke `vendor.kode`), `provinsi`, `kabupaten_kota`, `desa`.
+NIK disimpan sebagai teks (bukan angka), unik bila diisi, dan divalidasi tepat
+16 digit; nomor HP juga teks agar angka nol di depan tidak hilang. `create_all`
+akan membuat tabel pada database lama saat API start tanpa mengubah tabel atau
+baris lama. Afiliasi diverifikasi API dan vendor yang masih memiliki collector
+tidak bisa dihapus sebelum afiliasinya dipindah/dihapus.
+
+**API.** `GET /api/collector?q=&kode_vendor=&provinsi=&kabupaten_kota=&desa=`
+memberi daftar dan jumlah; pencarian menelusuri kode, nama, NIK, No HP, vendor,
+dan wilayah. `POST /api/collector`, `PUT /api/collector/{kode}`,
+`DELETE /api/collector/{kode}` melakukan CRUD dan mencatat audit. Afiliasi ke
+kode vendor yang tidak ada ditolak **422**, kode duplikat/NIK duplikat ditolak,
+NIK selain 16 angka ditolak.
+
+**Excel.** `GET /api/collector/template` menghasilkan sheet `Master_Collector`
+plus `Petunjuk`, dengan 8 kolom: `Kode_Kolektor`, `Nama_Kolektor`, `NIK`,
+`No_HP`, `Afiliasi_Vendor`, `Provinsi`, `Kabupaten_Kota`, `Desa`.
+`POST /api/collector/impor` upsert berdasarkan kode; vendor harus sudah ada,
+kesalahan ditolak per baris dan baris lain tetap diproses. Sel opsional kosong
+berarti jangan ubah data yang sudah ada.
+
+**Layar.** Menu **Master Collector** di grup **Master Data** menampilkan tabel
+kolektor, vendor afiliasi dan nama vendor, NIK, No HP, serta tiga tingkat
+wilayah; tersedia cari, form tambah/ubah/hapus, dan bulk import Excel. Wilayah
+merupakan isian teks terpisah (bukan daftar administratif nasional terkode),
+supaya wilayah yang belum tercatat di tiket tetap dapat dimasukkan.
+
+**Tes.** `tests/test_master_collector.py` memiliki 10 tes: CRUD, validasi kode,
+vendor/NIK, keunikan NIK, proteksi hapus vendor yang terafiliasi, header +
+panduan template, upsert, kolom opsional kosong, serta validasi per baris.
+Jumlah tes proyek bertambah dari 402 menjadi **412**.
+
 ---
 
 ## 6b. Deploy lewat Cloudflare Tunnel (masih hidup, penting)
@@ -898,7 +937,7 @@ Semua ini lahir dari kegagalan nyata, bukan kehati-hatian berlebihan.
    kode salah. Perbaikannya: `hentikan-api.bat` lalu `start-web.bat`.
 6. **Selalu jalankan `npm run build` (bukan hanya `vite build`)** — skrip npm
    memakai `tsc -b`, jadi error tipe ikut tertangkap.
-7. **402 tes harus tetap lulus.** Tes "kasus emas"
+7. **412 tes harus tetap lulus.** Tes "kasus emas"
    (`tests/test_data_awal.py`, `tests/test_bridge_doc.py`) mencocokkan hasil
    dengan Excel lama sampai beberapa desimal. Kalau tes emas gagal, hampir pasti rumus
    yang diubah, bukan tesnya.
@@ -990,13 +1029,13 @@ pernah membuat label dan ikon tertukar; ganti blok utuhnya.
 ### Rilis versi baru (prosedur yang sudah terbukti)
 ```bash
 # 1. pastikan bersih
-cd backend && .venv/bin/python -m pytest -q          # 402 passed
+cd backend && .venv/bin/python -m pytest -q          # 412 passed
 cd ../frontend && npm run build                       # bersih
 
 # 2. naikkan versi di 6 berkas (isi dua variabel, sisanya otomatis)
 cd ..
 LAMA=$(tr -d '\r\n' < VERSI.txt)     # versi yang masih terpakai
-BARU=0.10.0                            # <- tulis versi baru di sini
+BARU=0.11.0                            # <- tulis versi baru di sini
 for f in VERSI.txt backend/app/versi.py frontend/src/versi.ts \
          docs/CARA_MENJALANKAN.md diagnosa.bat hentikan-api.bat; do
   sed -i "s/$LAMA/$BARU/g" "$f"
