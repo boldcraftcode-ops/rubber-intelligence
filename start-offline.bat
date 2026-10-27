@@ -32,6 +32,9 @@ set "TMPH=%TEMP%\opmargin_health.json"
 set "PUNDUH=curl"
 set "HOST=127.0.0.1"
 set "VERSI_KODE="
+set "PYVER=3.11"
+set "PYACTUAL="
+set "TMPV=%TEMP%\opmargin_pyver.txt"
 
 where curl >nul 2>nul
 if not errorlevel 1 goto :punya_curl
@@ -54,22 +57,48 @@ echo.
 rem ------------------------------------------------------------
 echo [1/6] Memeriksa ruang kerja Python
 rem ------------------------------------------------------------
-if exist "%VPY%" goto :punya_venv
-echo     belum ada, menyiapkan backend\.venv...
+rem  Bundel baru mencatat versi mayor.minor di python-version.txt.
+rem  Bundel lama yang sudah dibuat untuk paket CPython 3.11 memakai default 3.11.
+if not exist "%~dp0bahan-offline\python-version.txt" goto :versi_default
+set /p PYVER=<"%~dp0bahan-offline\python-version.txt"
+:versi_default
+echo     Versi wheel yang dibutuhkan: Python %PYVER% 64-bit.
+if not exist "%VPY%" goto :buat_venv_awal
+"%VPY%" -c "import sys,struct; print(str(sys.version_info[0])+'.'+str(sys.version_info[1])+'-'+str(struct.calcsize('P')*8))" > "%TMPV%"
+if errorlevel 1 goto :buang_venv_lama
+set /p PYACTUAL=<"%TMPV%"
+if "%PYACTUAL%"=="%PYVER%-64" goto :punya_venv
+echo     Lingkungan lama memakai Python %PYACTUAL%, bukan %PYVER%-64.
+echo     Lingkungan lama akan dibuat ulang. Database dan unggahan tidak dihapus.
+
+:buang_venv_lama
+rmdir /s /q "%~dp0backend\.venv" >nul 2>nul
+if exist "%VPY%" goto :venv_gagal
+
+:buat_venv_awal
+echo     menyiapkan backend\.venv dengan Python %PYVER% 64-bit...
 where py >nul 2>nul
 if errorlevel 1 goto :cari_python
-set "PY=py -3"
-goto :buat_venv
+set "PY=py -%PYVER%"
+goto :cek_python
 
 :cari_python
 where python >nul 2>nul
 if errorlevel 1 goto :tanpa_python
 set "PY=python"
 
+:cek_python
+%PY% -c "import sys,struct; print(str(sys.version_info[0])+'.'+str(sys.version_info[1])+'-'+str(struct.calcsize('P')*8))" > "%TMPV%" 2>nul
+if errorlevel 1 goto :python_tidak_cocok
+set /p PYACTUAL=<"%TMPV%"
+if "%PYACTUAL%"=="%PYVER%-64" goto :buat_venv
+
+goto :python_tidak_cocok
+
 :buat_venv
 %PY% -m venv "%~dp0backend\.venv"
 if errorlevel 1 goto :venv_gagal
-echo     ruang kerja siap.
+echo     ruang kerja siap: Python %PYACTUAL%.
 
 :punya_venv
 
@@ -207,6 +236,15 @@ exit /b 0
 rem ============================================================
 rem  Penanganan kegagalan
 rem ============================================================
+:python_tidak_cocok
+echo.
+echo GAGAL: Python yang dipilih tidak cocok dengan bahan offline.
+echo Yang dibutuhkan: Python %PYVER% 64-bit.
+echo Yang terpilih   : %PYACTUAL%
+echo Pasang Python %PYVER% Windows installer 64-bit, lalu jalankan lagi.
+echo Bila memakai launcher Windows, perintah yang dipakai skrip: py -%PYVER%.
+goto :berhenti
+
 :tanpa_python
 echo.
 echo GAGAL: Python tidak ditemukan di PC ini.

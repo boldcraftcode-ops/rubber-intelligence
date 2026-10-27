@@ -93,6 +93,22 @@ def test_start_memasang_tanpa_internet():
         assert potongan in teks, f"start-offline.bat tidak memuat {potongan}"
 
 
+def test_ambil_mencatat_versi_python_target():
+    teks = _teks(AMBIL)
+    assert 'python-version.txt' in teks
+    assert '> "%BAHAN%\\python-version.txt" echo %PYVER%' in teks
+
+
+def test_start_memilih_minor_python_tepat_dan_membuat_ulang_venv_mismatch():
+    teks = _teks(JALAN)
+    assert 'set "PYVER=3.11"' in teks
+    assert 'set "PY=py -%PYVER%"' in teks
+    assert 'sys.version_info[0]' in teks and 'sys.version_info[1]' in teks
+    assert 'struct.calcsize' in teks  # menolak Python 32-bit
+    assert 'rmdir /s /q "%~dp0backend\\.venv"' in teks
+    assert 'python-version.txt' in teks
+
+
 def test_start_menyajikan_satu_alamat_tanpa_node():
     teks = _teks(JALAN)
     assert 'set "SAJIKAN_WEB=true"' in teks

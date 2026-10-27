@@ -9,7 +9,7 @@ Kalau Anda hanya punya 15 menit, baca bagian **1 (Status)**, **3 (Cara
 menjalankan)**, dan **7 (Aturan yang tidak boleh dilanggar)**. Selebihnya bisa
 dibaca saat mengerjakan tugas pertama.
 
-Terakhir diperbarui: **2026-10-27**, versi kode **0.11.0**.
+Terakhir diperbarui: **2026-10-27**, versi kode **0.11.1**.
 
 ---
 
@@ -36,11 +36,11 @@ ini setiap hari untuk memutuskan **harga beli maksimum** yang masih aman.
 
 | Hal | Nilai |
 |---|---|
-| Versi kode | **0.11.0** (`VERSI.txt`, `backend/app/versi.py`, `frontend/src/versi.ts`) |
+| Versi kode | **0.11.1** (`VERSI.txt`, `backend/app/versi.py`, `frontend/src/versi.ts`) |
 | Branch kerja | `arena/18670644-rubber-intelligence` |
 | Pull request | **#1 masih terbuka** — https://github.com/boldcraftcode-ops/rubber-intelligence/pull/1 |
 | Branch `main` | belum memuat pekerjaan v0.7.x–v0.8.x |
-| Unit test | **412 lulus** (`cd backend && .venv/bin/python -m pytest -q`) |
+| Unit test | **414 lulus** (`cd backend && .venv/bin/python -m pytest -q`) |
 | Build frontend | bersih, ±3,3 detik (`cd frontend && npm run build`) |
 | Database | SQLite `backend/opmargin.db` (tidak masuk Git) |
 
@@ -104,7 +104,7 @@ Login awal: **`admin` / `admin123`** (dari `ADMIN_SANDI_AWAL` di
 
 ```bash
 cd backend
-.venv/bin/python -m pytest -q                                  # 412 tes
+.venv/bin/python -m pytest -q                                  # 414 tes
 .venv/bin/python -m app.cli diagnosa                            # laporan kesehatan
 .venv/bin/python -m app.cli reset-sandi admin                   # lupa sandi
 .venv/bin/python -m app.cli atur-login-lokal                    # pastikan mode login benar
@@ -156,7 +156,7 @@ rubber-intelligence/
 │   │       ├── kualitas.py     deteksi data terlambat/aneh
 │   │       └── alarm.py        evaluasi alarm + audit
 │   ├── semantic/metrics.yaml   definisi metrik (rujukan, dibaca fase API)
-│   ├── tests/                  412 tes, termasuk kasus emas Excel lama
+│   ├── tests/                  414 tes, termasuk kasus emas Excel lama
 │   ├── unggahan/               berkas Excel yang diunggah lewat web
 │   └── .env.example            contoh setelan (JANGAN commit .env asli)
 └── frontend/
@@ -708,6 +708,41 @@ harus ikut dibawa lewat folder `bahan-offline`. Memperbarui aplikasi di PC
 luring = ulangi Tahap 1 di PC berinternet, lalu salin kode + `bahan-offline`
 lagi (jangan `git pull` di PC luring).
 
+### Perbaikan paket offline memilih Python yang tepat (v0.11.1)
+
+Pemilik melaporkan sudah memasang Python 3.11.6 tetapi instalasi offline masih
+gagal. Pemeriksaan menunjukkan dua sumber masalah pada `start-offline.bat`
+sebelumnya: `py -3` memilih versi Python 3 tertinggi yang terpasang (bukan
+pasti 3.11), dan `backend\.venv` lama dipakai tanpa pemeriksaan versi atau
+arsitektur. Dengan demikian Python 3.11.6 dapat terpasang benar, tetapi skrip
+mungkin membuat/memakai venv Python 3.13/3.14 atau Python 32-bit.
+
+**Kesepakatan versi.** Paket wheel yang telah diuji ditujukan ke CPython **3.11,
+Windows 64-bit** (`cp311`, `win_amd64`). Python 3.11.6 x64 kompatibel — patch
+`.6` tidak harus sama dengan patch Python pembuat wheel. Hal yang harus sama
+adalah mayor.minor `3.11` dan arsitektur 64-bit.
+
+**Perubahan.** `ambil-bahan-offline.bat` kini menulis versi mayor.minor yang
+dipakai untuk mengunduh wheel ke `bahan-offline\python-version.txt`.
+`start-offline.bat` membaca marker itu (paket lama tanpa marker memakai 3.11),
+memilih `py -3.11` secara eksplisit, mengecek versi dan 64-bit sebelum membuat
+venv, serta menghapus/membuat ulang `backend\.venv` lama bila tidak cocok.
+Hanya folder venv yang dibangun ulang; database `backend\opmargin.db` dan
+unggahan tidak dihapus. Pesan kegagalan sekarang menyebut target dan Python
+yang terpilih.
+
+**Verifikasi.** Dua tes baru menjaga marker versi dan pemilihan/rebuild venv;
+`tests/test_skrip_offline.py` kini **21 tes**. Total proyek **414 tes**. Skrip
+batch tetap ASCII + CRLF dan tidak memakai `for /f`.
+
+**Langkah pengguna.** Salin skrip/berkas aplikasi v0.11.1 yang baru ke PC
+offline. Jika wheelhouse lama memang dibuat dengan `ambil-bahan-offline.bat
+3.11`, boleh tetap dipakai; bila tidak yakin, buat ulang folder `bahan-offline`
+di PC internet dengan argumen `3.11`, kemudian salin ke PC offline. Jalankan
+`start-offline.bat`; venv beda versi akan dibuat ulang otomatis.
+
+---
+
 ### Master Vendor: alamat, contact person, klasifikasi (v0.10.0)
 
 Permintaan pemilik: *"untuk master vendor, tambahkan informasi seperti Address,
@@ -937,7 +972,7 @@ Semua ini lahir dari kegagalan nyata, bukan kehati-hatian berlebihan.
    kode salah. Perbaikannya: `hentikan-api.bat` lalu `start-web.bat`.
 6. **Selalu jalankan `npm run build` (bukan hanya `vite build`)** — skrip npm
    memakai `tsc -b`, jadi error tipe ikut tertangkap.
-7. **412 tes harus tetap lulus.** Tes "kasus emas"
+7. **414 tes harus tetap lulus.** Tes "kasus emas"
    (`tests/test_data_awal.py`, `tests/test_bridge_doc.py`) mencocokkan hasil
    dengan Excel lama sampai beberapa desimal. Kalau tes emas gagal, hampir pasti rumus
    yang diubah, bukan tesnya.
@@ -1029,13 +1064,13 @@ pernah membuat label dan ikon tertukar; ganti blok utuhnya.
 ### Rilis versi baru (prosedur yang sudah terbukti)
 ```bash
 # 1. pastikan bersih
-cd backend && .venv/bin/python -m pytest -q          # 412 passed
+cd backend && .venv/bin/python -m pytest -q          # 414 passed
 cd ../frontend && npm run build                       # bersih
 
 # 2. naikkan versi di 6 berkas (isi dua variabel, sisanya otomatis)
 cd ..
 LAMA=$(tr -d '\r\n' < VERSI.txt)     # versi yang masih terpakai
-BARU=0.11.0                            # <- tulis versi baru di sini
+BARU=0.11.1                            # <- tulis versi baru di sini
 for f in VERSI.txt backend/app/versi.py frontend/src/versi.ts \
          docs/CARA_MENJALANKAN.md diagnosa.bat hentikan-api.bat; do
   sed -i "s/$LAMA/$BARU/g" "$f"
