@@ -29,9 +29,45 @@ const API_URL: string = (import.meta as any).env?.VITE_API_URL ?? "";
 
 export const urlApi = (path: string) => `${API_URL}${path}`;
 
+/* ---------- token sesi cadangan ----------
+   Cookie HttpOnly (`op_sesi`) adalah cara utama. Namun bila aplikasi dibuka di
+   dalam iframe (preview/embed) atau browser memblokir cookie lintas situs,
+   cookie tidak pernah terkirim: login berhasil lalu permintaan berikutnya 401,
+   sehingga pengguna kembali ke form login. Untuk itu API juga mengirim token
+   pada saat login, disimpan di sini, dan dikirim lewat header Authorization. */
+const KUNCI_TOKEN = "op-margin.token";
+
+/* Salinan di MEMORI. Ini penting: di dalam iframe yang di-sandbox browser juga
+   memblokir localStorage (melempar galat), sehingga token tidak bisa disimpan
+   sama sekali dan setiap permintaan kembali 401. Salinan memori membuat sesi
+   tetap hidup selama halaman belum dimuat ulang. */
+let tokenMemori: string | null = null;
+
+export const tokenSesi = (): string | null => {
+  if (tokenMemori) return tokenMemori;
+  try { return localStorage.getItem(KUNCI_TOKEN); } catch { return null; }
+};
+
+export const simpanToken = (token: string | null | undefined) => {
+  tokenMemori = token || null;
+  try {
+    if (token) localStorage.setItem(KUNCI_TOKEN, token);
+    else localStorage.removeItem(KUNCI_TOKEN);
+  } catch { /* localStorage diblokir: salinan memori sudah menyimpan */ }
+};
+
+const kepalaSesi = (): Record<string, string> => {
+  const t = tokenSesi();
+  return t ? { Authorization: `Bearer ${t}` } : {};
+};
+
 export async function ambilJson(url: string) {
-  const r = await fetch(urlApi(url), { credentials: "include" });
+  const r = await fetch(urlApi(url), {
+    credentials: "include",
+    headers: kepalaSesi(),
+  });
   if (r.status === 401) {
+    simpanToken(null);   // token kedaluwarsa/tidak sah: jangan dipakai lagi
     let detail = "Belum login. Silakan masuk dengan username dan sandi Anda.";
     try { detail = (await r.json()).detail ?? detail; } catch { /* abaikan */ }
     throw galatApi(detail, 401);
@@ -75,11 +111,35 @@ export async function kirimJson(url: string, body: unknown) {
   const r = await fetch(urlApi(url), {
     method: "POST",
     credentials: "include",
-    headers: { "Content-Type": "application/json" },
+    headers: { "Content-Type": "application/json", ...kepalaSesi() },
     body: JSON.stringify(body),
   });
   const data = await r.json();
   if (!r.ok) throw new Error(data.detail ?? "Gagal menyimpan.");
+  return data;
+}
+
+/* Kirim dengan metode bebas (POST/PUT/DELETE) — dipakai menu Master Vendor.
+   `body` objek dikirim sebagai JSON; FormData/Blob dikirim apa adanya. */
+export async function kirimMetode(url: string, metode: "POST" | "PUT" | "DELETE",
+                                  body?: unknown) {
+  const kep: Record<string, string> = { ...kepalaSesi() };
+  let isi: BodyInit | undefined;
+  if (body instanceof FormData || body instanceof Blob) {
+    isi = body;                      // biarkan browser menyetel Content-Type
+  } else if (body !== undefined) {
+    kep["Content-Type"] = "application/json";
+    isi = JSON.stringify(body);
+  }
+  const r = await fetch(urlApi(url), {
+    method: metode, credentials: "include", headers: kep, body: isi,
+  });
+  let data: any = null;
+  try { data = await r.json(); } catch { /* jawaban tanpa isi */ }
+  if (!r.ok) {
+    if (r.status === 401) simpanToken(null);
+    throw galatApi(data?.detail ?? "Gagal menyimpan.", r.status);
+  }
   return data;
 }
 
@@ -380,3 +440,98 @@ export function Panel5W1H({ url, judul, tutup }: {
 export const kelasTombolAnalisa =
   "rounded-sm bg-[#1D2434] px-3 py-1.5 text-xs font-semibold text-white " +
   "hover:bg-[#2A3345] transition-colors";
+
+/* ---------- kepala panel analisa (modal) ----------
+   Dipakai tombol analisa yang membuka panel di atas halaman: Margin Bridge &
+   Days of Cover (Margin Performance) dan Analisis tren & musiman (Intake
+   Analisis). Satu bentuk untuk semua supaya tombol & panelnya seragam. */
+export function KepalaPanel({ judul, periode, url, tutup }: {
+  judul: string; periode?: string; url: string; tutup: () => void;
+}) {
+  const { t } = useBahasa();
+  return (
+    <div className="flex items-start justify-between gap-3">
+      <div>
+        <h3 className="text-lg font-semibold text-[#1D2434]">{judul}</h3>
+        {periode && <p className="text-sm text-[#64676C]">{t("Periode")}: {periode}</p>}
+      </div>
+      <div className="flex gap-2 shrink-0">
+        <a className={kelasTombolKecil}
+           href={urlApi(`${url}${url.includes("?") ? "&" : "?"}format=xlsx`)}>
+          {t("Ekspor Excel")}
+        </a>
+        <button className={kelasTombolKecil} onClick={tutup}>{t("Tutup")}</button>
+      </div>
+    </div>
+  );
+}
+
+/* ---------- pemilih rentang bulan (dipakai Stok & Intake Analisis) ---------- */
+
+/* Hari terakhir dari sebuah bulan "YYYY-MM" -> "YYYY-MM-DD". */
+export const akhirBulan = (ym: string) => {
+  const [y, m] = ym.split("-").map(Number);
+  return `${ym}-${String(new Date(y, m, 0).getDate()).padStart(2, "0")}`;
+};
+
+/* Jumlah bulan yang dicakup rentang "YYYY-MM".."YYYY-MM"
+   (0 bila kosong / tidak sah). */
+export const hitungJumlahBulan = (dari: string, sampai: string) => {
+  if (!dari || !sampai) return 0;
+  const [y1, m1] = dari.split("-").map(Number);
+  const [y2, m2] = sampai.split("-").map(Number);
+  if (!y1 || !y2) return 0;
+  const n = (y2 - y1) * 12 + (m2 - m1) + 1;
+  return n > 0 ? n : 0;
+};
+
+/* Bulan berjalan "YYYY-MM" menurut jam komputer pemakai. */
+export const bulanBerjalan = (tgl: Date = new Date()) =>
+  `${tgl.getFullYear()}-${String(tgl.getMonth() + 1).padStart(2, "0")}`;
+
+/* Awal tahun berjalan "YYYY-01". */
+export const awalTahunBerjalan = (tgl: Date = new Date()) => `${tgl.getFullYear()}-01`;
+
+/* "2026-01" + "2026-10" -> "Jan 2026 – Okt 2026" (untuk judul/keterangan). */
+export const labelRentangBulan = (dari: string, sampai: string) => {
+  const satu = (ym: string) => {
+    const [y, m] = ym.split("-").map(Number);
+    if (!y || !m) return "";
+    return `${NAMA_BULAN[m]} ${y}`;
+  };
+  const a = satu(dari), b = satu(sampai);
+  if (a && b) return a === b ? a : `${a} – ${b}`;
+  return a || b || "seluruh data";
+};
+
+/* Dua kotak bulan + tombol penghapus filter. Nilai state berupa "YYYY-MM";
+   kosong berarti tanpa batas (seluruh data). */
+export function PilihRentangBulan({ dari, sampai, setDari, setSampai,
+                                    labelKosong = "hapus filter" }: {
+  dari: string;
+  sampai: string;
+  setDari: (v: string) => void;
+  setSampai: (v: string) => void;
+  labelKosong?: string;
+}) {
+  return (
+    <div className="flex flex-wrap items-end gap-2 text-xs">
+      <div>
+        <label className="mb-1 block text-[#64676C]">Dari bulan</label>
+        <input type="month" className="rounded-sm border border-[#E4E5E8] bg-white px-2 py-1.5 text-[#1D2434]"
+               value={dari} onChange={(e) => setDari(e.target.value)} />
+      </div>
+      <div>
+        <label className="mb-1 block text-[#64676C]">Sampai bulan</label>
+        <input type="month" className="rounded-sm border border-[#E4E5E8] bg-white px-2 py-1.5 text-[#1D2434]"
+               value={sampai} onChange={(e) => setSampai(e.target.value)} />
+      </div>
+      {(dari || sampai) && (
+        <button className={kelasTombolKecil}
+                onClick={() => { setDari(""); setSampai(""); }}>
+          {labelKosong}
+        </button>
+      )}
+    </div>
+  );
+}

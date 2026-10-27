@@ -44,12 +44,204 @@ python -m app.cli rekomendasi --tanggal 31/08/2026
 python -m app.cli rencana 2027           # perencanaan tahun depan (pengganti sheet Y27)
 ```
 
+## 3b. Menu samping sekarang berbentuk pohon (grup)
+
+Menu kiri dikelompokkan supaya tidak perlu membaca 16 baris sekaligus:
+
+- 📊 **Analitik** — Margin Performance, Intake Analisis, Stok, Stok vs Margin
+- 💰 **Harga & Perencanaan** — Aturan Harga, Simulasi, Perencanaan
+- 🛡️ **Pengawasan & Kontrol** — Alarm, Rekonsiliasi, Kualitas Data
+- 🗂️ **Master Data** — Master Vendor, Grade & Harga
+- 📥 **Input Data** — Input Harian, Unggah Data
+- ⚙️ **Administrasi** — Database, Pengguna (hanya terlihat oleh admin)
+
+Klik **baris grup** untuk membuka/menutup isinya (tanda `▶` berputar). Pada
+pemakaian pertama semua grup terbuka, dan pilihan buka/tutup Anda diingat di
+browser. Kalau sebuah halaman dibuka dari tempat lain (mis. tombol di Margin
+Performance), grupnya otomatis terbuka sehingga menu tidak terlihat kosong.
+Di layar Bahasa Inggris nama grupnya: *Analytics, Pricing & Planning,
+Monitoring & Control, Master Data, Data Entry, Administration*.
+
+## 3c. Membaca menu Stok vs Margin
+
+Isi halaman ini **informasi, bukan aturan**: setiap titik = satu bulan.
+
+1. **Mendatar** = rasio stok ÷ safety. `1,0` = stok tepat di batas aman,
+   `0,5` = tinggal separuh batas aman.
+2. **Menegak** = OP Margin bulan itu (US¢/kg). Makin ke atas, makin bagus.
+3. Lihat **bentuk awannya**, bukan satu titik. Miring naik = bulan berstok
+   tebal cenderung bermargin lebih baik; menyebar tanpa arah = tidak ada
+   hubungan.
+
+Garis putus-putus tegak = batas 50% dan 80% safety; garis putus-putus mendatar
+= margin rata-rata periode; garis tren = arah umum. **Pilih tahun** di bagian
+atas untuk memeriksa apakah hubungannya sama seperti gabungan semua tahun —
+pada data contoh, 2024–2025 kuat (0,88 dan 0,77) tetapi 2023 dan 2026 nyaris
+tidak ada (0,07 dan 0,11), sehingga angka gabungan 0,42 **tidak boleh dipakai
+sebagai aturan**. Halaman akan menuliskan peringatan itu sendiri.
+
+Tabel di bawah grafik menjawab tiga hal dengan angka: margin rata-rata per
+kelompok stok (tipis/sedang/tebal), jumlah bulan di tiap kelompok, dan korelasi
+per tahun. **Ekspor Excel** menghasilkan dua sheet: Data bulanan dan Ringkasan.
+
+## 3d. Membereskan alarm
+
+Menu **Alarm** sekarang menunjukkan **ke mana harus pergi**. Tiap alarm punya
+tombol **"Buka <halaman> →"** dan 2–3 langkah perbaikan.
+
+| Kelompok | Contoh | Perbaikan ada di |
+|---|---|---|
+| Stok & operasional | stok di bawah safety | **Stok & Days** (atau perbarui stok lewat Unggah Data) |
+| Data belum masuk | SICOM/kurs/stok/tiket terlambat | **Input Harian** (SICOM & kurs) · **Unggah Data** (stok & tiket) |
+| Selisih angka | tiket vs pembelian / vs Excel lama | **Rekonsiliasi** |
+| Harga beli | harga aktual di atas maksimum | **Aturan Harga** |
+| Margin vs target | margin bulan berjalan di bawah target | **Margin Performance** (lalu Margin Bridge) |
+
+Alarm **padam sendiri** setelah datanya benar dan evaluasi ulang dijalankan —
+tidak ada tombol "hapus alarm". Kalau data memang belum tersedia (mis. terbitan
+SICOM belum keluar), jangan mengisi angka kira-kira; pertimbangkan mengubah
+**ambang** alarm di kartu "Pengaturan alarm (admin)".
+
+## 3e. Mengisi stok & pembelian harian (tanpa Excel)
+
+Menu **Input Harian** sekarang punya panel **"Kesegaran data hari ini"**:
+5 kartu sumber (SICOM, Kurs, Stok, Tiket, Pembelian) berisi tanggal terakhir,
+umur hari, dan tanda ⚠ bila lewat batas. Di bawahnya ada tombol tanggal yang
+belum terisi — klik untuk langsung mengisi formulirnya.
+
+**Stok harian** — satu angka per hari:
+1. pilih tanggal,
+2. pilih jenis: **Total (semua grade)** atau satu grade,
+3. isi jumlah + pilih satuan **ton** atau **kg** (disimpan dalam kg),
+4. simpan. Setelah itu langsung tampil stok, safety, rasio, dan days.
+
+**Pembelian harian** — qty kering + amount:
+1. pilih tanggal dan **tingkat**: *Total hari* / *per grade* / *per vendor* /
+   *per tiket*,
+2. isi qty kering (kg) dan amount (Rp),
+3. simpan; harga Rp/kg, US¢/kg, dan margin harian dihitung otomatis memakai
+   kurs & SICOM yang berlaku.
+
+Aturan penting:
+- **mengisi ulang tanggal yang sama = koreksi** (menimpa baris itu, nilai lama
+  dilaporkan). Jadi salah ketik tidak perlu dihapus manual.
+- **jangan mencampur** "Total hari" dengan "per grade/vendor/tiket" pada
+  tanggal yang sama — sistem akan menolak supaya tidak terhitung dua kali.
+- grade & vendor harus sudah ada di Master Grade / Master Vendor.
+- setiap simpanan tercatat (siapa, kapan) dan langsung memperbarui OP Margin,
+  Days of Cover, dan alarm.
+
+## 3f. Mengunggah Excel: pratinjau dulu, baru disimpan
+
+Tab **Unggah Data** sekarang bekerja dalam **tiga langkah**. Tidak ada satu
+baris pun yang masuk database sebelum Anda menekan tombol konfirmasi.
+
+1. **Pilih file** — tarik & lepas file .xlsx (atau klik untuk memilih). Bisa
+   ekspor *Master Data* tiket, bisa juga file format template — boleh hanya
+   sebagian sheet, mis. hanya `Stok_Harian`.
+2. **Periksa pratinjau** — muncul dua angka: berapa baris **siap disimpan**
+   dan berapa baris **bermasalah**. Di bawahnya ada tabel per sheet + nomor
+   baris + alasannya.
+   * Baris bermasalah dikumpulkan sebagai **data mismatch**. Tekan
+     **⬇ Unduh Excel data mismatch** untuk mengunduhnya: isinya baris asli
+     (utuh), ditambah tiga kolom di kanan — `KODE_MASALAH`,
+     `ALASAN_DITOLAK`, `BARIS_DI_FILE_ASLI`. Perbaiki nilainya, hapus ketiga
+     kolom itu, lalu unggah ulang file tersebut. Baris yang sudah benar tidak
+     perlu diulang.
+   * Ada juga bagian **catatan pemeriksaan** (mis. vendor tak dikenal, Dry
+     tidak cocok) — baris seperti ini **tetap dimuat**, hanya perlu dicek.
+3. **Konfirmasi simpan ke database** — baru di sini data ditulis, OP Margin /
+   Days of Cover / alarm dihitung ulang, dan unggahan tercatat (siapa, kapan,
+   file apa). Tombol **Batalkan, jangan simpan** membuang pratinjau tanpa
+   mengubah apa pun.
+
+**Progress bar.** Selama proses berjalan muncul bilah merah + tulisan tahap
+(*Mengunggah file… 45%* → *Memeriksa isi file (validasi)…* → *Menyimpan ke
+database…*). Biarkan halaman terbuka sampai bilah penuh.
+
+Pratinjau berlaku **60 menit**. Kalau kedaluwarsa, cukup unggah ulang filenya
+(tidak ada data yang perlu dibereskan). Mengonfirmasi pratinjau yang sama dua
+kali ditolak — data tidak akan tergandakan.
+
+## 3g. Memasang di PC tanpa internet (luring)
+
+Aplikasi **tidak perlu internet saat dipakai** (tidak ada CDN, font luar, atau
+telemetri). Internet hanya dibutuhkan sekali untuk mengunduh pustaka. Karena
+itu pemasangan di PC luring dilakukan dua tahap dengan dua skrip.
+
+### Tahap 1 — di PC yang ADA internet (sekali saja)
+
+1. Pasang **Python 3.11 (64-bit)** dan **Node.js LTS** di PC ini.
+2. Klik dua kali **`ambil-bahan-offline.bat`**. Skrip ini:
+   - mengunduh semua pustaka Python sebagai berkas *wheel* ke
+     `bahan-offline\wheelhouse` untuk Windows 64-bit dan versi Python yang
+     dipakai PC itu (boleh dipaksa: `ambil-bahan-offline.bat 3.11`);
+   - memasang pustaka tampilan lalu membangunnya (`npm install`,
+     `npm run build`), hasilnya disalin ke `bahan-offline\dist`;
+   - menulis `bahan-offline\BACA-SAYA.txt` dan menampilkan ukuran folder.
+3. Unduh juga installer **Python 3.11 “Windows installer (64-bit)”** dari
+   python.org — yang dibawa berkas `.exe` ini, **bukan** *web installer*.
+4. ZIP seluruh folder aplikasi (termasuk `bahan-offline`), lalu salin ke PC
+   tujuan lewat USB atau jaringan lokal.
+
+### Tahap 2 — di PC TANPA internet
+
+1. Pasang Python dari berkas `.exe` tadi; centang **“Add python.exe to PATH”**.
+   Versinya harus **sama** dengan yang dipakai saat membuat wheel.
+2. Klik dua kali **`start-offline.bat`**. Skrip ini menyiapkan sendiri: ruang
+   kerja Python, pustaka dari `bahan-offline\wheelhouse` (`pip install
+   --no-index`), `backend\.env`, database + data awal, lalu menyalin
+   `bahan-offline\dist` ke `frontend\dist`.
+3. API dijalankan dengan `SAJIKAN_WEB=true`, jadi **satu alamat saja**:
+   `http://localhost:8000` — tanpa Node.js, tanpa port 5173.
+4. **Node.js tidak perlu dipasang** di PC ini.
+
+### Yang perlu diketahui
+
+| Hal | Cara |
+|---|---|
+| Bisa dibuka dari komputer lain di jaringan | Buat berkas kosong bernama `jaringan-lan.txt` di folder aplikasi, lalu jalankan ulang. Alamatnya `http://ALAMAT-IP-PC:8000`; izinkan port 8000 di Windows Firewall. |
+| Login dimatikan sementara | Buat berkas `tanpa-login.txt` (sama seperti mode biasa); hapus untuk mengaktifkan lagi. |
+| Memperbarui aplikasi | Ulangi Tahap 1 di PC berinternet, lalu salin lagi kode terbaru **beserta** `bahan-offline`. Jangan pakai `git pull` / `perbarui-kode.bat` di PC luring. |
+| Data & cadangan | Sama seperti biasa: `backend\opmargin.db` (SQLite) + folder `unggahan\`. Tidak berubah karena mode luring. |
+| Mengganti versi Python | Wheel terikat versi Python. Bila PC luring memakai versi lain, buat ulang bahan dengan `ambil-bahan-offline.bat 3.12` (misalnya), lalu salin lagi. |
+
+### Kalau ada yang gagal
+
+| Pesan | Artinya | Perbaikan |
+|---|---|---|
+| `folder bahan-offline\wheelhouse tidak ada` | Folder bahan belum ikut tersalin | Salin seluruh folder aplikasi termasuk `bahan-offline` |
+| `GAGAL memasang pustaka dari bahan-offline\wheelhouse` | Versi Python beda dengan wheel | Buat ulang bahan dengan versi Python yang sama |
+| `GAGAL: tampilan web belum ada` | `bahan-offline\dist` tidak ada | Jalankan `ambil-bahan-offline.bat` di PC berinternet |
+| `PERINGATAN: API belum menjawab` | Port 8000 dipakai program lain, atau API error | Baca jendela “OP Margin - API”; lihat juga `diagnosa.bat` |
+| `PERINGATAN: API menjawab, tetapi versinya bukan ...` | Proses lain menjawab di port 8000 | Tutup program itu, jalankan `start-offline.bat` lagi |
+
+### Bila ingin melakukannya manual (tanpa skrip)
+
+```powershell
+# di PC berinternet
+cd backend
+python -m venv .venv
+.venv\Scripts\pip install -r requirements.txt
+.venv\Scripts\pip download -r requirements.txt -d ..\bahan-offline\wheelhouse --only-binary=:all: --platform win_amd64 --python-version 3.11
+cd ..\frontend
+npm install
+npm run build
+
+# di PC tanpa internet (setelah Python dan wheel disalin)
+cd backend
+python -m venv .venv
+.venv\Scripts\pip install --no-index --find-links ..\bahan-offline\wheelhouse -r requirements.txt
+.venv\Scripts\python -m app.cli init-db
+.venv\Scripts\python -m app.cli import-template "..\sample_data\Template_dan_Data_Awal_OP_Margin_v3.xlsx"
+set SAJIKAN_WEB=true
+.venv\Scripts\python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
+```
+
 ## 4. Mengimpor data (tiket, stok, pembelian, dll.)
 
-Cara termudah: tab **Unggah Data** di aplikasi web — tarik & lepas file .xlsx
-(ekspor Master Data atau file format template, boleh hanya sebagian sheet,
-mis. hanya Stok_Harian). Hasil impor, baris ditolak, dan peringatan langsung
-tampil. Alternatif lewat terminal:
+Selain lewat tab **Unggah Data**, impor bisa dijalankan dari terminal
+(langsung masuk database, tanpa pratinjau):
 
 ```powershell
 python -m app.cli import-tiket "C:\folder\Master Data 2026.xlsx" --pengunggah nama_anda
@@ -59,13 +251,84 @@ Importer otomatis mengenali format ekspor (header di baris 7) maupun format
 template (header di baris 1), membuang baris subtotal, dan menampilkan
 peringatan (vendor tak dikenal, Dry tidak cocok, wilayah kosong, dst.).
 
+### Membaca tren & musiman di menu Intake Analisis
+
+Di kartu **Penerimaan karet (kg) — biasa vs EUDR** ada tombol **📈 Analisis
+tren & musiman** (letaknya rata kanan di baris filter, sama seperti tombol
+Margin Bridge di halaman Margin Performance). Tombol itu membuka panel berisi
+grafik total dengan garis **MA3** (rata-rata 3 bulan),
+tabel MoM (**bulan ini vs bulan lalu**) dan YoY (**vs bulan sama tahun lalu**),
+serta dekomposisi tren-musiman.
+
+Dua hal yang perlu diketahui:
+
+1. **Dekomposisi butuh minimal 24 bulan data** (idealnya 36). Kalau belum
+   cukup, blok itu menjelaskan berapa bulan yang masih kurang — bukan
+   menampilkan angka yang belum bisa dipercaya. MA3/MoM/YoY tetap jalan.
+2. Kotak kuning **"Periksa dulu sebelum angka ini dipakai untuk perkiraan"**
+   muncul sendiri bila ada bulan nol, bulan terakhir belum lengkap, pola datar
+   tidak wajar, atau nama wilayah yang ejaannya tidak seragam. Baca dulu
+   kotaknya sebelum memakai angka untuk perencanaan.
+
+Nama provinsi yang beda huruf besar/kecil ("Sumatera Utara" vs "SUMATERA
+UTARA") sekarang otomatis digabung jadi satu baris. Daftar ejaan yang
+disatukan bisa dibuka di kartu itu.
+
+Di kartu yang sama ada tombol kedua, **📊 Analisis deskriptif & komposisi**.
+Dipakai kalau ingin tahu: wilayah/vendor mana yang paling besar porsinya,
+siapa saja yang bersama-sama menyumbang 80% volume (kelas A/B/C), dan berapa
+porsi karet EUDR — total maupun per bulan, untuk memantau target kepatuhan.
+Dimensinya bisa diganti di dalam panel (provinsi, vendor, grade, kabupaten).
+
+### Menambah / mengubah vendor tanpa Excel
+
+Buka tab **Master Vendor**. Di sana bisa menambah vendor baru, mengubah nama,
+kategori, dan status, serta menghapus vendor yang belum dipakai. Kolom **Tiket**
+dan **Ton kering** pada daftar menunjukkan vendor mana yang benar-benar dipakai,
+jadi salah ketik kode langsung kelihatan.
+
+**Profil pemasok (sejak v0.10.0).** Selain kode, nama, kategori, dan status,
+tiap vendor menyimpan tiga informasi tambahan — semuanya **boleh kosong**:
+
+| Isian | Keterangan |
+|---|---|
+| **Alamat** | alamat lengkap vendor (boleh dua baris) |
+| **Contact person** | nama orang yang dihubungi; nomor HP boleh ditulis di situ, mis. `Budi — 0812-1111-2222` |
+| **Klasifikasi** | **Small holder**, **Small estate**, atau **Rubber trader** |
+
+Klasifikasi dipilih dari daftar (tidak diketik bebas) di layar. Saat impor
+Excel, ejaan lain yang lazim tetap diterima — `Smallholder`, `small-holder`,
+`Kebun Rakyat`, `trader`, `Pedagang` — tetapi ejaan yang tidak dikenal
+**ditolak per baris** dengan alasan yang menyebut tiga pilihan itu, dan baris
+lain tetap masuk. Klasifikasi sengaja tidak ditebak: angka komposisi pemasok
+(kebun rakyat vs kebun besar vs pedagang) hanya berguna kalau isinya benar.
+
+Di atas daftar ada baris **Komposisi** (jumlah tiap klasifikasi + yang belum
+diisi) dan saringan **Klasifikasi**, sehingga bisa langsung dilihat berapa
+banyak pemasok tiap jenis. Kotak **Cari** sekarang juga menelusuri alamat,
+contact person, dan klasifikasi.
+
+Di Excel, tiga kolom baru ada di kanan: `Alamat`, `Kontak_Person`,
+`Klasifikasi`. Mengosongkan selnya berarti **tidak diubah** (bukan dihapus) —
+sama seperti Kategori — supaya file yang hanya berisi kode + nama tidak
+menghapus profil yang sudah diisi lewat layar. Untuk benar-benar mengosongkan,
+pakai tombol **ubah** di layar lalu kosongkan isiannya.
+
+Untuk banyak vendor sekaligus: klik **Unduh template** di kartu *Bulk import*,
+isi di Excel, lalu unggah kembali di kartu yang sama. Kode yang sudah ada akan
+**diperbarui**, bukan digandakan.
+
+Vendor yang sudah dipakai tiket **tidak bisa dihapus** — aplikasi menolak dan
+menyarankan mengubah statusnya menjadi `nonaktif`. Ini disengaja: menghapus
+kode akan membuat tonase historis kehilangan pemiliknya di laporan.
+
 ## 5. Menjalankan pengujian (memastikan rumus persis Excel lama)
 
 ```powershell
 python -m pytest
 ```
 
-Harus tertulis `172 passed`. Pengujian mencakup semua kasus uji emas:
+Harus tertulis `402 passed`. Pengujian mencakup semua kasus uji emas:
 harian 3 Jan 2026, bulan Jan/Feb 2026, Jan 2023, Mar 2020 (kurs berubah
 tengah bulan), Apr 2022 (koreksi salah ketik Excel), Days/rasio stok,
 dan perencanaan Jan 2027.
@@ -205,7 +468,7 @@ cd backend
 ### Bukti paling cepat: folder ini kode lama atau bukan
 
 Pesan **"Belum login ... Cloudflare Access"** sudah **tidak ada lagi** di kode
-sejak versi 0.7.3. Kalau pesan itu masih muncul, yang menjawab di port 8000
+sejak versi 0.9.3. Kalau pesan itu masih muncul, yang menjawab di port 8000
 pasti kode lama. Cara membuktikannya dari folder aplikasi:
 
 ```powershell
@@ -214,7 +477,7 @@ findstr /c:"Cloudflare Access" backend\app\main.py
 
 - **Ada hasilnya** → folder ini masih kode lama (belum diperbarui). Jalankan
   `perbarui-kode.bat`.
-- **Tidak ada hasil** → folder sudah 0.7.3; berarti ada proses lama di port
+- **Tidak ada hasil** → folder sudah 0.9.3; berarti ada proses lama di port
   8000. Jalankan `start-web.bat` (sekarang menutupnya otomatis).
 
 `diagnosa.bat` juga memeriksa hal ini dan menuliskannya di bagian [0].
@@ -232,7 +495,7 @@ Bacanya:
 
 | Yang tertulis | Artinya | Tindakan |
 |---|---|---|
-| `mode login : lokal (username-sandi)` dan API menjawab `0.7.3` + `lokal` | sudah benar | login dengan akun Anda (Ctrl+F5 dulu) |
+| `mode login : lokal (username-sandi)` dan API menjawab `0.10.0` + `lokal` | sudah benar | login dengan akun Anda (Ctrl+F5 dulu) |
 | API menjawab `mode: nonaktif` | `AUTH_DISABLED=true` masih ada di `.env` | hapus baris itu, lalu jalankan `start-web.bat` lagi |
 | API tidak menjawab / `404` di `/api/auth/mode` | prosesnya **kode lama** | tutup jendela API lama, jalankan `start-web.bat` lagi |
 | bagian [2] tidak ada akun, atau sandi lupa | akun belum dibuat / sandi salah | `python -m app.cli reset-sandi admin` (dari folder `backend`) |
@@ -258,11 +521,11 @@ Perbaikan:
    melaporkan apakah **port 8000 dan 5173 sudah BEBAS**. Kalau ada yang gagal
    ditutup, skrip mengatakannya (tidak diam-diam).
 2. Jalankan **`start-web.bat`** dari folder aplikasi yang benar — folder yang
-   `VERSI.txt`-nya berisi `0.7.3`. Tunggu tulisan **`API siap: kode 0.7.3`**.
+   `VERSI.txt`-nya berisi `0.10.0`. Tunggu tulisan **`API siap: kode 0.10.0`**.
 3. Buka `http://localhost:5173`, tekan **Ctrl+F5**.
 
 Cek cepat kapan saja: `http://localhost:8000/api/health` — nilai `versi` dan
-`kode` harus `0.7.3`, dan `folder` harus menunjuk folder aplikasi Anda.
+`kode` harus `0.10.0`, dan `folder` harus menunjuk folder aplikasi Anda.
 
 ## Cara tercepat membereskan: `perbaiki.bat`
 
@@ -319,15 +582,56 @@ berkas ini dari folder lama ke folder baru **sebelum** menjalankan
 - `backend\.env` — setelan login (opsional; bila tidak ada, dibuat otomatis)
 
 Cara memastikan folder baru benar-benar versi terbaru: lihat **`VERSI.txt`** di
-akar folder (versi terbaru saat dokumen ini ditulis: **0.7.3**), atau buka
+akar folder (versi terbaru saat dokumen ini ditulis: **0.10.0**), atau buka
 `http://localhost:8000/api/health` dan periksa `"versi"` serta `"kode"`.
+
+## Login berhasil tetapi kembali ke form login lagi
+
+Gejalanya: form login terisi, tombol ditekan, tidak ada pesan galat, tetapi
+kembali ke form login. Di log API terlihat `POST /api/auth/login 200` lalu
+`GET /api/auth/saya 401`.
+
+Sebabnya **cookie sesi tidak terkirim**, dan itu terjadi bila:
+
+- aplikasi dibuka **di dalam iframe** (halaman preview/embed), atau
+- halaman web dan API berada di **situs berbeda**, atau
+- browser memblokir cookie pihak ketiga.
+
+Sejak versi 0.9.3 hal ini ditangani otomatis: saat login, API mengirim `token`
+di badan respons; tampilan web menyimpannya dan mengirimnya lewat header
+`Authorization: Bearer` sebagai **cadangan** di samping cookie. Jadi login tetap
+bekerja walau cookie diblokir. Cookie (HttpOnly) tetap cara utama.
+
+Bila masih terjadi pada versi lama:
+
+1. Tarik kode terbaru (`perbarui-kode.bat` atau `git pull`).
+2. `hentikan-api.bat`, lalu `start-web.bat`.
+3. Muat ulang halaman dengan `Ctrl+F5` (hapus cache).
+4. Untuk deploy beda situs, lihat `deploy/install-windows.md` bagian C
+   (`COOKIE_SAMESITE=none` atau mode satu-origin `SAJIKAN_WEB=true`).
 
 ## Deploy ke internet (Fase 5)
 Panduan lengkap ada di folder `deploy/`: mulai dari `deploy/install-windows.md`
 (service Windows + Cloudflare Tunnel), `deploy/backup.ps1` +
 `deploy/restore.md` (backup harian & uji restore), dan
 `deploy/checklist-keamanan.md`. Login memakai username+sandi aplikasi
-(Cloudflare Access sudah dihapus).
+(Cloudflare Access sudah dihapus); **tunnel tetap dipakai** dan tidak terpengaruh
+penghapusan Access.
+
+Dua pilihan pemasangan:
+
+1. **Satu-origin (disarankan).** API sekaligus menyajikan halaman web.
+   Jalankan `npm run build` di `frontend`, lalu isi `SAJIKAN_WEB=true` di
+   `backend/.env` dan arahkan satu hostname tunnel (mis. `app.domain-anda.com`)
+   ke `127.0.0.1:8000`. Cek: `/api/health` → `"web_statistik"` berisi folder
+   `dist`, bukan `null`.
+2. **Terpisah.** Halaman di Cloudflare Pages/Workers, API di
+   `api.domain-anda.com`. Perlu `VITE_API_URL` saat build dan
+   `FRONTEND_ORIGIN` di `.env`. **Bila keduanya beda situs** (mis.
+   `*.pages.dev` + `api.domain-anda.com`), wajib `COOKIE_SAMESITE=none`,
+   kalau tidak login akan berhasil lalu kembali ke form karena browser menolak
+   mengirim cookie lintas situs. Bukti: `/api/auth/mode` →
+   `"cookie_samesite":"none"`.
 
 ## Pindah ke PostgreSQL (nanti)
 Salin `.env.example` menjadi `.env` dan isi `DATABASE_URL` dengan alamat

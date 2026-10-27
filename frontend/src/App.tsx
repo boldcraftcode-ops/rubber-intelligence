@@ -13,30 +13,44 @@ import Kualitas from "./pages/Kualitas";
 import InputHarian from "./pages/InputHarian";
 import UnggahData from "./pages/UnggahData";
 import GradeHarga from "./pages/GradeHarga";
+import MasterVendor from "./pages/MasterVendor";
 import Database from "./pages/Database";
 import Pengguna from "./pages/Pengguna";
 import Login, { LayarApiLama, LayarGalat } from "./pages/Login";
 import { VERSI_UI } from "./versi";
-import { ambilJson, kirimJson, pesanGalat, kelasInput, kelasLabel,
-         kelasTombol, kelasTombolKecil } from "./bersama";
+import { ambilJson, kirimJson, pesanGalat, kelasInput, kelasLabel, kelasTombol, kelasTombolKecil, simpanToken } from "./bersama";
 import { useBahasa } from "./i18n";
 
+/* Menu samping = pohon dua tingkat (grup -> halaman). Urutan grup dan
+   anggotanya mengikuti struktur yang diminta pemilik:
+   Analytics · Pricing & Planning · Monitoring & Control · Master Data ·
+   Data Entry · Administration. `grup` di item = id grup di GRUP. */
+const GRUP = [
+  { id: "analitik", label: "Analitik", ikon: "📊" },
+  { id: "harga", label: "Harga & Perencanaan", ikon: "💰" },
+  { id: "pantau", label: "Pengawasan & Kontrol", ikon: "🛡️" },
+  { id: "master", label: "Master Data", ikon: "🗂️" },
+  { id: "input", label: "Input Data", ikon: "📥" },
+  { id: "sistem", label: "Administrasi", ikon: "⚙️", hanyaAdmin: true },
+] as const;
+
 const TAB = [
-  { id: "ringkasan", label: "Margin Performance", ikon: "◧" },
-  { id: "analisis", label: "Analisis", ikon: "◨" },
-  { id: "stok", label: "Stok", ikon: "▤" },
-  { id: "stokmargin", label: "Stok vs Margin", ikon: "▥" },
-  { id: "aturan", label: "Aturan Harga", ikon: "▦" },
-  { id: "simulasi", label: "Simulasi", ikon: "▧" },
-  { id: "rencana", label: "Perencanaan", ikon: "▩" },
-  { id: "alarm", label: "Alarm", ikon: "▲" },
-  { id: "rekonsiliasi", label: "Rekonsiliasi", ikon: "≡" },
-  { id: "kualitas", label: "Kualitas Data", ikon: "◆" },
-  { id: "gradeharga", label: "Grade & Harga", ikon: "◇" },
-  { id: "unggah", label: "Unggah Data", ikon: "↑" },
-  { id: "input", label: "Input Harian", ikon: "✎" },
-  { id: "database", label: "Database", ikon: "▣", hanyaAdmin: true },
-  { id: "pengguna", label: "Pengguna", ikon: "●", hanyaAdmin: true },
+  { id: "ringkasan", label: "Margin Performance", ikon: "◧", grup: "analitik" },
+  { id: "analisis", label: "Intake Analisis", ikon: "◨", grup: "analitik" },
+  { id: "stok", label: "Stok", ikon: "▤", grup: "analitik" },
+  { id: "stokmargin", label: "Stok vs Margin", ikon: "▥", grup: "analitik" },
+  { id: "aturan", label: "Aturan Harga", ikon: "▦", grup: "harga" },
+  { id: "simulasi", label: "Simulasi", ikon: "▧", grup: "harga" },
+  { id: "rencana", label: "Perencanaan", ikon: "▩", grup: "harga" },
+  { id: "alarm", label: "Alarm", ikon: "▲", grup: "pantau" },
+  { id: "rekonsiliasi", label: "Rekonsiliasi", ikon: "≡", grup: "pantau" },
+  { id: "kualitas", label: "Kualitas Data", ikon: "◆", grup: "pantau" },
+  { id: "vendor", label: "Master Vendor", ikon: "◈", grup: "master" },
+  { id: "gradeharga", label: "Grade & Harga", ikon: "◇", grup: "master" },
+  { id: "input", label: "Input Harian", ikon: "✎", grup: "input" },
+  { id: "unggah", label: "Unggah Data", ikon: "↑", grup: "input" },
+  { id: "database", label: "Database", ikon: "▣", grup: "sistem", hanyaAdmin: true },
+  { id: "pengguna", label: "Pengguna", ikon: "●", grup: "sistem", hanyaAdmin: true },
 ] as const;
 
 type TabId = (typeof TAB)[number]["id"];
@@ -96,6 +110,27 @@ export default function App() {
   const qc = useQueryClient();
   const [tab, setTab] = useState<TabId>("ringkasan");
   const [bukaSandi, setBukaSandi] = useState(false);
+  /* Grup menu yang sedang terbuka. Bawaannya SEMUA terbuka supaya tidak ada
+     menu yang "hilang" pada pemakaian pertama; pilihan pengguna diingat. */
+  const [grupTerbuka, setGrupTerbuka] = useState<Record<string, boolean>>(() => {
+    try {
+      const mentah = localStorage.getItem("ri.menu.grup");
+      return mentah ? (JSON.parse(mentah) as Record<string, boolean>) : {};
+    } catch {
+      return {};        // mode privat / localStorage diblokir
+    }
+  });
+  useEffect(() => {
+    try {
+      localStorage.setItem("ri.menu.grup", JSON.stringify(grupTerbuka));
+    } catch { /* diabaikan: hanya kenyamanan tampilan */ }
+  }, [grupTerbuka]);
+  /* Pindah halaman (termasuk lewat tombol di Margin Performance) membuka
+     grup tempat halaman itu berada, supaya menu tidak terlihat "kosong". */
+  useEffect(() => {
+    const g = TAB.find((tb) => tb.id === tab)?.grup;
+    if (g) setGrupTerbuka((st) => (st[g] === false ? { ...st, [g]: true } : st));
+  }, [tab]);
 
   /* ---- cara login yang berlaku di proses API ini ----
      Dipakai untuk membedakan "belum login" (tampilkan form) dari
@@ -124,6 +159,9 @@ export default function App() {
   });
   const admin = saya.data?.peran === "admin";
   const modeLokal = saya.data?.mode === "lokal";
+  /* Login sedang DIMATIKAN (AUTH_DISABLED=true) — dipakai sementara saat
+     pemecahan masalah. Penanda di layar supaya tidak lupa dinyalakan lagi. */
+  const tanpaLogin = saya.data?.mode === "nonaktif";
 
   // nama pengisi otomatis mengikuti akun login
   useEffect(() => {
@@ -132,7 +170,10 @@ export default function App() {
 
   const keluar = useMutation({
     mutationFn: () => kirimJson("/api/auth/logout", {}),
-    onSettled: () => qc.resetQueries(),
+    onSettled: () => {
+      simpanToken(null);      // buang token cadangan juga, jangan sampai tertinggal
+      qc.resetQueries();
+    },
   });
 
   const alarm = useQuery({
@@ -206,31 +247,69 @@ export default function App() {
           </div>
         </div>
 
-        <nav className="flex-1 px-3 flex flex-col gap-1">
-          {tabTampil.map((tb) => (
-            <button
-              key={tb.id}
-              className={`w-full flex items-center justify-between rounded-sm pl-3 pr-2.5 py-2
-                          text-sm text-left border-l-2 transition-colors ${
-                tab === tb.id
-                  ? "bg-[#F8F8F8] border-l-[#FF1313] text-[#1D2434] font-semibold"
-                  : "border-l-transparent text-[#64676C] hover:bg-[#F8F8F8] hover:text-[#1D2434]"
-              }`}
-              onClick={() => setTab(tb.id)}
-            >
-              <span className="truncate">
-                <span className={`mr-2 text-[11px] ${tab === tb.id ? "text-[#FF1313]" : "text-[#9AA0A6]"}`}>
-                  {tb.ikon}
-                </span>
-                {t(tb.label)}
-              </span>
-              {tb.id === "alarm" && jumlahAlarm > 0 && (
-                <span className="rounded-sm bg-[#FF1313] text-white text-[10px] font-semibold px-1.5 py-0.5">
-                  {jumlahAlarm}
-                </span>
-              )}
-            </button>
-          ))}
+        <nav className="flex-1 px-3 pt-1 pb-3 flex flex-col gap-0.5" aria-label={t("Menu utama")}>
+          {GRUP.filter((g: any) => !g.hanyaAdmin || admin).map((g: any) => {
+            const anak = tabTampil.filter((tb: any) => tb.grup === g.id);
+            if (!anak.length) return null;
+            const buka = grupTerbuka[g.id] !== false;
+            const adaAktif = anak.some((tb: any) => tb.id === tab);
+            return (
+              <div key={g.id} className="mt-1 first:mt-0">
+                <button
+                  type="button"
+                  className={`w-full flex items-center gap-2 rounded-sm px-2.5 py-1.5 text-left
+                              transition-colors ${
+                    adaAktif
+                      ? "text-[#1D2434]"
+                      : "text-[#64676C] hover:text-[#1D2434]"
+                  } hover:bg-[#F8F8F8]`}
+                  onClick={() => setGrupTerbuka((st) => ({ ...st, [g.id]: !buka }))}
+                  aria-expanded={buka}
+                  aria-controls={`menu-grup-${g.id}`}
+                  title={buka ? t("Tutup grup") : t("Buka grup")}
+                >
+                  <span aria-hidden className="text-[12px] leading-none">{g.ikon}</span>
+                  <span className="flex-1 truncate text-[11px] font-semibold uppercase tracking-[0.1em]">
+                    {t(g.label)}
+                  </span>
+                  <span aria-hidden
+                        className={`text-[9px] text-[#9AA0A6] transition-transform ${buka ? "rotate-90" : ""}`}>
+                    ▶
+                  </span>
+                </button>
+                {buka && (
+                  <div id={`menu-grup-${g.id}`} className="mt-0.5 flex flex-col gap-0.5">
+                    {anak.map((tb: any) => (
+                      <button
+                        key={tb.id}
+                        type="button"
+                        aria-current={tab === tb.id ? "page" : undefined}
+                        className={`w-full flex items-center justify-between rounded-sm pl-6 pr-2.5 py-1.5
+                                    text-sm text-left border-l-2 transition-colors ${
+                          tab === tb.id
+                            ? "bg-[#F8F8F8] border-l-[#FF1313] text-[#1D2434] font-semibold"
+                            : "border-l-transparent text-[#64676C] hover:bg-[#F8F8F8] hover:text-[#1D2434]"
+                        }`}
+                        onClick={() => setTab(tb.id)}
+                      >
+                        <span className="truncate">
+                          <span className={`mr-2 text-[11px] ${tab === tb.id ? "text-[#FF1313]" : "text-[#9AA0A6]"}`}>
+                            {tb.ikon}
+                          </span>
+                          {t(tb.label)}
+                        </span>
+                        {tb.id === "alarm" && jumlahAlarm > 0 && (
+                          <span className="rounded-sm bg-[#FF1313] text-white text-[10px] font-semibold px-1.5 py-0.5">
+                            {jumlahAlarm}
+                          </span>
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </nav>
 
         {/* ===== info akun ===== */}
@@ -257,6 +336,19 @@ export default function App() {
       {/* ===== Isi halaman ===== */}
       <main className="flex-1 min-w-0 px-8 py-7">
         <div className="mx-auto max-w-[1200px]">
+          {tanpaLogin && (
+            <div className="mb-5 rounded-sm border border-[#FDE68A] bg-[#FFFBEB]
+                            border-l-2 border-l-[#FF1313] px-4 py-2.5">
+              <p className="text-sm font-semibold text-[#B45309]">
+                MODE TANPA LOGIN (SEMENTARA)
+              </p>
+              <p className="mt-0.5 text-xs leading-snug text-[#64676C]">
+                Login dimatikan lewat <code>AUTH_DISABLED=true</code>. Semua
+                orang bisa membuka aplikasi ini tanpa sandi. Nyalakan kembali
+                login sebelum dipakai bersama atau dipasang di internet.
+              </p>
+            </div>
+          )}
           {/* ===== kepala halaman ===== */}
           <header className="mb-6 border-b border-[#E4E5E8] pb-4">
             <div className="flex items-end justify-between gap-4">
@@ -281,9 +373,15 @@ export default function App() {
           {tab === "aturan" && <AturanHarga />}
           {tab === "simulasi" && <Simulasi />}
           {tab === "rencana" && <Perencanaan />}
-          {tab === "alarm" && <AlarmPage />}
+          {tab === "alarm" && (
+            <AlarmPage ke={(x) => setTab(
+              // id dari API divalidasi: menu yang tidak dikenal diabaikan,
+              // supaya layar tidak pernah kosong karena tautan alarm.
+              (TAB.some((tb: any) => tb.id === x) ? x : "alarm") as TabId)} />
+          )}
           {tab === "rekonsiliasi" && <Rekonsiliasi />}
           {tab === "kualitas" && <Kualitas />}
+          {tab === "vendor" && <MasterVendor />}
           {tab === "gradeharga" && <GradeHarga />}
           {tab === "unggah" && <UnggahData />}
           {tab === "input" && <InputHarian pengisi={saya.data?.nama ?? "?"} />}

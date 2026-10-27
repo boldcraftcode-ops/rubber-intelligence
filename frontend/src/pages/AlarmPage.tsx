@@ -4,6 +4,7 @@ import {
   Kartu, Pesan, ambilJson, fmtTanggal, kelasInput, kelasTombol,
   kelasTombolKecil, kirimJson,
 } from "../bersama";
+import { useBahasa } from "../i18n";
 
 const pengisi = () => localStorage.getItem("op-margin.pengisi") || "?";
 
@@ -16,6 +17,31 @@ const NAMA_ALARM: Record<string, string> = {
   TIKET_TERLAMBAT: "Tiket terlambat",
   SELISIH_REKONSILIASI: "Selisih rekonsiliasi",
   HARGA_DI_ATAS_MAKS: "Harga beli di atas maksimum",
+};
+
+/* Kelompok alarm di layar. Urutannya = urutan mendesak menurut backend
+   (core/tindakan_alarm.URUTAN_KATEGORI). */
+const KATEGORI: [string, string][] = [
+  ["stok", "Stok & operasional"],
+  ["data", "Data belum masuk"],
+  ["selisih", "Selisih angka"],
+  ["harga", "Harga beli"],
+  ["margin", "Margin vs target"],
+];
+
+type Tindakan = {
+  kategori: string;
+  halaman: string;
+  halaman_label: string;
+  judul: string;
+  langkah: string[];
+};
+
+type AlarmItem = {
+  kode: string;
+  pesan: string;
+  tanggal_data: string | null;
+  tindakan?: Tindakan;
 };
 
 function BarisPengaturan({ p, sesudah }: { p: any; sesudah: () => void }) {
@@ -57,7 +83,52 @@ function BarisPengaturan({ p, sesudah }: { p: any; sesudah: () => void }) {
   );
 }
 
-export default function AlarmPage() {
+/* ---------- satu kartu alarm + jalan keluarnya ---------- */
+function KartuAlarm({ a, ke }: { a: AlarmItem; ke?: (id: string) => void }) {
+  const { t } = useBahasa();
+  const tindakan = a.tindakan;
+  return (
+    <div className="rounded-sm border border-[#FECACA] bg-[#FEF2F2] px-3 py-2.5">
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div className="min-w-0">
+          <p className="text-sm font-semibold text-[#B91C1C]">
+            {t(NAMA_ALARM[a.kode] ?? a.kode)}
+            {a.tanggal_data && (
+              <span className="ml-2 font-normal text-[#DC2626]">
+                ({t("data per")} {fmtTanggal(a.tanggal_data)})
+              </span>
+            )}
+          </p>
+          <p className="mt-0.5 text-xs leading-relaxed text-[#DC2626]">{a.pesan}</p>
+        </div>
+        {tindakan && ke && (
+          <button
+            className="shrink-0 rounded-sm bg-[#1D2434] px-3 py-1.5 text-xs font-semibold
+                       text-white transition-colors hover:bg-[#2A3345]"
+            onClick={() => ke(tindakan.halaman)}
+            title={`${t("Buka")} ${tindakan.halaman_label}`}
+          >
+            {t("Buka")} {tindakan.halaman_label} →
+          </button>
+        )}
+      </div>
+      {tindakan && (
+        <div className="mt-2 rounded-sm border border-[#E4E5E8] bg-white px-3 py-2">
+          <p className="text-xs font-semibold text-[#1D2434]">
+            <span aria-hidden className="mr-1 text-[#FF1313]">▶</span>
+            {tindakan.judul}
+          </p>
+          <ol className="mt-1 list-decimal space-y-0.5 pl-4 text-xs leading-relaxed text-[#64676C]">
+            {tindakan.langkah.map((l, i) => <li key={i}>{l}</li>)}
+          </ol>
+        </div>
+      )}
+    </div>
+  );
+}
+
+export default function AlarmPage({ ke }: { ke?: (id: string) => void }) {
+  const { t } = useBahasa();
   const qc = useQueryClient();
   const q = useQuery({ queryKey: ["alarm"], queryFn: () => ambilJson("/api/alarm") });
 
@@ -73,34 +144,49 @@ export default function AlarmPage() {
 
   return (
     <div className="grid gap-6">
-      <Kartu idMetrik="alarm" judul={`Alarm aktif (${q.data?.alarm.length ?? 0})`}
-             keterangan="Dievaluasi ulang otomatis setelah tiap unggahan/perubahan data."
+      <Kartu idMetrik="alarm" judul={`${t("Alarm aktif")} (${q.data?.alarm.length ?? 0})`}
+             keterangan={t("Dievaluasi ulang otomatis setelah tiap unggahan/perubahan data.")}
              anak={
         <>
           <button className={`${kelasTombol} mb-3`} disabled={evaluasi.isPending}
                   onClick={() => evaluasi.mutate()}>
-            {evaluasi.isPending ? "Mengevaluasi…" : "Evaluasi ulang sekarang"}
+            {evaluasi.isPending ? t("Mengevaluasi…") : t("Evaluasi ulang sekarang")}
           </button>
           {q.data?.alarm.length === 0 ? (
             <p className="rounded-sm bg-[#F0FDF4] border border-[#BBF7D0] px-3 py-3 text-sm text-[#15803D]">
-              Tidak ada alarm. ✓
+              {t("Tidak ada alarm. ✓")}
             </p>
           ) : (
-            <div className="grid gap-2">
-              {q.data?.alarm.map((a: any, i: number) => (
-                <div key={i} className="rounded-sm border border-[#FECACA] bg-[#FEF2F2] px-3 py-2">
-                  <p className="text-sm font-semibold text-[#B91C1C]">
-                    {NAMA_ALARM[a.kode] ?? a.kode}
-                    {a.tanggal_data && (
-                      <span className="ml-2 font-normal text-[#DC2626]">
-                        (data {fmtTanggal(a.tanggal_data)})
-                      </span>
-                    )}
-                  </p>
-                  <p className="text-xs text-[#DC2626]">{a.pesan}</p>
-                </div>
-              ))}
-            </div>
+            <>
+              <p className="mb-3 rounded-sm border border-[#E4E5E8] border-l-2 border-l-[#FF1313]
+                            bg-[#F8F8F8] px-3 py-2 text-xs leading-relaxed text-[#64676C]">
+                {t("Setiap alarm di bawah sudah dilengkapi tombol ke halaman yang harus dibuka dan langkah perbaikannya. Alarm padam sendiri setelah datanya benar dan evaluasi ulang dijalankan.")}
+              </p>
+              <div className="grid gap-4">
+                {KATEGORI.map(([id, judul]) => {
+                  const isi = (q.data?.alarm as AlarmItem[])
+                    .filter((a) => (a.tindakan?.kategori ?? "data") === id);
+                  if (!isi.length) return null;
+                  return (
+                    <section key={id}>
+                      <h3 className="mb-1.5 flex items-center gap-2 text-xs font-semibold
+                                     uppercase tracking-[0.1em] text-[#1D2434]">
+                        {t(judul)}
+                        <span className="rounded-sm bg-[#F8F8F8] border border-[#E4E5E8]
+                                         px-1.5 py-0.5 text-[10px] font-semibold text-[#64676C]">
+                          {isi.length}
+                        </span>
+                      </h3>
+                      <div className="grid gap-2">
+                        {isi.map((a, i) => (
+                          <KartuAlarm key={`${a.kode}-${i}`} a={a} ke={ke} />
+                        ))}
+                      </div>
+                    </section>
+                  );
+                })}
+              </div>
+            </>
           )}
         </>
       } />

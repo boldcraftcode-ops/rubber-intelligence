@@ -4,7 +4,7 @@ import {
   Bar, BarChart, CartesianGrid, Cell, ComposedChart, LabelList, Legend, Line,
   LineChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from "recharts";
-import { Kartu, NAMA_BULAN, Panel5W1H, ambilJson, fmtAngka, fmtTanggal, kelasTombolAnalisa, kelasTombolKecil, pesanGalat, urlApi } from "../bersama";
+import { Kartu, KepalaPanel, NAMA_BULAN, Panel5W1H, ambilJson, fmtAngka, fmtTanggal, kelasTombolAnalisa, kelasTombolKecil, pesanGalat, urlApi } from "../bersama";
 import { useBahasa } from "../i18n";
 
 /* Palet korporat (navy / merah / abu) untuk seri grafik. */
@@ -694,27 +694,6 @@ function KartuGrafikMargin() {
 /* ---------- panel analisa kartu RM Stock – Intake vs Pricing ----------
    Ketiganya memakai periode (dari/sampai) yang sedang dipilih di kartu itu,
    jadi bulan/tahun yang dianalisa selalu sama dengan yang ada di grafik. */
-function KepalaPanel({ judul, periode, url, tutup }: {
-  judul: string; periode?: string; url: string; tutup: () => void;
-}) {
-  const { t } = useBahasa();
-  return (
-    <div className="flex items-start justify-between gap-3">
-      <div>
-        <h3 className="text-lg font-semibold text-[#1D2434]">{judul}</h3>
-        {periode && <p className="text-sm text-[#64676C]">{t("Periode")}: {periode}</p>}
-      </div>
-      <div className="flex gap-2 shrink-0">
-        <a className={kelasTombolKecil}
-           href={urlApi(`${url}${url.includes("?") ? "&" : "?"}format=xlsx`)}>
-          {t("Ekspor Excel")}
-        </a>
-        <button className={kelasTombolKecil} onClick={tutup}>{t("Tutup")}</button>
-      </div>
-    </div>
-  );
-}
-
 function TipBridge({ active, payload }: any) {
   const { t } = useBahasa();
   if (!active || !payload?.length) return null;
