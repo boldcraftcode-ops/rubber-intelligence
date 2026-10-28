@@ -134,12 +134,101 @@ function Telusur({ tahun, bulan, tutup }: { tahun: number; bulan: number; tutup:
   );
 }
 
+/* ---------- panel RCA 5 Why: angka dihitung server dari periode kartu ---------- */
+function PanelRCA({ url, tutup }: { url: string; tutup: () => void }) {
+  const q = useQuery({ queryKey: ["rca-rm-stock-intake-pricing", url], queryFn: () => ambilJson(url) });
+  const fmt = (v: number | null | undefined, d = 2) => v == null ? "—" : fmtAngka(v, d);
+  const delta = (v: number | null | undefined, d = 2) =>
+    v == null ? "—" : `${v > 0 ? "+" : ""}${fmtAngka(v, d)}`;
+  const bagian = (judul: string, isi: ReactNode) => (
+    <section className="rounded-sm border border-[#E4E5E8] bg-[#F8F8F8] p-3">
+      <h4 className="mb-2 text-sm font-semibold text-[#FF1313]">{judul}</h4>{isi}
+    </section>
+  );
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-3" onClick={tutup}>
+      <div className="max-h-[92vh] w-full max-w-6xl overflow-y-auto rounded-sm border border-[#E4E5E8] bg-white p-5 shadow-xl"
+           onClick={(e) => e.stopPropagation()}>
+        <div className="mb-4 flex items-start justify-between gap-3">
+          <div>
+            <h3 className="text-lg font-semibold text-[#1D2434]">Analisa Akar Masalah — RM Stock, Intake vs Pricing</h3>
+            <p className="text-sm text-[#64676C]">Berbasis angka pada periode yang tampil. FAKTA dipisahkan dari HIPOTESIS.</p>
+          </div>
+          <button className={kelasTombolKecil} onClick={tutup}>Tutup</button>
+        </div>
+        {q.isLoading && <p className="py-6 text-sm text-[#64676C]">Menghitung analisa dari data periode…</p>}
+        {q.error && <p className="rounded-sm border border-[#FECACA] bg-[#FEF2F2] p-3 text-sm text-[#1D2434]">{pesanGalat(q.error)}</p>}
+        {q.data && !q.data.ada_data && <p className="rounded-sm border border-[#E4E5E8] bg-[#F8F8F8] p-3 text-sm text-[#1D2434]">{q.data.kesimpulan}</p>}
+        {q.data?.ada_data && (
+          <div className="grid gap-3">
+            {bagian("1. Kesimpulan", <p className="text-sm leading-relaxed text-[#1D2434]">{q.data.kesimpulan}</p>)}
+            {bagian("2. Temuan data (FAKTA)", <ul className="grid list-disc gap-1 pl-5 text-sm leading-relaxed text-[#1D2434]">
+              {q.data.temuan_data.map((x: string, i: number) => <li key={i}>{x}</li>)}
+            </ul>)}
+            {bagian("3. Anomali", <ul className="grid gap-2">
+              {q.data.anomali.map((x: any, i: number) => (
+                <li key={i} className="border-l-2 border-[#FF1313] pl-3 text-sm text-[#1D2434]">
+                  <b>{x.bulan} · {x.jenis}:</b> {x.fakta}
+                </li>
+              ))}
+            </ul>)}
+            {bagian("4. Root cause — 5 Why", <ol className="grid gap-2">
+              {q.data.root_cause.map((x: any) => (
+                <li key={x.level} className="rounded-sm border border-[#E4E5E8] bg-white p-3">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="font-semibold text-[#1D2434]">Why {x.level}/5 — {x.pertanyaan}</span>
+                    <span className={`rounded-sm px-2 py-0.5 text-[11px] font-semibold ${x.jenis === "FAKTA" ? "bg-[#E9EDF3] text-[#1D2434]" : "bg-[#FFF1F1] text-[#1D2434]"}`}>{x.jenis}</span>
+                    {x.jenis === "HIPOTESIS" && <span className="text-xs text-[#64676C]">Keyakinan: {x.keyakinan}</span>}
+                  </div>
+                  <p className="mt-1 text-sm leading-relaxed text-[#1D2434]">{x.jawaban}</p>
+                  {x.jenis === "HIPOTESIS" && <p className="mt-1 text-xs text-[#64676C]"><b>Data pembanding:</b> {x.data_dibutuhkan}</p>}
+                </li>
+              ))}
+            </ol>)}
+            {bagian("5. Rekomendasi", <ol className="grid list-decimal gap-2 pl-5">
+              {q.data.rekomendasi.map((x: any, i: number) => (
+                <li key={i} className="text-sm leading-relaxed text-[#1D2434]"><b>{x.aksi}</b><br />Target: {x.target_angka}<br /><span className="text-[#64676C]">Waktu evaluasi: {x.evaluasi}</span></li>
+              ))}
+            </ol>)}
+            {bagian("6. Keterbatasan & data tambahan", <ul className="grid list-disc gap-1 pl-5 text-sm leading-relaxed text-[#1D2434]">
+              {q.data.keterbatasan.map((x: string, i: number) => <li key={i}>{x}</li>)}
+              <li>Untuk menguji akar sebab: tambahkan data harga pesaing/pengepul, pemakaian dan produksi bulanan, cuaca, stok terverifikasi, serta tiket per pemasok/wilayah.</li>
+            </ul>)}
+            {bagian("Perhitungan bulanan (MoM)", <>
+              <p className="mb-2 text-xs text-[#64676C]">Δ MoM ditampilkan hanya untuk bulan kalender berurutan. Estimasi nilai margin = intake ton × margin US¢/kg × 10; bukan laba bersih.</p>
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[1500px] border-collapse text-xs">
+                  <thead><tr className="border-b border-[#E4E5E8] text-left text-[#64676C]">
+                    {["Bulan", "Intake ton", "Δ Intake ton", "SICOM", "Δ SICOM", "OP Price", "Δ OP Price", "Margin", "Δ Margin", "Estimasi margin US$", "RM Stock ton", "Status stok", "Gap safety ton", "Cover hari", "Sumber intake"].map(h => <th key={h} className="px-2 py-2">{h}</th>)}
+                  </tr></thead>
+                  <tbody>{q.data.per_bulan.map((r: any) => (
+                    <tr key={`${r.tahun}-${r.bulan}`} className="border-b border-[#E4E5E8] text-[#1D2434]">
+                      <td className="px-2 py-2 font-semibold">{r.label}</td>
+                      <td className="px-2 text-right">{fmt(r.intake_ton, 3)}</td><td className="px-2 text-right">{r.moM_tersedia ? delta(r.delta_intake_ton, 3) : "—"}{r.moM_tersedia && r.delta_intake_ton_pct != null ? ` (${delta(r.delta_intake_ton_pct)}%)` : ""}</td>
+                      <td className="px-2 text-right">{fmt(r.sicom, 3)}</td><td className="px-2 text-right">{r.moM_tersedia ? delta(r.delta_sicom, 3) : "—"}</td>
+                      <td className="px-2 text-right">{fmt(r.op_price, 3)}</td><td className="px-2 text-right">{r.moM_tersedia ? delta(r.delta_op_price, 3) : "—"}</td>
+                      <td className="px-2 text-right">{fmt(r.op_margin, 3)}</td><td className="px-2 text-right">{r.moM_tersedia ? delta(r.delta_op_margin, 3) : "—"}</td>
+                      <td className="px-2 text-right">{fmt(r.estimasi_total_margin_usd, 2)}</td><td className="px-2 text-right">{fmt(r.rm_stock_ton, 3)}</td><td className="px-2">{r.rm_stock_ton == null ? "—" : r.stok_sebagian ? "Sebagian" : "Akhir bulan"}</td>
+                      <td className="px-2 text-right">{fmt(r.selisih_stok_safety_ton, 3)}</td><td className="px-2 text-right">{fmt(r.days_of_cover, 2)}</td>
+                      <td className="px-2">{r.sumber_intake || "—"}{r.keandalan_intake.startsWith("lebih rendah") ? " · keandalan lebih rendah" : ""}</td>
+                    </tr>
+                  ))}</tbody>
+                </table>
+              </div>
+            </>)}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 /* ---------- elemen OP Margin: RM Stock-Intake vs Pricing (seperti Excel) ---------- */
 function KartuElemen() {
   const { t } = useBahasa();
   const [dari, setDari] = useState("");
   const [sampai, setSampai] = useState("");
-  const [panel, setPanel] = useState<null | "5w1h" | "bridge" | "doc">(null);
+  const [panel, setPanel] = useState<null | "5w1h" | "bridge" | "doc" | "rca">(null);
   const params = new URLSearchParams();
   if (dari) params.set("dari", dari);
   if (sampai) params.set("sampai", sampai);
@@ -162,6 +251,7 @@ function KartuElemen() {
   const ubahPeriode = (a: string, b: string) => { setPeriA(a); setPeriB(b); };
   const urlBridge = `/api/margin-bridge${qsPeriode}`;
   const urlDoc = `/api/days-of-cover${qsPeriode}`;
+  const urlRca = `/api/ringkasan-elemen/rca${qsPeriode}`;
 
   const q = useQuery({
     queryKey: ["ringkasan-elemen", url],
@@ -199,6 +289,9 @@ function KartuElemen() {
             <button className={kelasTombolAnalisa} onClick={() => setPanel("5w1h")}>
               ✨ 5W1H
             </button>
+            <button className={kelasTombolAnalisa} onClick={() => setPanel("rca")}>
+              🔎 RCA · 5 Why
+            </button>
             <button className={kelasTombolAnalisa} onClick={() => setPanel("bridge")}>
               🌉 {t("Margin Bridge")}
             </button>
@@ -214,6 +307,7 @@ function KartuElemen() {
           <Panel5W1H judul={`${t("Analisa grafik")} — 5W1H`}
                      url={urlAnalisa + qsPeriode} tutup={() => setPanel(null)} />
         )}
+        {panel === "rca" && <PanelRCA url={urlRca} tutup={() => setPanel(null)} />}
         {panel === "bridge" && (
           <PanelMarginBridge url={urlBridge} tutup={() => setPanel(null)}
                              awal={awalAnalisa} akhir={akhirAnalisa}
