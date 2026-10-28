@@ -5,7 +5,7 @@ import {
   Tooltip, XAxis, YAxis,
 } from "recharts";
 import {
-  Kartu, NAMA_BULAN, Panel5W1H, PilihRentangBulan, akhirBulan,
+  Kartu, KartuMuatSaatDiminta, NAMA_BULAN, Panel5W1H, PilihRentangBulan, akhirBulan,
   KepalaPanel, ambilJson, fmtAngka, fmtTanggal, hitungJumlahBulan, kelasInput,
   kelasTombolAnalisa, kelasTombolKecil, pesanGalat,
 } from "../bersama";
@@ -1700,14 +1700,22 @@ export default function Analisis() {
                    url={`/api/analisis/analisa${paramsA.size ? "?" + paramsA.toString() : ""}`}
                    tutup={() => setBukaAnalisa(false)} />
       )}
-      <div className="lg:col-span-2"><KartuPenerimaan /></div>
-      <KartuTonase />
-      <KartuKonsentrasi />
-      <KartuGrade />
-      <KartuReject />
-      <KartuMarginHarian />
-      <KartuMarginPer />
-      <div className="lg:col-span-2"><KartuIntakeTerakhir /></div>
+      <div className="lg:col-span-2"><KartuMuatSaatDiminta
+        judul="Penerimaan karet (kg) — biasa vs EUDR"
+        keterangan="Memuat grafik dan rincian penerimaan hanya setelah Anda meminta."
+        anak={<KartuPenerimaan />}
+      /></div>
+      <KartuMuatSaatDiminta judul="Tonase (drill-down)" keterangan="Memuat rincian tonase hanya setelah Anda meminta." anak={<KartuTonase />} />
+      <KartuMuatSaatDiminta judul="Konsentrasi vendor" keterangan="Memuat konsentrasi pemasok hanya setelah Anda meminta." anak={<KartuKonsentrasi />} />
+      <KartuMuatSaatDiminta judul="Bauran grade & porsi EUDR" keterangan="Memuat komposisi grade hanya setelah Anda meminta." anak={<KartuGrade />} />
+      <KartuMuatSaatDiminta judul="KPI Reject %" keterangan="Memuat indikator reject hanya setelah Anda meminta." anak={<KartuReject />} />
+      <KartuMuatSaatDiminta judul="Margin harian" keterangan="Memuat margin harian hanya setelah Anda meminta." anak={<KartuMarginHarian />} />
+      <KartuMuatSaatDiminta judul="Margin per grade / vendor" keterangan="Memuat perincian margin hanya setelah Anda meminta." anak={<KartuMarginPer />} />
+      <div className="lg:col-span-2"><KartuMuatSaatDiminta
+        judul="Daftar intake terakhir"
+        keterangan="Memuat daftar tiket terakhir hanya setelah Anda meminta."
+        anak={<KartuIntakeTerakhir />}
+      /></div>
       <p className="lg:col-span-2 text-xs text-[#64676C]">
         Kartu tonase/grade/reject memakai data tiket; data tiket historis penuh belum
         diunggah (template hanya berisi contoh), jadi angka akan terisi setelah ekspor

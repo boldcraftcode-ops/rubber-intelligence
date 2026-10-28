@@ -321,6 +321,41 @@ function ModalJelaskan({ idMetrik, judul, qs, tutup }: {
   );
 }
 
+/* ---------- kartu yang baru memuat data setelah diminta ---------- */
+export function KartuMuatSaatDiminta({ judul, keterangan, anak, siap = true,
+                                      setelahDiminta }: {
+  judul: string;
+  keterangan?: string;
+  anak: ReactNode;
+  /** False bila tampilan menunggu query bersama di komponen induk. */
+  siap?: boolean;
+  setelahDiminta?: () => void;
+}) {
+  const [diminta, setDiminta] = useState(false);
+  const { t } = useBahasa();
+
+  if (diminta && siap) return <>{anak}</>;
+  return (
+    <section className="kartu-aksen rounded-sm border border-[#E4E5E8] bg-white p-5 shadow-[0_1px_3px_rgba(29,36,52,0.08)]">
+      <div>
+        <h2 className="text-lg font-semibold text-[#1D2434]">{t(judul)}</h2>
+        {keterangan && <p className="text-sm text-[#64676C]">{t(keterangan)}</p>}
+      </div>
+      <div className="mt-4 flex flex-wrap items-center gap-3 rounded-sm border border-[#E4E5E8] bg-[#F8F8F8] px-3 py-3">
+        <p className="text-sm text-[#64676C]">
+          {diminta ? `⏳ ${t("Sedang memuat data…")}` : `◷ ${t("Menunggu permintaan Anda. Data belum dimuat.")}`}
+        </p>
+        {!diminta && (
+          <button type="button" className={`${kelasTombolAnalisa} ml-auto`}
+                  onClick={() => { setDiminta(true); setelahDiminta?.(); }}>
+            {t("Tampilkan data")}
+          </button>
+        )}
+      </div>
+    </section>
+  );
+}
+
 /* ---------- kartu dengan "Jelaskan ke saya" + ekspor Excel ---------- */
 export function Kartu({ idMetrik, judul, keterangan, urlEkspor, qsJelaskan, anak }: {
   idMetrik: string;

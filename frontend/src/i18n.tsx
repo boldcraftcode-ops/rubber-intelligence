@@ -17,6 +17,9 @@ const KAMUS: Record<string, string> = {
   "Buka grup": "Expand group",
   // ---- menu samping: halaman (tingkat 2)
   "Margin Performance": "Margin Performance",
+  "Tampilkan data": "Load data",
+  "Menunggu permintaan Anda. Data belum dimuat.": "Waiting for your request. Data has not been loaded.",
+  "Sedang memuat data…": "Loading data…",
   "Analisis": "Analytics",
   "Intake Analisis": "Intake Analytics",
   "Master Vendor": "Vendor Master",

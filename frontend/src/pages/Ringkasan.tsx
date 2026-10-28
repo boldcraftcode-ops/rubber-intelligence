@@ -4,7 +4,7 @@ import {
   Bar, BarChart, CartesianGrid, Cell, ComposedChart, LabelList, Legend, Line,
   LineChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from "recharts";
-import { Kartu, KepalaPanel, NAMA_BULAN, Panel5W1H, ambilJson, fmtAngka, fmtTanggal, kelasTombolAnalisa, kelasTombolKecil, pesanGalat, urlApi } from "../bersama";
+import { Kartu, KartuMuatSaatDiminta, KepalaPanel, NAMA_BULAN, Panel5W1H, ambilJson, fmtAngka, fmtTanggal, kelasTombolAnalisa, kelasTombolKecil, pesanGalat, urlApi } from "../bersama";
 import { useBahasa } from "../i18n";
 
 /* Palet korporat (navy / merah / abu) untuk seri grafik. */
@@ -1549,15 +1549,20 @@ function PanelPerhatian({ ke }: { ke?: (tab: string) => void }) {
 /* ---------- halaman ---------- */
 export default function Ringkasan({ ke }: { ke?: (tab: string) => void }) {
   const { t } = useBahasa();
-  const tahunQ = useQuery({ queryKey: ["tahun"], queryFn: () => ambilJson("/api/tahun") });
+  const [ringkasanDiminta, setRingkasanDiminta] = useState(false);
+  const tahunQ = useQuery({ queryKey: ["tahun"], queryFn: () => ambilJson("/api/tahun"), enabled: ringkasanDiminta });
   const [tahun, setTahun] = useState<number | null>(null);
   const thn = tahun ?? (tahunQ.data ? tahunQ.data[tahunQ.data.length - 1] : null);
 
   const ringkas = useQuery({
     queryKey: ["ringkasan", thn],
     queryFn: () => ambilJson(`/api/ringkasan/${thn}`),
-    enabled: thn !== null,
+    enabled: ringkasanDiminta && thn !== null,
   });
+  const tahunKosong = ringkasanDiminta && !tahunQ.isLoading &&
+    Array.isArray(tahunQ.data) && tahunQ.data.length === 0;
+  const siapRingkasan = !!ringkas.data || !!ringkas.error || !!tahunQ.error || tahunKosong;
+  const galatRingkasan = ringkas.error ?? tahunQ.error;
   const [telusur, setTelusur] = useState<number | null>(null);
 
   const label = [
@@ -1568,11 +1573,34 @@ export default function Ringkasan({ ke }: { ke?: (tab: string) => void }) {
 
   return (
     <div className="grid gap-6">
-      <StripAngkaKunci thn={thn} data={ringkas.data} ke={ke} />
+      <KartuMuatSaatDiminta
+        judul="Angka kunci Margin Performance"
+        keterangan="Indikator ringkas, margin, days of cover, dan perubahan harga."
+        siap={siapRingkasan}
+        setelahDiminta={() => setRingkasanDiminta(true)}
+        anak={galatRingkasan
+          ? <p className="rounded-sm border border-[#E4E5E8] bg-[#F8F8F8] p-3 text-sm text-[#64676C]">{pesanGalat(galatRingkasan)}</p>
+          : tahunKosong
+            ? <p className="rounded-sm border border-[#E4E5E8] bg-[#F8F8F8] p-3 text-sm text-[#64676C]">Belum ada data margin untuk ditampilkan.</p>
+            : <StripAngkaKunci thn={thn} data={ringkas.data} ke={ke} />}
+      />
 
-      <PanelPerhatian ke={ke} />
+      <KartuMuatSaatDiminta
+        judul="Perlu perhatian hari ini"
+        keterangan="Pemeriksaan alarm, kualitas data, dan rekomendasi harga dimuat saat diminta."
+        anak={<PanelPerhatian ke={ke} />}
+      />
 
-      <Kartu idMetrik="ringkasan" judul={`${t("OP Margin bulanan")} — ${thn ?? ""}`}
+      <KartuMuatSaatDiminta
+        judul="OP Margin bulanan"
+        keterangan="Tabel margin dan harga bulanan. Data baru dimuat setelah Anda meminta."
+        siap={siapRingkasan}
+        setelahDiminta={() => setRingkasanDiminta(true)}
+        anak={galatRingkasan
+          ? <p className="rounded-sm border border-[#E4E5E8] bg-[#F8F8F8] p-3 text-sm text-[#64676C]">{pesanGalat(galatRingkasan)}</p>
+          : tahunKosong
+            ? <p className="rounded-sm border border-[#E4E5E8] bg-[#F8F8F8] p-3 text-sm text-[#64676C]">Belum ada data margin untuk ditampilkan.</p>
+            : <Kartu idMetrik="ringkasan" judul={`${t("OP Margin bulanan")} — ${thn ?? ""}`}
              keterangan={t("US¢/kg, basis berat kering — meniru Excel lama. Klik angka OP Margin untuk menelusuri asal angkanya.")}
              urlEkspor={thn ? `/api/ringkasan/${thn}` : undefined}
              qsJelaskan={thn ? `?tahun=${thn}` : ""}
@@ -1636,11 +1664,19 @@ export default function Ringkasan({ ke }: { ke?: (tab: string) => void }) {
             {t('Avg YTD = rata-rata sederhana bulan berdata (resmi, seperti Excel); kolom "Tertimbang" = rata-rata tertimbang tonase (informasi).')}
           </p>
         </>
-      } />
+      } />} />
 
-      <KartuGrafikMargin />
+      <KartuMuatSaatDiminta
+        judul="Margin bulanan vs target"
+        keterangan="Grafik tren margin dan perbandingan antar tahun dimuat setelah Anda meminta."
+        anak={<KartuGrafikMargin />}
+      />
 
-      <KartuElemen />
+      <KartuMuatSaatDiminta
+        judul="RM Stock – Intake vs Pricing"
+        keterangan="Grafik stok, intake, dan harga dimuat setelah Anda meminta."
+        anak={<KartuElemen />}
+      />
 
       {telusur !== null && thn !== null && (
         <Telusur tahun={thn} bulan={telusur} tutup={() => setTelusur(null)} />
