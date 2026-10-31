@@ -419,7 +419,15 @@ def pasang_router_unggah(app, ambil_session):
         # Baru sekarang file dipindah ke folder unggahan tetap (ikut backup).
         tujuan = _folder_unggah() / f"{_stempel()}_{nama}"
         asal = pathlib.Path(data["path"])
-        shutil.move(str(asal), str(tujuan))
+        try:
+            shutil.move(str(asal), str(tujuan))
+        except PermissionError as e:
+            raise HTTPException(
+                423,
+                "File pratinjau masih sedang dipakai Windows. Tutup file itu "
+                "bila terbuka di Excel atau aplikasi lain, tunggu sebentar, "
+                "lalu tekan Konfirmasi simpan lagi.",
+            ) from e
 
         fn = _fungsi_impor(jenis)
         try:

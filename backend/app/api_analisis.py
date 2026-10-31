@@ -1477,6 +1477,14 @@ def pasang_router(app, ambil_session):
         data = ringkasan_elemen(dari=dari, sampai=sampai, session=session)
         return analisa_5w1h(data["baris"], session)
 
+    @router.get("/ringkasan-elemen/rca")
+    def analisa_rca_elemen(dari: str | None = None, sampai: str | None = None,
+                           session: Session = dep):
+        """RCA 5 Why berbasis angka kartu, memakai filter periode yang sama."""
+        from .core.analisa_rca import analisa_rca
+        data = ringkasan_elemen(dari=dari, sampai=sampai, session=session)
+        return analisa_rca(data["baris"])
+
     @router.get("/analisis/analisa")
     def analisa_halaman_analisis(dari: str | None = None, sampai: str | None = None,
                                  session: Session = dep):

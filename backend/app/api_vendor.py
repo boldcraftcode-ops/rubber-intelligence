@@ -36,7 +36,7 @@ from sqlalchemy.orm import Session
 from .core.alarm import catat_audit
 from .core.klasifikasi_vendor import (bakukan as bakukan_klasifikasi,
                                       daftar_untuk_layar, label as label_klasifikasi)
-from .models import Pembelian, TiketBaris, Vendor
+from .models import Collector, Pembelian, TiketBaris, Vendor
 
 SHEET = "Master_Vendor"
 KOLOM = ["Kode_Vendor", "Nama_Baku", "Varian_Nama", "Kategori", "Status",
@@ -283,6 +283,13 @@ def pasang_router_vendor(app, ambil_session):
         v = session.get(Vendor, kode)
         if not v:
             raise HTTPException(404, f"Vendor '{kode}' tidak ada.")
+        jumlah_collector = session.scalar(select(func.count()).select_from(Collector).where(
+            Collector.kode_vendor == kode)) or 0
+        if jumlah_collector:
+            raise HTTPException(409, (
+                f"Vendor {kode} masih menjadi afiliasi {jumlah_collector} collector. "
+                "Pindahkan collector ke vendor lain atau hapus collector terlebih dahulu."
+            ))
         pakai = _pemakaian(session, kode)
         if pakai["terpakai"] and not paksa:
             raise HTTPException(409, (
