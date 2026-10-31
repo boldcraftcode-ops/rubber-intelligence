@@ -93,6 +93,8 @@ mkdir "%WHEEL%" >nul 2>nul
 %PY% -m pip download --dest "%WHEEL%" --only-binary=:all: --platform win_amd64 --python-version %PYVER% --disable-pip-version-check --requirement "backend\requirements.txt"
 if errorlevel 1 goto :unduh_gagal
 echo     selesai: pustaka Python sudah ada di bahan-offline\wheelhouse
+> "%BAHAN%\python-version.txt" echo %PYVER%
+echo     target Python %PYVER% tersimpan di bahan-offline\python-version.txt
 
 rem ------------------------------------------------------------
 echo.
@@ -148,6 +150,7 @@ if exist "%BAHAN%\BACA-SAYA.txt" del "%BAHAN%\BACA-SAYA.txt" >nul 2>nul
 >> "%BAHAN%\BACA-SAYA.txt" echo.
 >> "%BAHAN%\BACA-SAYA.txt" echo ISI FOLDER INI
 >> "%BAHAN%\BACA-SAYA.txt" echo   wheelhouse   pustaka Python untuk pemasangan tanpa internet
+>> "%BAHAN%\BACA-SAYA.txt" echo   python-version.txt versi mayor.minor yang harus dipakai
 >> "%BAHAN%\BACA-SAYA.txt" echo   dist         tampilan web yang sudah jadi, siap dipakai
 >> "%BAHAN%\BACA-SAYA.txt" echo.
 >> "%BAHAN%\BACA-SAYA.txt" echo YANG MASIH PERLU DIUNDUH SENDIRI
