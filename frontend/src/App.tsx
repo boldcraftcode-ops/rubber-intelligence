@@ -14,6 +14,7 @@ import InputHarian from "./pages/InputHarian";
 import UnggahData from "./pages/UnggahData";
 import GradeHarga from "./pages/GradeHarga";
 import MasterVendor from "./pages/MasterVendor";
+import MasterCollector from "./pages/MasterCollector";
 import Database from "./pages/Database";
 import Pengguna from "./pages/Pengguna";
 import Login, { LayarApiLama, LayarGalat } from "./pages/Login";
@@ -46,6 +47,7 @@ const TAB = [
   { id: "rekonsiliasi", label: "Rekonsiliasi", ikon: "≡", grup: "pantau" },
   { id: "kualitas", label: "Kualitas Data", ikon: "◆", grup: "pantau" },
   { id: "vendor", label: "Master Vendor", ikon: "◈", grup: "master" },
+  { id: "collector", label: "Master Collector", ikon: "◎", grup: "master" },
   { id: "gradeharga", label: "Grade & Harga", ikon: "◇", grup: "master" },
   { id: "input", label: "Input Harian", ikon: "✎", grup: "input" },
   { id: "unggah", label: "Unggah Data", ikon: "↑", grup: "input" },
@@ -382,6 +384,7 @@ export default function App() {
           {tab === "rekonsiliasi" && <Rekonsiliasi />}
           {tab === "kualitas" && <Kualitas />}
           {tab === "vendor" && <MasterVendor />}
+          {tab === "collector" && <MasterCollector />}
           {tab === "gradeharga" && <GradeHarga />}
           {tab === "unggah" && <UnggahData />}
           {tab === "input" && <InputHarian pengisi={saya.data?.nama ?? "?"} />}

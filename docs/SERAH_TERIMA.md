@@ -9,7 +9,7 @@ Kalau Anda hanya punya 15 menit, baca bagian **1 (Status)**, **3 (Cara
 menjalankan)**, dan **7 (Aturan yang tidak boleh dilanggar)**. Selebihnya bisa
 dibaca saat mengerjakan tugas pertama.
 
-Terakhir diperbarui: **2026-10-26**, versi kode **0.10.0**.
+Terakhir diperbarui: **2026-10-27**, versi kode **0.11.2**.
 
 ---
 
@@ -32,15 +32,15 @@ ini setiap hari untuk memutuskan **harga beli maksimum** yang masih aman.
 
 ---
 
-## 2. Status per 2026-10-26
+## 2. Status per 2026-10-27
 
 | Hal | Nilai |
 |---|---|
-| Versi kode | **0.10.0** (`VERSI.txt`, `backend/app/versi.py`, `frontend/src/versi.ts`) |
+| Versi kode | **0.11.2** (`VERSI.txt`, `backend/app/versi.py`, `frontend/src/versi.ts`) |
 | Branch kerja | `arena/18670644-rubber-intelligence` |
 | Pull request | **#1 masih terbuka** — https://github.com/boldcraftcode-ops/rubber-intelligence/pull/1 |
 | Branch `main` | belum memuat pekerjaan v0.7.x–v0.8.x |
-| Unit test | **402 lulus** (`cd backend && .venv/bin/python -m pytest -q`) |
+| Unit test | **416 lulus** (`cd backend && .venv/bin/python -m pytest -q`) |
 | Build frontend | bersih, ±3,3 detik (`cd frontend && npm run build`) |
 | Database | SQLite `backend/opmargin.db` (tidak masuk Git) |
 
@@ -104,7 +104,7 @@ Login awal: **`admin` / `admin123`** (dari `ADMIN_SANDI_AWAL` di
 
 ```bash
 cd backend
-.venv/bin/python -m pytest -q                                  # 402 tes
+.venv/bin/python -m pytest -q                                  # 416 tes
 .venv/bin/python -m app.cli diagnosa                            # laporan kesehatan
 .venv/bin/python -m app.cli reset-sandi admin                   # lupa sandi
 .venv/bin/python -m app.cli atur-login-lokal                    # pastikan mode login benar
@@ -156,7 +156,7 @@ rubber-intelligence/
 │   │       ├── kualitas.py     deteksi data terlambat/aneh
 │   │       └── alarm.py        evaluasi alarm + audit
 │   ├── semantic/metrics.yaml   definisi metrik (rujukan, dibaca fase API)
-│   ├── tests/                  402 tes, termasuk kasus emas Excel lama
+│   ├── tests/                  416 tes, termasuk kasus emas Excel lama
 │   ├── unggahan/               berkas Excel yang diunggah lewat web
 │   └── .env.example            contoh setelan (JANGAN commit .env asli)
 └── frontend/
@@ -708,6 +708,78 @@ harus ikut dibawa lewat folder `bahan-offline`. Memperbarui aplikasi di PC
 luring = ulangi Tahap 1 di PC berinternet, lalu salin kode + `bahan-offline`
 lagi (jangan `git pull` di PC luring).
 
+### Unggah pratinjau: workbook terkunci saat konfirmasi di Windows (v0.11.2)
+
+Pemilik melaporkan pesan browser **“Unexpected token 'I' … is not valid JSON”**
+ketika mengonfirmasi simpan unggahan. Traceback Windows menunjukkan
+akar penyebab yang spesifik:
+
+```text
+api_unggah.py, konfirmasi
+  shutil.move(str(asal), str(tujuan))
+PermissionError: [WinError 32] ... unggahan\.pratinjau\<token>.xlsx
+```
+
+Bukan masalah versi patch Python: file masih dikunci oleh `openpyxl`. Dalam
+mode pratinjau, `impor_template` dan `impor_master_data` membuka workbook
+`read_only` untuk menyimpan raw rows; template juga membuka workbook kedua
+untuk sheet Intake_Tiket. Workbook-workbook itu tidak ditutup sebelum request
+pratinjau selesai. Di Linux, rename file yang terbuka masih bisa berhasil;
+Windows melarang `shutil.move`/hapus pada file yang sedang dipegang, sehingga
+endpoint menghasilkan 500 dan frontend gagal membaca teks `Internal Server
+Error` sebagai JSON.
+
+**Perbaikan v0.11.2.** Kedua fungsi impor sekarang mendaftarkan dan menutup
+semua workbook di blok `finally`, baik impor selesai maupun melempar galat.
+Dengan demikian file preview tidak lagi terkunci sebelum pengguna menekan
+Konfirmasi. Endpoint konfirmasi juga menangani `PermissionError` saat
+memindahkan file dan menjawab **423 JSON** dengan instruksi menutup Excel/
+aplikasi lain lalu mencoba lagi; file pratinjau tetap tersedia dan belum ada
+data yang masuk pada tahap pemindahan.
+
+**Verifikasi.** Simulasi file template v3 pada database sementara: preview
+`HTTP 200`, 6.216 baris siap disimpan, 0 ditolak; konfirmasi `HTTP 200` dan
+48 vendor serta data lain tersimpan. Dua tes regresi baru memastikan workbook
+ditutup setelah pratinjau dan file yang sengaja dikunci menghasilkan pesan
+423 yang ramah. Total proyek **416 tes**.
+
+---
+
+### Perbaikan paket offline memilih Python yang tepat (v0.11.1)
+
+Pemilik melaporkan sudah memasang Python 3.11.6 tetapi instalasi offline masih
+gagal. Pemeriksaan menunjukkan dua sumber masalah pada `start-offline.bat`
+sebelumnya: `py -3` memilih versi Python 3 tertinggi yang terpasang (bukan
+pasti 3.11), dan `backend\.venv` lama dipakai tanpa pemeriksaan versi atau
+arsitektur. Dengan demikian Python 3.11.6 dapat terpasang benar, tetapi skrip
+mungkin membuat/memakai venv Python 3.13/3.14 atau Python 32-bit.
+
+**Kesepakatan versi.** Paket wheel yang telah diuji ditujukan ke CPython **3.11,
+Windows 64-bit** (`cp311`, `win_amd64`). Python 3.11.6 x64 kompatibel — patch
+`.6` tidak harus sama dengan patch Python pembuat wheel. Hal yang harus sama
+adalah mayor.minor `3.11` dan arsitektur 64-bit.
+
+**Perubahan.** `ambil-bahan-offline.bat` kini menulis versi mayor.minor yang
+dipakai untuk mengunduh wheel ke `bahan-offline\python-version.txt`.
+`start-offline.bat` membaca marker itu (paket lama tanpa marker memakai 3.11),
+memilih `py -3.11` secara eksplisit, mengecek versi dan 64-bit sebelum membuat
+venv, serta menghapus/membuat ulang `backend\.venv` lama bila tidak cocok.
+Hanya folder venv yang dibangun ulang; database `backend\opmargin.db` dan
+unggahan tidak dihapus. Pesan kegagalan sekarang menyebut target dan Python
+yang terpilih.
+
+**Verifikasi.** Dua tes baru menjaga marker versi dan pemilihan/rebuild venv;
+`tests/test_skrip_offline.py` kini **21 tes**. Total proyek **414 tes**. Skrip
+batch tetap ASCII + CRLF dan tidak memakai `for /f`.
+
+**Langkah pengguna.** Salin skrip/berkas aplikasi v0.11.1 yang baru ke PC
+offline. Jika wheelhouse lama memang dibuat dengan `ambil-bahan-offline.bat
+3.11`, boleh tetap dipakai; bila tidak yakin, buat ulang folder `bahan-offline`
+di PC internet dengan argumen `3.11`, kemudian salin ke PC offline. Jalankan
+`start-offline.bat`; venv beda versi akan dibuat ulang otomatis.
+
+---
+
 ### Master Vendor: alamat, contact person, klasifikasi (v0.10.0)
 
 Permintaan pemilik: *"untuk master vendor, tambahkan informasi seperti Address,
@@ -765,6 +837,45 @@ utama), dan file baru `tests/test_skema_kolom_baru.py` (6 tes) menguji
 migrasi: kolom terdeteksi, data lama utuh, idempoten, aplikasi menyesuaikan
 sendiri saat start di database versi lama, serta nama kolom di `KOLOM_BARU`
 selalu ada di model.
+
+### Master Collector: individu terafiliasi vendor + wilayah (v0.11.0)
+
+Permintaan pemilik: menambah menu **Master Collector** di grup Master Data;
+collector adalah orang perseorangan yang terafiliasi ke satu vendor, dengan
+NIK, nomor HP, dan wilayah operasional sesuai Provinsi, Kabupaten/Kota, Desa.
+
+**Skema.** Tabel baru `collector`: `kode` (PK), `nama`, `nik`, `no_hp`,
+`kode_vendor` (FK ke `vendor.kode`), `provinsi`, `kabupaten_kota`, `desa`.
+NIK disimpan sebagai teks (bukan angka), unik bila diisi, dan divalidasi tepat
+16 digit; nomor HP juga teks agar angka nol di depan tidak hilang. `create_all`
+akan membuat tabel pada database lama saat API start tanpa mengubah tabel atau
+baris lama. Afiliasi diverifikasi API dan vendor yang masih memiliki collector
+tidak bisa dihapus sebelum afiliasinya dipindah/dihapus.
+
+**API.** `GET /api/collector?q=&kode_vendor=&provinsi=&kabupaten_kota=&desa=`
+memberi daftar dan jumlah; pencarian menelusuri kode, nama, NIK, No HP, vendor,
+dan wilayah. `POST /api/collector`, `PUT /api/collector/{kode}`,
+`DELETE /api/collector/{kode}` melakukan CRUD dan mencatat audit. Afiliasi ke
+kode vendor yang tidak ada ditolak **422**, kode duplikat/NIK duplikat ditolak,
+NIK selain 16 angka ditolak.
+
+**Excel.** `GET /api/collector/template` menghasilkan sheet `Master_Collector`
+plus `Petunjuk`, dengan 8 kolom: `Kode_Kolektor`, `Nama_Kolektor`, `NIK`,
+`No_HP`, `Afiliasi_Vendor`, `Provinsi`, `Kabupaten_Kota`, `Desa`.
+`POST /api/collector/impor` upsert berdasarkan kode; vendor harus sudah ada,
+kesalahan ditolak per baris dan baris lain tetap diproses. Sel opsional kosong
+berarti jangan ubah data yang sudah ada.
+
+**Layar.** Menu **Master Collector** di grup **Master Data** menampilkan tabel
+kolektor, vendor afiliasi dan nama vendor, NIK, No HP, serta tiga tingkat
+wilayah; tersedia cari, form tambah/ubah/hapus, dan bulk import Excel. Wilayah
+merupakan isian teks terpisah (bukan daftar administratif nasional terkode),
+supaya wilayah yang belum tercatat di tiket tetap dapat dimasukkan.
+
+**Tes.** `tests/test_master_collector.py` memiliki 10 tes: CRUD, validasi kode,
+vendor/NIK, keunikan NIK, proteksi hapus vendor yang terafiliasi, header +
+panduan template, upsert, kolom opsional kosong, serta validasi per baris.
+Jumlah tes proyek bertambah dari 402 menjadi **412**.
 
 ---
 
@@ -898,7 +1009,7 @@ Semua ini lahir dari kegagalan nyata, bukan kehati-hatian berlebihan.
    kode salah. Perbaikannya: `hentikan-api.bat` lalu `start-web.bat`.
 6. **Selalu jalankan `npm run build` (bukan hanya `vite build`)** — skrip npm
    memakai `tsc -b`, jadi error tipe ikut tertangkap.
-7. **402 tes harus tetap lulus.** Tes "kasus emas"
+7. **416 tes harus tetap lulus.** Tes "kasus emas"
    (`tests/test_data_awal.py`, `tests/test_bridge_doc.py`) mencocokkan hasil
    dengan Excel lama sampai beberapa desimal. Kalau tes emas gagal, hampir pasti rumus
    yang diubah, bukan tesnya.
@@ -990,13 +1101,13 @@ pernah membuat label dan ikon tertukar; ganti blok utuhnya.
 ### Rilis versi baru (prosedur yang sudah terbukti)
 ```bash
 # 1. pastikan bersih
-cd backend && .venv/bin/python -m pytest -q          # 402 passed
+cd backend && .venv/bin/python -m pytest -q          # 416 passed
 cd ../frontend && npm run build                       # bersih
 
 # 2. naikkan versi di 6 berkas (isi dua variabel, sisanya otomatis)
 cd ..
 LAMA=$(tr -d '\r\n' < VERSI.txt)     # versi yang masih terpakai
-BARU=0.10.0                            # <- tulis versi baru di sini
+BARU=0.11.2                            # <- tulis versi baru di sini
 for f in VERSI.txt backend/app/versi.py frontend/src/versi.ts \
          docs/CARA_MENJALANKAN.md diagnosa.bat hentikan-api.bat; do
   sed -i "s/$LAMA/$BARU/g" "$f"

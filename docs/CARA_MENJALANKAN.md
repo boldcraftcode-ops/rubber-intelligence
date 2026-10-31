@@ -171,7 +171,7 @@ itu pemasangan di PC luring dilakukan dua tahap dengan dua skrip.
 
 ### Tahap 1 — di PC yang ADA internet (sekali saja)
 
-1. Pasang **Python 3.11 (64-bit)** dan **Node.js LTS** di PC ini.
+1. Pasang **Python 3.11.x (64-bit)** dan **Node.js LTS** di PC ini. Python 3.11.6 juga kompatibel; angka patch tidak harus sama.
 2. Klik dua kali **`ambil-bahan-offline.bat`**. Skrip ini:
    - mengunduh semua pustaka Python sebagai berkas *wheel* ke
      `bahan-offline\wheelhouse` untuk Windows 64-bit dan versi Python yang
@@ -179,7 +179,7 @@ itu pemasangan di PC luring dilakukan dua tahap dengan dua skrip.
    - memasang pustaka tampilan lalu membangunnya (`npm install`,
      `npm run build`), hasilnya disalin ke `bahan-offline\dist`;
    - menulis `bahan-offline\BACA-SAYA.txt` dan menampilkan ukuran folder.
-3. Unduh juga installer **Python 3.11 “Windows installer (64-bit)”** dari
+3. Unduh juga installer **Python 3.11.x “Windows installer (64-bit)”** dari
    python.org — yang dibawa berkas `.exe` ini, **bukan** *web installer*.
 4. ZIP seluruh folder aplikasi (termasuk `bahan-offline`), lalu salin ke PC
    tujuan lewat USB atau jaringan lokal.
@@ -204,14 +204,16 @@ itu pemasangan di PC luring dilakukan dua tahap dengan dua skrip.
 | Login dimatikan sementara | Buat berkas `tanpa-login.txt` (sama seperti mode biasa); hapus untuk mengaktifkan lagi. |
 | Memperbarui aplikasi | Ulangi Tahap 1 di PC berinternet, lalu salin lagi kode terbaru **beserta** `bahan-offline`. Jangan pakai `git pull` / `perbarui-kode.bat` di PC luring. |
 | Data & cadangan | Sama seperti biasa: `backend\opmargin.db` (SQLite) + folder `unggahan\`. Tidak berubah karena mode luring. |
-| Mengganti versi Python | Wheel terikat versi Python. Bila PC luring memakai versi lain, buat ulang bahan dengan `ambil-bahan-offline.bat 3.12` (misalnya), lalu salin lagi. |
+| Versi Python yang cocok | Paket yang sudah diuji memakai **Python 3.11, 64-bit**. Python 3.11.6 cocok; yang penting angka mayor.minor `3.11` dan arsitektur 64-bit. |
+| Mengganti versi Python | Wheel terikat versi mayor.minor dan arsitektur. Buat ulang bahan dengan versi tujuan, mis. `ambil-bahan-offline.bat 3.11`, lalu salin lagi. |
 
 ### Kalau ada yang gagal
 
 | Pesan | Artinya | Perbaikan |
 |---|---|---|
 | `folder bahan-offline\wheelhouse tidak ada` | Folder bahan belum ikut tersalin | Salin seluruh folder aplikasi termasuk `bahan-offline` |
-| `GAGAL memasang pustaka dari bahan-offline\wheelhouse` | Versi Python beda dengan wheel | Buat ulang bahan dengan versi Python yang sama |
+| `GAGAL: Python yang dipilih tidak cocok dengan bahan offline` | Launcher memilih versi/arsitektur lain, atau lingkungan lama dibuat dengan Python berbeda | Pastikan Python 3.11 64-bit terpasang. Skrip terbaru memilih `py -3.11` dan membuat ulang `backend\.venv` yang salah; database tidak dihapus. |
+| `GAGAL memasang pustaka dari bahan-offline\wheelhouse` | Versi Python/arsitektur beda dengan wheel, atau folder wheel tidak lengkap | Buat ulang bahan dengan `ambil-bahan-offline.bat 3.11` di PC berinternet lalu salin folder `bahan-offline` lengkap |
 | `GAGAL: tampilan web belum ada` | `bahan-offline\dist` tidak ada | Jalankan `ambil-bahan-offline.bat` di PC berinternet |
 | `PERINGATAN: API belum menjawab` | Port 8000 dipakai program lain, atau API error | Baca jendela “OP Margin - API”; lihat juga `diagnosa.bat` |
 | `PERINGATAN: API menjawab, tetapi versinya bukan ...` | Proses lain menjawab di port 8000 | Tutup program itu, jalankan `start-offline.bat` lagi |
@@ -230,7 +232,7 @@ npm run build
 
 # di PC tanpa internet (setelah Python dan wheel disalin)
 cd backend
-python -m venv .venv
+py -3.11 -m venv .venv
 .venv\Scripts\pip install --no-index --find-links ..\bahan-offline\wheelhouse -r requirements.txt
 .venv\Scripts\python -m app.cli init-db
 .venv\Scripts\python -m app.cli import-template "..\sample_data\Template_dan_Data_Awal_OP_Margin_v3.xlsx"
@@ -322,13 +324,68 @@ Vendor yang sudah dipakai tiket **tidak bisa dihapus** — aplikasi menolak dan
 menyarankan mengubah statusnya menjadi `nonaktif`. Ini disengaja: menghapus
 kode akan membuat tonase historis kehilangan pemiliknya di laporan.
 
+### Master Collector (sejak v0.11.0)
+
+Menu **Master Collector** ada di grup **Master Data**. Collector adalah
+perorangan yang harus terafiliasi ke satu vendor yang sudah terdaftar. Data
+meliputi **Kode kolektor**, **Nama kolektor**, **NIK**, **No HP**, **Afiliasi
+Vendor**, serta wilayah operasional berupa **Provinsi → Kabupaten/Kota → Desa**.
+Wilayah diisi pada tiga kotak terpisah agar mudah dicari dan difilter.
+
+Kode kolektor dan nama wajib diisi; afiliasi vendor wajib dipilih. NIK boleh
+kosong, tetapi bila diisi harus tepat 16 angka dan tidak boleh sama dengan NIK
+collector lain. NIK disimpan sebagai teks agar tidak berubah format. Vendor
+yang masih memiliki collector terafiliasi tidak dapat dihapus; pindahkan
+afiliasi atau hapus collector lebih dulu.
+
+Formulir **Tambah/Ubah/Hapus** dan pencarian ada di kartu Daftar Collector.
+Untuk Excel, gunakan **Unduh template** pada kartu Bulk import Collector.
+Header sheet `Master_Collector`: `Kode_Kolektor`, `Nama_Kolektor`, `NIK`,
+`No_HP`, `Afiliasi_Vendor`, `Provinsi`, `Kabupaten_Kota`, `Desa`. Afiliasi
+memakai kode vendor yang sudah ada. Kode collector yang sudah terdaftar akan
+diperbarui; sel opsional yang kosong tidak menghapus data tersimpan. Baris
+salah (mis. NIK tidak 16 angka atau kode vendor tidak ada) ditolak sendiri,
+sedangkan baris lain yang benar tetap diproses.
+
+### Perbaikan pemasangan offline Python (v0.11.1)
+
+Versi Python untuk bahan offline adalah **3.11, Windows 64-bit**. Patch seperti
+3.11.6 tidak perlu sama persis dengan PC pembuat bahan: wheel CPython dipilih
+berdasarkan mayor.minor (`3.11`) dan arsitektur (`win_amd64`). `ambil-bahan-offline.bat`
+versi baru menulis target itu ke `bahan-offline\python-version.txt`.
+
+`start-offline.bat` versi baru memakai launcher **`py -3.11`** (bukan `py -3`,
+yang bisa memilih Python paling baru yang terpasang), mengecek versi dan
+arsitektur 64-bit, serta membuat ulang `backend\.venv` jika sebelumnya
+terbentuk dengan versi yang salah. Yang dibuat ulang hanya lingkungan Python;
+`backend\opmargin.db` dan folder unggahan tidak dihapus. Untuk paket lama tanpa
+`python-version.txt`, skrip memakai target 3.11 (sesuai paket cp311 yang
+sudah diuji). Setelah pembaruan skrip, salin versi aplikasi terbaru ke PC
+luring; wheelhouse lama boleh dipakai bila memang dibuat untuk Python 3.11
+Windows 64-bit.
+
+### Perbaikan unggah dari pratinjau pada Windows (v0.11.2)
+
+Jika setelah menekan **Konfirmasi simpan** keluar `WinError 32` atau pesan
+`file sedang digunakan`, tutup Excel/file manager bila file pratinjau sedang
+terbuka, lalu pasang versi aplikasi **0.11.2**. Penyebab yang diperbaiki ada
+di aplikasi: workbook Excel yang dibaca saat pratinjau belum ditutup, sehingga
+Windows masih mengunci file ketika aplikasi hendak memindahkannya ke arsip
+unggahan.
+
+Versi 0.11.2 menutup semua workbook setelah pemeriksaan selesai (termasuk
+jalur unggah tiket) dan menampilkan pesan yang dapat dibaca jika Windows masih
+mengunci file. Setelah memperbarui kode, buka ulang aplikasi dan unggah ulang
+file bila pratinjau lama sudah kedaluwarsa. Database tidak perlu dihapus atau
+dibangun ulang.
+
 ## 5. Menjalankan pengujian (memastikan rumus persis Excel lama)
 
 ```powershell
 python -m pytest
 ```
 
-Harus tertulis `402 passed`. Pengujian mencakup semua kasus uji emas:
+Harus tertulis `416 passed`. Pengujian mencakup semua kasus uji emas:
 harian 3 Jan 2026, bulan Jan/Feb 2026, Jan 2023, Mar 2020 (kurs berubah
 tengah bulan), Apr 2022 (koreksi salah ketik Excel), Days/rasio stok,
 dan perencanaan Jan 2027.
@@ -495,7 +552,7 @@ Bacanya:
 
 | Yang tertulis | Artinya | Tindakan |
 |---|---|---|
-| `mode login : lokal (username-sandi)` dan API menjawab `0.10.0` + `lokal` | sudah benar | login dengan akun Anda (Ctrl+F5 dulu) |
+| `mode login : lokal (username-sandi)` dan API menjawab `0.11.2` + `lokal` | sudah benar | login dengan akun Anda (Ctrl+F5 dulu) |
 | API menjawab `mode: nonaktif` | `AUTH_DISABLED=true` masih ada di `.env` | hapus baris itu, lalu jalankan `start-web.bat` lagi |
 | API tidak menjawab / `404` di `/api/auth/mode` | prosesnya **kode lama** | tutup jendela API lama, jalankan `start-web.bat` lagi |
 | bagian [2] tidak ada akun, atau sandi lupa | akun belum dibuat / sandi salah | `python -m app.cli reset-sandi admin` (dari folder `backend`) |
@@ -521,11 +578,11 @@ Perbaikan:
    melaporkan apakah **port 8000 dan 5173 sudah BEBAS**. Kalau ada yang gagal
    ditutup, skrip mengatakannya (tidak diam-diam).
 2. Jalankan **`start-web.bat`** dari folder aplikasi yang benar — folder yang
-   `VERSI.txt`-nya berisi `0.10.0`. Tunggu tulisan **`API siap: kode 0.10.0`**.
+   `VERSI.txt`-nya berisi `0.11.2`. Tunggu tulisan **`API siap: kode 0.11.2`**.
 3. Buka `http://localhost:5173`, tekan **Ctrl+F5**.
 
 Cek cepat kapan saja: `http://localhost:8000/api/health` — nilai `versi` dan
-`kode` harus `0.10.0`, dan `folder` harus menunjuk folder aplikasi Anda.
+`kode` harus `0.11.2`, dan `folder` harus menunjuk folder aplikasi Anda.
 
 ## Cara tercepat membereskan: `perbaiki.bat`
 
@@ -582,7 +639,7 @@ berkas ini dari folder lama ke folder baru **sebelum** menjalankan
 - `backend\.env` — setelan login (opsional; bila tidak ada, dibuat otomatis)
 
 Cara memastikan folder baru benar-benar versi terbaru: lihat **`VERSI.txt`** di
-akar folder (versi terbaru saat dokumen ini ditulis: **0.10.0**), atau buka
+akar folder (versi terbaru saat dokumen ini ditulis: **0.11.2**), atau buka
 `http://localhost:8000/api/health` dan periksa `"versi"` serta `"kode"`.
 
 ## Login berhasil tetapi kembali ke form login lagi
