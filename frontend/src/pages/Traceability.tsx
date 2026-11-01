@@ -1,11 +1,12 @@
 import { type ReactNode, useEffect, useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ambilJson, fmtAngka, kelasInput, kelasLabel, kelasTombol, urlApi } from "../bersama";
 
 type Filter = { year: string; period: string; supplier: string; eudr: string; includeLatex: boolean };
 type Wilayah = {
   name: string; level: string; code: string; dry_mt: number; traceable_mt: number;
-  traceability_pct: number | null; ticket_lines: number; status_code: string; children: Wilayah[];
+  traceability_pct: number | null; ticket_lines: number; status_code: string;
+  traceability_status: "traceable" | "partial" | "unmatched"; children: Wilayah[];
 };
 
 const PERIODE = [
@@ -42,6 +43,9 @@ export default function Traceability() {
   const [tab, setTab] = useState<"regions" | "actors">("regions");
   const [open, setOpen] = useState<Set<string>>(() => new Set());
   const [selectedActor, setSelectedActor] = useState<string | null>(null);
+  const [editingOrigin, setEditingOrigin] = useState<any | null>(null);
+  const [targetSubdistrict, setTargetSubdistrict] = useState("");
+  const queryClient = useQueryClient();
   const query = paramsFilter(filters);
   const q = useQuery({
     queryKey: ["traceability", query],
@@ -56,6 +60,37 @@ export default function Traceability() {
     queryKey: ["traceability-actor-detail", selectedActor, query],
     queryFn: () => ambilJson(`/api/traceability/actors/${encodeURIComponent(selectedActor!)}?${query}`),
     enabled: Boolean(selectedActor),
+  });
+  const subdistrictOptions = useQuery({
+    queryKey: ["traceability-subdistrict-options", editingOrigin?.source_key],
+    queryFn: () => {
+      const p = new URLSearchParams({
+        kabupaten_norm: editingOrigin.source_key.kabupaten_norm,
+        kecamatan_norm: editingOrigin.source_key.kecamatan_norm,
+      });
+      return ambilJson(`/api/traceability/locations/subdistricts?${p}`);
+    },
+    enabled: Boolean(editingOrigin),
+  });
+  const simpanKoreksi = useMutation({
+    mutationFn: ({ origin, target }: { origin: any; target: string | null }) =>
+      ambilJson(`/api/traceability/actors/${encodeURIComponent(selectedActor!)}/origin-correction?${query}`, {
+        method: "PUT", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          source_kabupaten_norm: origin.source_key.kabupaten_norm,
+          source_kecamatan_norm: origin.source_key.kecamatan_norm,
+          source_desa_norm: origin.source_key.desa_norm,
+          target_desa_norm: target,
+        }),
+      }),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["traceability"] }),
+        queryClient.invalidateQueries({ queryKey: ["traceability-actors"] }),
+        queryClient.invalidateQueries({ queryKey: ["traceability-actor-detail"] }),
+      ]);
+      setEditingOrigin(null);
+    },
   });
   useEffect(() => {
     if (!filters.year && q.data?.year) setFilters((f) => ({ ...f, year: String(q.data.year) }));
@@ -92,7 +127,7 @@ export default function Traceability() {
         <td className="px-2 text-right font-mono">{fmtAngka(node.traceable_mt, 3)}</td>
         <td className="px-2 text-right font-mono">{node.traceability_pct == null ? "—" : `${fmtAngka(node.traceability_pct, 2)}%`}</td>
         <td className="px-2 text-right font-mono">{fmtAngka(node.ticket_lines, 0)}</td>
-        <td className="px-2"><span className="rounded-sm border border-[#FDE68A] bg-[#FFFBEB] px-1.5 py-0.5 text-[10px] text-[#92400E]">belum termapping</span></td>
+        <td className="px-2"><span className={`rounded-sm px-1.5 py-0.5 text-[10px] ${node.traceability_status === "traceable" ? "bg-[#ECFDF3] text-[#027A48]" : node.traceability_status === "partial" ? "bg-[#FFFAEB] text-[#B54708]" : "bg-[#FEF3F2] text-[#B42318]"}`}>{node.traceability_status === "traceable" ? "Traceable" : node.traceability_status === "partial" ? "Partial" : "Unmatched"}</span></td>
       </tr>
     );
     return hasChildren && expanded ? [row, ...renderNodes(node.children, depth + 1, key)] : [row];
@@ -174,7 +209,7 @@ export default function Traceability() {
           <div className="max-h-[580px] overflow-auto">
             <table className="w-full min-w-[850px] text-xs">
               <thead className="sticky top-0 z-10 bg-[#F8F8F8] text-left text-[10px] uppercase tracking-wide text-[#64676C]">
-                <tr><th className="py-2 pl-4">Region / hierarchy</th><th className="px-2">Code</th><th className="px-2 text-right">Dry (MT)</th><th className="px-2 text-right">Traceable (MT)</th><th className="px-2 text-right">Traceability</th><th className="px-2 text-right">Ticket lines</th><th className="px-2">Code mapping</th></tr>
+                <tr><th className="py-2 pl-4">Region / hierarchy</th><th className="px-2">Code</th><th className="px-2 text-right">Dry (MT)</th><th className="px-2 text-right">Traceable (MT)</th><th className="px-2 text-right">Traceability</th><th className="px-2 text-right">Ticket lines</th><th className="px-2">SCDF status</th></tr>
               </thead>
               <tbody>
                 {(d?.wilayah ?? []).length ? renderNodes(d.wilayah) : <tr><td colSpan={7} className="px-4 py-8 text-center text-[#9AA0A6]">Tidak ada tiket tervalidasi untuk filter ini.</td></tr>}
@@ -249,15 +284,46 @@ export default function Traceability() {
                     </div>
                   </div>
                   <div>
-                    <div className="mb-2 flex flex-wrap items-end justify-between gap-2"><div><h4 className="text-xs font-bold uppercase tracking-wide text-[#374151]">Sourcing locations from Asal Getah</h4><p className="mt-1 text-[10px] text-[#9AA0A6]">Dry volume and share are calculated from filtered intake rows; geographic names are matched to official SCDF where available.</p></div><span className="text-[10px] text-[#64676C]">{origins.length} location groups</span></div>
+                    <div className="mb-2 flex flex-wrap items-end justify-between gap-2"><div><h4 className="text-xs font-bold uppercase tracking-wide text-[#374151]">Sourcing locations from Asal Getah</h4><p className="mt-1 text-[10px] text-[#9AA0A6]">Dry volume and share are calculated from filtered intake rows. Klik Edit pada Sub-district untuk memilih nilai SCDF; koreksi tidak menimpa intake asli dan berlaku untuk semua tiket dengan kombinasi lokasi sumber yang sama.</p></div><span className="text-[10px] text-[#64676C]">{origins.length} location groups</span></div>
                     <div className="max-h-[320px] overflow-auto rounded-sm border border-[#E4E5E8]">
                       <table className="w-full min-w-[750px] text-xs">
                         <thead className="sticky top-0 bg-[#F8F8F8] text-left text-[10px] uppercase tracking-wide text-[#64676C]"><tr><th className="py-2 pl-3">Country</th><th className="px-2">Regency / city</th><th className="px-2">District</th><th className="px-2">Sub-district</th><th className="px-2 text-right">Dry (MT)</th><th className="px-2 text-right">Share</th><th className="px-2 text-right">Traceable dry (MT)</th><th className="px-2 pr-3">SCDF match</th></tr></thead>
-                        <tbody>{origins.map((origin: any, index: number) => <tr key={`${origin.regency}-${origin.district}-${origin.sub_district}-${index}`} className="border-t border-[#EDEFF2]"><td className="py-2 pl-3">{origin.country || "Indonesia"}</td><td className="px-2">{origin.regency || "Unknown"}</td><td className="px-2">{origin.district || "Unknown"}</td><td className="px-2">{origin.sub_district || "Unknown"}</td><td className="px-2 text-right font-mono">{fmtAngka(origin.dry_mt, 3)}</td><td className="px-2 text-right font-mono">{fmtAngka(origin.share_pct, 2)}%</td><td className="px-2 text-right font-mono">{fmtAngka(origin.traceable_mt, 3)}</td><td className="px-2 pr-3"><span className={`rounded-sm px-1.5 py-0.5 text-[10px] ${origin.matched_to_id_aux ? "bg-[#ECFDF3] text-[#027A48]" : "bg-[#FFFAEB] text-[#B54708]"}`}>{origin.matched_to_id_aux ? "Matched" : "Unmatched"}</span></td></tr>)}
+                        <tbody>{origins.map((origin: any, index: number) => {
+                          const originKey = JSON.stringify(origin.source_key);
+                          const isEditing = editingOrigin && JSON.stringify(editingOrigin.source_key) === originKey;
+                          return <tr key={`${originKey}-${index}`} className="border-t border-[#EDEFF2]">
+                            <td className="py-2 pl-3">{origin.country || "Indonesia"}</td>
+                            <td className="px-2">{origin.regency || "Unknown"}</td>
+                            <td className="px-2">{origin.district || "Unknown"}</td>
+                            <td className="px-2">
+                              {isEditing ? <div className="min-w-[250px] space-y-1">
+                                <select className="w-full rounded-sm border border-[#D1D5DB] bg-white px-2 py-1 text-xs" value={targetSubdistrict} onChange={(e) => setTargetSubdistrict(e.target.value)} disabled={subdistrictOptions.isLoading}>
+                                  <option value="">{subdistrictOptions.isLoading ? "Memuat pilihan SCDF…" : "Pilih Sub-district SCDF"}</option>
+                                  {(subdistrictOptions.data?.options ?? []).map((option: any) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                                </select>
+                                {!subdistrictOptions.isLoading && !(subdistrictOptions.data?.options?.length) && <p className="text-[10px] text-[#B54708]">Tidak ada pilihan SCDF untuk Regency/District ini. Periksa parent location pada intake.</p>}
+                                <div className="flex flex-wrap gap-1">
+                                  <button className="rounded-sm bg-[#1D2434] px-2 py-1 text-[10px] font-semibold text-white disabled:opacity-50" disabled={!targetSubdistrict || simpanKoreksi.isPending} onClick={() => simpanKoreksi.mutate({ origin, target: targetSubdistrict })}>{simpanKoreksi.isPending ? "Menyimpan…" : "Simpan"}</button>
+                                  {origin.manual_correction && <button className="rounded-sm border border-[#D1D5DB] px-2 py-1 text-[10px] text-[#B54708] disabled:opacity-50" disabled={simpanKoreksi.isPending} onClick={() => simpanKoreksi.mutate({ origin, target: null })}>Hapus koreksi</button>}
+                                  <button className="rounded-sm px-2 py-1 text-[10px] text-[#64676C] hover:bg-[#F8F8F8]" onClick={() => setEditingOrigin(null)}>Batal</button>
+                                </div>
+                                <p className="text-[9px] text-[#9AA0A6]">Koreksi berlaku untuk semua tiket dengan kombinasi lokasi sumber ini.</p>
+                              </div> : <div className="flex items-start justify-between gap-2">
+                                <div><span>{origin.sub_district || "Unknown"}</span>{origin.manual_correction && <p className="text-[9px] text-[#9AA0A6]">Input: {origin.source_sub_district}</p>}</div>
+                                <button className="text-[10px] font-semibold text-[#475467] underline decoration-dotted underline-offset-2 hover:text-[#B91C1C]" onClick={() => { setEditingOrigin(origin); setTargetSubdistrict(origin.source_key.desa_norm || ""); }}>Edit</button>
+                              </div>}
+                            </td>
+                            <td className="px-2 text-right font-mono">{fmtAngka(origin.dry_mt, 3)}</td>
+                            <td className="px-2 text-right font-mono">{fmtAngka(origin.share_pct, 2)}%</td>
+                            <td className="px-2 text-right font-mono">{fmtAngka(origin.traceable_mt, 3)}</td>
+                            <td className="px-2 pr-3"><span className={`rounded-sm px-1.5 py-0.5 text-[10px] ${origin.matched_to_id_aux ? "bg-[#ECFDF3] text-[#027A48]" : "bg-[#FFFAEB] text-[#B54708]"}`}>{origin.manual_correction ? "Manual match" : origin.matched_to_id_aux ? "Matched" : "Unmatched"}</span></td>
+                          </tr>;
+                        })}
                           {!origins.length && <tr><td colSpan={8} className="py-8 text-center text-[#9AA0A6]">Tidak ada rincian lokasi untuk filter ini.</td></tr>}
                         </tbody>
                       </table>
                     </div>
+                    {simpanKoreksi.error && <p className="mt-2 rounded-sm border border-[#FECACA] bg-[#FEF2F2] px-3 py-2 text-xs text-[#B91C1C]">{(simpanKoreksi.error as Error).message}</p>}
                     <div className="mt-2 grid gap-2 text-[10px] leading-relaxed text-[#64676C] md:grid-cols-2"><p className="rounded-sm bg-[#F8F8F8] p-2">{detail.supply_chain_note}</p><p className="rounded-sm bg-[#F8F8F8] p-2">Top geography is the largest recorded origin. Province and administrative codes are not supplied by SCDF and are intentionally omitted; unmatched names are shown as received after normalization.</p></div>
                   </div>
                 </div>;

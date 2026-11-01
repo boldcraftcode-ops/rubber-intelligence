@@ -61,10 +61,13 @@ const kepalaSesi = (): Record<string, string> => {
   return t ? { Authorization: `Bearer ${t}` } : {};
 };
 
-export async function ambilJson(url: string) {
+export async function ambilJson(url: string, init: RequestInit = {}) {
+  const headers = new Headers(kepalaSesi());
+  new Headers(init.headers).forEach((value, key) => headers.set(key, value));
   const r = await fetch(urlApi(url), {
+    ...init,
     credentials: "include",
-    headers: kepalaSesi(),
+    headers,
   });
   if (r.status === 401) {
     simpanToken(null);   // token kedaluwarsa/tidak sah: jangan dipakai lagi

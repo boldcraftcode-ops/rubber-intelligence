@@ -154,3 +154,81 @@ def test_api_agregasi_traceability_berbasis_dry_tiket_valid_dan_ref():
     assert {x["value"] for x in wilayah["kabupaten_kota"]} == {"Kota Medan"}
     assert {x["value"] for x in wilayah["desa"]} == {"Babura"}
     assert "tidak menyediakan Provinsi" in wilayah["catatan"]
+
+
+def test_koreksi_manual_subdistrict_updates_supplier_and_regional_traceability():
+    import datetime as dt
+
+    from fastapi.testclient import TestClient
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import Session
+    from sqlalchemy.pool import StaticPool
+
+    from app.main import buat_app
+    from app.models import Base, ReferensiWilayahTrace, TiketBaris, Vendor
+
+    eng = create_engine("sqlite://", connect_args={"check_same_thread": False},
+                        poolclass=StaticPool)
+    Base.metadata.create_all(eng)
+    with Session(eng) as session:
+        session.add(Vendor(kode="V1", nama_baku="Supplier One", status="aktif"))
+        session.add(ReferensiWilayahTrace(
+            kabupaten_norm="MEDAN", kecamatan_norm="MEDAN BARU", desa_norm="BABURA",
+            kabupaten="Kota Medan", kecamatan="Medan Baru", desa="Babura", code=None))
+        session.add(Vendor(kode="V2", nama_baku="Supplier Two", status="aktif"))
+        for no, vendor, desa, dry, fp in (
+            ("T1", "V1", "BABURA", 500, "a" * 64),
+            ("T2", "V1", "BABURA BARU", 500, "b" * 64),
+            ("T3", "V2", "BABURA BARU", 250, "c" * 64),
+        ):
+            session.add(TiketBaris(
+                ticket_no=no, line_seq=1, ticket_date=dt.date(2026, 2, 1),
+                kode_vendor=vendor, item_code="SIR20", wet_kg=dry * 2, drc_pct=50,
+                dry_kg=dry, asal_getah=f"Sumatera Utara, Kota Medan, Medan Baru, {desa.title()}",
+                kabupaten_norm="MEDAN", kecamatan_norm="MEDAN BARU", desa_norm=desa,
+                asal_getah_valid=True, source_fingerprint=fp, tiket_nol=False))
+        session.commit()
+
+    client = TestClient(buat_app(eng))
+    params = {"tahun": 2026}
+    regional = client.get("/api/traceability", params=params).json()
+    assert regional["kpis"]["trace_desa_pct"] == 40.0
+    detail = client.get("/api/traceability/actors/V1", params=params).json()
+    unmatched = next(row for row in detail["origins"]
+                     if row["source_key"]["desa_norm"] == "BABURA BARU")
+    options = client.get("/api/traceability/locations/subdistricts", params={
+        "kabupaten_norm": "MEDAN", "kecamatan_norm": "MEDAN BARU"}).json()
+    assert options["options"] == [{"value": "BABURA", "label": "Babura"}]
+
+    saved = client.put("/api/traceability/actors/V1/origin-correction", params=params,
+                       json={"source_kabupaten_norm": unmatched["source_key"]["kabupaten_norm"],
+                                 "source_kecamatan_norm": unmatched["source_key"]["kecamatan_norm"],
+                                 "source_desa_norm": unmatched["source_key"]["desa_norm"],
+                                 "target_desa_norm": "BABURA"})
+    assert saved.status_code == 200, saved.text
+    assert saved.json()["manual_correction"] is True
+    assert "Semua tiket" in saved.json()["scope"]
+
+    regional_after = client.get("/api/traceability", params=params).json()
+    assert regional_after["kpis"]["trace_desa_pct"] == 100.0
+    assert regional_after["kpis"]["trace_desa_mt"] == 1.25
+    desa_node = regional_after["wilayah"][0]["children"][0]["children"][0]
+    assert desa_node["name"] == "BABURA"
+    assert desa_node["traceability_status"] == "traceable"
+    detail_after = client.get("/api/traceability/actors/V1", params=params).json()
+    corrected = next(row for row in detail_after["origins"]
+                     if row["source_key"]["desa_norm"] == "BABURA BARU")
+    assert corrected["sub_district"] == "Babura"
+    assert corrected["manual_correction"] is True
+    assert corrected["traceable_mt"] == 0.5
+    actor_rows = client.get("/api/traceability/actors", params=params).json()["baris"]
+    assert next(row for row in actor_rows if row["supplier_code"] == "V1")["traceable_mt"] == 1.0
+    assert next(row for row in actor_rows if row["supplier_code"] == "V2")["traceable_mt"] == 0.25
+
+    reset = client.put("/api/traceability/actors/V1/origin-correction", params=params,
+                       json={"source_kabupaten_norm": unmatched["source_key"]["kabupaten_norm"],
+                                 "source_kecamatan_norm": unmatched["source_key"]["kecamatan_norm"],
+                                 "source_desa_norm": unmatched["source_key"]["desa_norm"],
+                                 "target_desa_norm": None})
+    assert reset.status_code == 200, reset.text
+    assert client.get("/api/traceability", params=params).json()["kpis"]["trace_desa_pct"] == 40.0

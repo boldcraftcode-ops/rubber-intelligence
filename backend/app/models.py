@@ -174,6 +174,26 @@ class ReferensiWilayahTrace(Base):
     code: Mapped[str | None] = mapped_column(String(30), nullable=True)
 
 
+class KoreksiWilayahTrace(Base):
+    """Pemetaan terkontrol dari nama intake ke satu lokasi resmi SCDF.
+
+    Data intake asli tidak diubah. Koreksi berlaku untuk semua tiket dengan
+    kombinasi kabupaten/kecamatan/desa sumber yang sama.
+    """
+    __tablename__ = "traceability_wilayah_koreksi"
+    __table_args__ = (UniqueConstraint(
+        "source_kabupaten_norm", "source_kecamatan_norm", "source_desa_norm",
+        name="uq_traceability_wilayah_koreksi_source"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    source_kabupaten_norm: Mapped[str] = mapped_column(String(120), default="")
+    source_kecamatan_norm: Mapped[str] = mapped_column(String(120), default="")
+    source_desa_norm: Mapped[str] = mapped_column(String(120), default="")
+    target_ref_id: Mapped[int] = mapped_column(ForeignKey("traceability_wilayah.id"))
+    updated_by: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    updated_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
+
+
 class PengaturanTraceability(Base):
     """Label tambahan pada tabel Traceability (baris tunggal, id=1)."""
     __tablename__ = "traceability_pengaturan"
