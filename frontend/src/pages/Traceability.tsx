@@ -110,7 +110,7 @@ export default function Traceability() {
         <div>
           <h2 className="text-lg font-semibold text-[#1D2434]">Traceability</h2>
           <p className="mt-1 max-w-3xl text-xs leading-relaxed text-[#64676C]">
-            Volume Dry dari tiket tervalidasi dan dideduplikasi hanya bila seluruh baris sumber identik. Nama wilayah dicocokkan ke ID_AUX; Code sengaja kosong karena file referensi tidak menyediakan kode administrasi.
+            Volume Dry dari tiket tervalidasi dan dideduplikasi hanya bila seluruh baris sumber identik. Nama wilayah dicocokkan ke SCDF; Code sengaja kosong karena file referensi tidak menyediakan kode administrasi.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -249,16 +249,16 @@ export default function Traceability() {
                     </div>
                   </div>
                   <div>
-                    <div className="mb-2 flex flex-wrap items-end justify-between gap-2"><div><h4 className="text-xs font-bold uppercase tracking-wide text-[#374151]">Sourcing locations from Asal Getah</h4><p className="mt-1 text-[10px] text-[#9AA0A6]">Dry volume and share are calculated from filtered intake rows; geographic names are matched to official ID_AUX where available.</p></div><span className="text-[10px] text-[#64676C]">{origins.length} location groups</span></div>
+                    <div className="mb-2 flex flex-wrap items-end justify-between gap-2"><div><h4 className="text-xs font-bold uppercase tracking-wide text-[#374151]">Sourcing locations from Asal Getah</h4><p className="mt-1 text-[10px] text-[#9AA0A6]">Dry volume and share are calculated from filtered intake rows; geographic names are matched to official SCDF where available.</p></div><span className="text-[10px] text-[#64676C]">{origins.length} location groups</span></div>
                     <div className="max-h-[320px] overflow-auto rounded-sm border border-[#E4E5E8]">
                       <table className="w-full min-w-[750px] text-xs">
-                        <thead className="sticky top-0 bg-[#F8F8F8] text-left text-[10px] uppercase tracking-wide text-[#64676C]"><tr><th className="py-2 pl-3">Country</th><th className="px-2">Regency / city</th><th className="px-2">District</th><th className="px-2">Sub-district</th><th className="px-2 text-right">Dry (MT)</th><th className="px-2 text-right">Share</th><th className="px-2 text-right">Traceable dry (MT)</th><th className="px-2 pr-3">ID_AUX match</th></tr></thead>
+                        <thead className="sticky top-0 bg-[#F8F8F8] text-left text-[10px] uppercase tracking-wide text-[#64676C]"><tr><th className="py-2 pl-3">Country</th><th className="px-2">Regency / city</th><th className="px-2">District</th><th className="px-2">Sub-district</th><th className="px-2 text-right">Dry (MT)</th><th className="px-2 text-right">Share</th><th className="px-2 text-right">Traceable dry (MT)</th><th className="px-2 pr-3">SCDF match</th></tr></thead>
                         <tbody>{origins.map((origin: any, index: number) => <tr key={`${origin.regency}-${origin.district}-${origin.sub_district}-${index}`} className="border-t border-[#EDEFF2]"><td className="py-2 pl-3">{origin.country || "Indonesia"}</td><td className="px-2">{origin.regency || "Unknown"}</td><td className="px-2">{origin.district || "Unknown"}</td><td className="px-2">{origin.sub_district || "Unknown"}</td><td className="px-2 text-right font-mono">{fmtAngka(origin.dry_mt, 3)}</td><td className="px-2 text-right font-mono">{fmtAngka(origin.share_pct, 2)}%</td><td className="px-2 text-right font-mono">{fmtAngka(origin.traceable_mt, 3)}</td><td className="px-2 pr-3"><span className={`rounded-sm px-1.5 py-0.5 text-[10px] ${origin.matched_to_id_aux ? "bg-[#ECFDF3] text-[#027A48]" : "bg-[#FFFAEB] text-[#B54708]"}`}>{origin.matched_to_id_aux ? "Matched" : "Unmatched"}</span></td></tr>)}
                           {!origins.length && <tr><td colSpan={8} className="py-8 text-center text-[#9AA0A6]">Tidak ada rincian lokasi untuk filter ini.</td></tr>}
                         </tbody>
                       </table>
                     </div>
-                    <div className="mt-2 grid gap-2 text-[10px] leading-relaxed text-[#64676C] md:grid-cols-2"><p className="rounded-sm bg-[#F8F8F8] p-2">{detail.supply_chain_note}</p><p className="rounded-sm bg-[#F8F8F8] p-2">Top geography is the largest recorded origin. Province and administrative codes are not supplied by ID_AUX and are intentionally omitted; unmatched names are shown as received after normalization.</p></div>
+                    <div className="mt-2 grid gap-2 text-[10px] leading-relaxed text-[#64676C] md:grid-cols-2"><p className="rounded-sm bg-[#F8F8F8] p-2">{detail.supply_chain_note}</p><p className="rounded-sm bg-[#F8F8F8] p-2">Top geography is the largest recorded origin. Province and administrative codes are not supplied by SCDF and are intentionally omitted; unmatched names are shown as received after normalization.</p></div>
                   </div>
                 </div>;
               })()}
@@ -267,7 +267,7 @@ export default function Traceability() {
         </div>
       )}
       {q.error && <p className="rounded-sm border border-[#FECACA] bg-[#FEF2F2] px-3 py-2 text-xs text-[#B91C1C]">{(q.error as Error).message}</p>}
-      <p className="text-[10px] leading-relaxed text-[#9AA0A6]">* Direct producer adalah flag sementara per supplier dan default-nya Tidak. Code geografi tidak ada di ID_AUX; kolom Code sengaja dikosongkan, terpisah dari pencocokan nama wilayah.</p>
+      <p className="text-[10px] leading-relaxed text-[#9AA0A6]">* Direct producer adalah flag sementara per supplier dan default-nya Tidak. Code geografi tidak ada di SCDF; kolom Code sengaja dikosongkan, terpisah dari pencocokan nama wilayah.</p>
     </section>
   );
 }

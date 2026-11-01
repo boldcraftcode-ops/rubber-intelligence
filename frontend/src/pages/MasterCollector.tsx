@@ -63,7 +63,7 @@ export function KartuDaftarCollector() {
   };
 
   return <Kartu idMetrik="master_collector" judul="Daftar collector"
-    keterangan="Collector adalah perorangan yang terafiliasi ke satu vendor. Kabupaten/Kota dan Desa dipilih dari ID_AUX; Provinsi hanya aktif jika referensi resmi menyediakan mapping provinsi."
+    keterangan="Collector adalah perorangan yang terafiliasi ke satu vendor. Kabupaten/Kota dan Desa dipilih dari SCDF; Provinsi hanya aktif jika referensi resmi menyediakan mapping provinsi."
     anak={<>
       <div className="mb-3 flex flex-wrap items-end gap-3">
         <div className="min-w-56 flex-1"><label className={kelasLabel}>Cari</label>
@@ -123,7 +123,7 @@ export function KartuDaftarCollector() {
           <select className={kelasInput} value={form.provinsi}
             disabled={!(wilayah.data?.provinsi?.length) && !form.provinsi}
             onChange={(e) => setForm({ ...form, provinsi: e.target.value, kabupaten_kota: "", desa: "" })}>
-            <option value="">{wilayah.data?.provinsi?.length ? "Pilih provinsi…" : "Provinsi belum ada di ID_AUX"}</option>
+            <option value="">{wilayah.data?.provinsi?.length ? "Pilih provinsi…" : "Provinsi belum ada di SCDF"}</option>
             {form.provinsi && !(wilayah.data?.provinsi ?? []).some((x: any) => x.value === form.provinsi)
               && <option value={form.provinsi}>{form.provinsi} (nilai tersimpan lama)</option>}
             {(wilayah.data?.provinsi ?? []).map((x: any) => <option key={x.value} value={x.value}>{x.label}</option>)}
@@ -153,7 +153,7 @@ export function KartuDaftarCollector() {
           onClick={() => { setInfo(null); simpan.mutate(); }}>{simpan.isPending ? "Menyimpan…" : ubahKode ? "Simpan perubahan" : "Tambah collector"}</button>
         {ubahKode && <button className={kelasTombolKecil} onClick={() => { setUbahKode(null); setForm({ ...KOSONG }); setInfo(null); }}>Batal ubah</button>}
       </div>
-      <p className="mt-2 text-[11px] text-[#64676C]">NIK boleh dikosongkan; bila diisi harus 16 angka dan tidak boleh dipakai collector lain. Afiliasi vendor wajib dipilih. Kabupaten/Kota dan Desa mengikuti ID_AUX. File ID_AUX yang tersedia tidak memiliki kolom Provinsi, sehingga Provinsi dinonaktifkan—nilai dari intake tidak dipakai sebagai pengganti sumber resmi.</p>
+      <p className="mt-2 text-[11px] text-[#64676C]">NIK boleh dikosongkan; bila diisi harus 16 angka dan tidak boleh dipakai collector lain. Afiliasi vendor wajib dipilih. Kabupaten/Kota dan Desa mengikuti SCDF. File SCDF yang tersedia tidak memiliki kolom Provinsi, sehingga Provinsi dinonaktifkan—nilai dari intake tidak dipakai sebagai pengganti sumber resmi.</p>
       {info && <Pesan jenis={info.jenis} teks={info.teks} />}
     </>} />;
 }

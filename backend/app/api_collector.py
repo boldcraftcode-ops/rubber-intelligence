@@ -126,9 +126,9 @@ def _periksa_wilayah(session: Session, provinsi: str | None,
         prov_lama = normalisasi_teks_wilayah(lokasi_lama[0]) if lokasi_lama else ""
         if not resmi and p_norm != prov_lama:
             raise HTTPException(422,
-                "Provinsi tidak dapat diverifikasi: ID_AUX.xlsx tidak menyediakan "
+                "Provinsi tidak dapat diverifikasi: referensi SCDF tidak menyediakan "
                 "kolom Provinsi. Kosongkan sementara atau tambahkan crosswalk "
-                "Provinsi resmi yang terhubung ke ID_AUX.")
+                "Provinsi resmi yang terhubung ke SCDF.")
 
     if k_norm:
         kondisi = [ReferensiWilayahTrace.kabupaten_norm == k_norm]
@@ -137,12 +137,12 @@ def _periksa_wilayah(session: Session, provinsi: str | None,
             kondisi.append(ReferensiWilayahTrace.provinsi_norm == p_norm)
         if not session.scalar(select(ReferensiWilayahTrace.id).where(*kondisi).limit(1)):
             raise HTTPException(422,
-                f"Kabupaten/Kota '{kabupaten_kota}' tidak ditemukan pada ID_AUX.")
+                f"Kabupaten/Kota '{kabupaten_kota}' tidak ditemukan pada referensi SCDF.")
 
     if d_norm:
         if not k_norm:
             raise HTTPException(422,
-                "Pilih Kabupaten/Kota dari ID_AUX sebelum memilih Desa.")
+                "Pilih Kabupaten/Kota dari referensi SCDF sebelum memilih Desa.")
         kondisi_desa = [ReferensiWilayahTrace.kabupaten_norm == k_norm,
                          ReferensiWilayahTrace.desa_norm == d_norm]
         if p_norm and session.scalar(select(ReferensiWilayahTrace.id).where(
@@ -151,7 +151,7 @@ def _periksa_wilayah(session: Session, provinsi: str | None,
         if not session.scalar(select(ReferensiWilayahTrace.id).where(
                 *kondisi_desa).limit(1)):
             raise HTTPException(422,
-                f"Desa '{desa}' tidak ditemukan pada ID_AUX untuk Kabupaten/Kota "
+                f"Desa '{desa}' tidak ditemukan pada referensi SCDF untuk Kabupaten/Kota "
                 f"'{kabupaten_kota}'.")
 
 
@@ -223,7 +223,7 @@ def pasang_router_collector(app, ambil_session):
             "provinsi": provinces,
             "kabupaten_kota": kabupaten_options,
             "desa": desa_options,
-            "catatan": "ID_AUX menyediakan Kabupaten/Kota dan Desa, tetapi tidak menyediakan Provinsi. Opsi Provinsi tidak diambil dari intake agar tetap sesuai sumber resmi.",
+            "catatan": "Referensi SCDF menyediakan Kabupaten/Kota dan Desa, tetapi tidak menyediakan Provinsi. Opsi Provinsi tidak diambil dari intake agar tetap sesuai sumber resmi.",
         }
 
     @router.get("/collector")
@@ -342,8 +342,8 @@ def pasang_router_collector(app, ambil_session):
             ["2. Kode_Kolektor, Nama_Kolektor, dan Afiliasi_Vendor wajib."],
             ["3. Afiliasi_Vendor harus memakai Kode_Vendor yang ada di Master Vendor."],
             ["4. NIK harus 16 angka. Atur format sel NIK sebagai Teks sebelum mengisi."],
-            ["5. Kabupaten/Kota dan Desa harus sesuai dengan ID_AUX.xlsx; pilih nilainya pada form aplikasi."],
-            ["6. ID_AUX.xlsx yang tersedia tidak memuat Provinsi; kolom Provinsi dibiarkan kosong sampai crosswalk resmi tersedia."],
+            ["5. Kabupaten/Kota dan Desa harus sesuai dengan referensi SCDF; pilih nilainya pada form aplikasi."],
+            ["6. Referensi SCDF yang tersedia tidak memuat Provinsi; kolom Provinsi dibiarkan kosong sampai crosswalk resmi tersedia."],
             ["7. Kode kolektor yang sudah ada akan diperbarui, bukan digandakan."],
             ["8. Sel opsional kosong saat impor tidak menghapus data yang sudah ada."],
             ["9. Baris dengan wilayah di luar referensi resmi ditolak; baris lain tetap diproses."],

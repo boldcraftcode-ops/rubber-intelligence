@@ -416,7 +416,7 @@ def pasang_router_traceability(app, ambil_session):
             "suppliers": [{"kode": kode, "nama": nama or kode}
                           for kode, nama in suppliers],
             "settings": _pengaturan(session),
-            "catatan": "Volume menggunakan Dry dari tiket tervalidasi; baris identik pada semua kolom sumber dihitung satu kali. Code belum tersedia pada ID_AUX sehingga ditampilkan kosong/belum termapping.",
+            "catatan": "Volume menggunakan Dry dari tiket tervalidasi; baris identik pada semua kolom sumber dihitung satu kali. Code belum tersedia pada referensi SCDF sehingga ditampilkan kosong/belum termapping.",
         }
         if format == "xlsx":
             base_for_actors = _filter_base(session, effective_year, periode, supplier,
@@ -521,7 +521,7 @@ def pasang_router_traceability(app, ambil_session):
             "sourcing_type_source": ("Master Vendor" if classification or direct
                                      else "Belum tersedia pada data intake/master"),
             "coordinates": None,
-            "coordinates_note": "Koordinat tidak tersedia pada ID_AUX atau data intake.",
+            "coordinates_note": "Koordinat tidak tersedia pada referensi SCDF atau data intake.",
             "source_from": origins,
             "sell_to": [],
             "supply_chain_note": "Intake mencatat wilayah Asal Getah, bukan hubungan upstream/downstream supplier-ke-pabrik.",
@@ -560,7 +560,7 @@ def pasang_router_traceability(app, ambil_session):
                          "kabupaten": r["kabupaten"], "kecamatan": r["kecamatan"],
                          "desa": r["desa"], "dry_kg": float(r["dry_kg"] or 0),
                          "reason": ("Asal Getah tidak valid" if not valid_asal
-                                    else "Wilayah tidak cocok dengan ID_AUX")})
+                                    else "Wilayah tidak cocok dengan referensi SCDF")})
         return _buat_unmapped_xlsx(rows)
 
     @router.put("/settings")

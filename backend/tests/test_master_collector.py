@@ -100,10 +100,10 @@ def test_lokasi_baru_harus_dicocokkan_ke_id_aux(klien):
     # boleh diambil diam-diam dari data intake.
     prov = _buat(klien, provinsi="Sumatera Utara")
     assert prov.status_code == 422
-    assert "ID_AUX.xlsx tidak menyediakan kolom Provinsi" in prov.json()["detail"]
+    assert "referensi SCDF tidak menyediakan kolom Provinsi" in prov.json()["detail"]
     kab = _buat(klien, kode="K002", provinsi="", kabupaten_kota="Kabupaten Contoh")
     assert kab.status_code == 422
-    assert "tidak ditemukan pada ID_AUX" in kab.json()["detail"]
+    assert "tidak ditemukan pada referensi SCDF" in kab.json()["detail"]
 
 
 def test_nik_wajib_16_digit_jika_diisi(klien):
