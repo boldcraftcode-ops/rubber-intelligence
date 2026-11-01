@@ -41,6 +41,7 @@ export default function Traceability() {
   const [filters, setFilters] = useState<Filter>({ year: "", period: "ALL", supplier: "", eudr: "all", includeLatex: false });
   const [tab, setTab] = useState<"regions" | "actors">("regions");
   const [open, setOpen] = useState<Set<string>>(() => new Set());
+  const [selectedActor, setSelectedActor] = useState<string | null>(null);
   const query = paramsFilter(filters);
   const q = useQuery({
     queryKey: ["traceability", query],
@@ -50,6 +51,11 @@ export default function Traceability() {
     queryKey: ["traceability-actors", query],
     queryFn: () => ambilJson(`/api/traceability/actors?${query}`),
     enabled: tab === "actors",
+  });
+  const actorDetail = useQuery({
+    queryKey: ["traceability-actor-detail", selectedActor, query],
+    queryFn: () => ambilJson(`/api/traceability/actors/${encodeURIComponent(selectedActor!)}?${query}`),
+    enabled: Boolean(selectedActor),
   });
   useEffect(() => {
     if (!filters.year && q.data?.year) setFilters((f) => ({ ...f, year: String(q.data.year) }));
@@ -94,6 +100,8 @@ export default function Traceability() {
 
   const d = q.data;
   const k = d?.kpis ?? {};
+  const actorRows = actors.data?.baris ?? [];
+  const maxActorDry = actorRows.reduce((max: number, row: any) => Math.max(max, Number(row.period_turnover_mt) || 0), 0);
   const downloadUrl = (path: string, queryString: string) => urlApi(`${path}${queryString ? `?${queryString}` : ""}`);
 
   return (
@@ -175,16 +183,89 @@ export default function Traceability() {
           </div>
         ) : (
           <div className="max-h-[580px] overflow-auto">
-            <table className="w-full min-w-[760px] text-xs">
-              <thead className="sticky top-0 bg-[#F8F8F8] text-left text-[10px] uppercase tracking-wide text-[#64676C]"><tr><th className="py-2 pl-4">Supplier</th><th>Direct producer*</th><th className="text-right">Tickets</th><th className="text-right">Dry (MT)</th><th className="text-right">Traceable (MT)</th><th className="text-right pr-4">Regencies</th></tr></thead>
+            {actors.error && <p className="m-4 rounded-sm border border-[#FECACA] bg-[#FEF2F2] px-3 py-2 text-xs text-[#B91C1C]">{(actors.error as Error).message}</p>}
+            <table className="w-full min-w-[1050px] text-xs">
+              <thead className="sticky top-0 z-10 bg-[#F8F8F8] text-left text-[10px] uppercase tracking-wide text-[#64676C]">
+                <tr>
+                  <th className="py-2 pl-4">ID</th><th className="px-2">Name</th><th className="px-2">Tier</th>
+                  <th className="px-2">Type</th><th className="px-2">Terminal</th><th className="px-2">Period turnover</th>
+                  <th className="px-2">Sourcing types</th><th className="px-2">Country</th><th className="px-2">Regency</th>
+                  <th className="px-2">District</th><th className="px-2">Source from</th><th className="px-2 pr-4">Sell to</th>
+                </tr>
+              </thead>
               <tbody>
-                {(actors.data?.baris ?? []).map((a: any) => <tr key={a.supplier_code} className="border-b border-[#EDEFF2]"><td className="py-2 pl-4"><b className="text-[#1D2434]">{a.supplier}</b><span className="ml-2 font-mono text-[#9AA0A6]">{a.supplier_code}</span></td><td>{a.is_direct_producer ? "Yes" : "No"}</td><td className="text-right font-mono">{fmtAngka(a.tickets, 0)}</td><td className="text-right font-mono">{fmtAngka(a.dry_mt, 3)}</td><td className="text-right font-mono">{fmtAngka(a.traceable_mt, 3)}</td><td className="pr-4 text-right font-mono">{fmtAngka(a.regencies, 0)}</td></tr>)}
-                {!actors.isLoading && !(actors.data?.baris?.length) && <tr><td colSpan={6} className="px-4 py-8 text-center text-[#9AA0A6]">Tidak ada aktor untuk filter ini.</td></tr>}
+                {actorRows.map((a: any) => {
+                  const barWidth = maxActorDry > 0 ? Math.max(3, Number(a.period_turnover_mt) / maxActorDry * 100) : 0;
+                  return <tr key={a.supplier_code} className="border-b border-[#EDEFF2] hover:bg-[#FAFAFA]">
+                    <td className="py-3 pl-4 font-mono text-[#64676C]">{a.supplier_code}</td>
+                    <td className="px-2"><button className="text-left font-semibold text-[#1D2434] underline decoration-dotted underline-offset-2 hover:text-[#B91C1C]" onClick={() => setSelectedActor(a.supplier_code)}>{a.supplier}</button></td>
+                    <td className="px-2 text-[#9AA0A6]">{a.tier || "—"}</td>
+                    <td className="px-2">{a.activity_type || "—"}</td>
+                    <td className="px-2 text-[#9AA0A6]">{a.terminal_status || "—"}</td>
+                    <td className="px-2"><div className="min-w-[115px]"><div className="flex justify-between gap-2 font-mono"><span>{fmtAngka(a.period_turnover_mt, 3)} MT</span><span className="text-[#9AA0A6]">{fmtAngka(a.tickets, 0)} tk</span></div><div className="mt-1 h-1.5 rounded bg-[#EDEFF2]"><div className="h-1.5 rounded bg-[#FF1313]" style={{ width: `${barWidth}%` }} /></div></div></td>
+                    <td className="px-2">{a.sourcing_type || "Belum diklasifikasi"}{a.is_direct_producer && <span className="ml-1 text-[9px] text-[#9AA0A6]">*</span>}</td>
+                    <td className="px-2">{a.country || "—"}</td><td className="px-2">{a.regency || "—"}</td><td className="px-2">{a.district || "—"}</td>
+                    <td className="px-2">{a.source_from ? `${a.source_from} lokasi` : "—"}</td><td className="px-2 pr-4 text-[#9AA0A6]">Tidak tercatat</td>
+                  </tr>;
+                })}
+                {!actors.isLoading && !(actors.data?.baris?.length) && <tr><td colSpan={12} className="px-4 py-8 text-center text-[#9AA0A6]">Tidak ada aktor untuk filter ini.</td></tr>}
               </tbody>
             </table>
+            <p className="px-4 py-2 text-[10px] text-[#9AA0A6]">Tier, terminal, dan tujuan penjualan tidak tercatat di intake/master. Klik nama supplier untuk melihat rincian Asal Getah. * Flag produsen langsung bersifat sementara.</p>
           </div>
         )}
       </div>
+      {selectedActor && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#101828]/55 p-3 sm:p-6" onMouseDown={(e) => { if (e.target === e.currentTarget) setSelectedActor(null); }}>
+          <section role="dialog" aria-modal="true" aria-labelledby="actor-detail-title" className="flex max-h-[92vh] w-full max-w-6xl flex-col overflow-hidden rounded-sm border border-[#E4E5E8] bg-white shadow-2xl">
+            <div className="flex items-start justify-between gap-4 border-b border-[#E4E5E8] px-5 py-4">
+              <div><p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#9AA0A6]">Supplier actor details</p><h3 id="actor-detail-title" className="mt-1 text-lg font-bold text-[#1D2434]">{actorDetail.data?.supplier || selectedActor}</h3><p className="mt-0.5 font-mono text-xs text-[#64676C]">{selectedActor}</p></div>
+              <button aria-label="Tutup detail supplier" onClick={() => setSelectedActor(null)} className="rounded-sm border border-[#E4E5E8] px-2.5 py-1 text-lg leading-none text-[#64676C] hover:bg-[#F8F8F8]">×</button>
+            </div>
+            <div className="overflow-auto p-5">
+              {actorDetail.isLoading && <p className="py-10 text-center text-sm text-[#64676C]">Memuat detail supplier…</p>}
+              {actorDetail.error && <p className="rounded-sm border border-[#FECACA] bg-[#FEF2F2] px-3 py-2 text-xs text-[#B91C1C]">{(actorDetail.error as Error).message}</p>}
+              {actorDetail.data && (() => {
+                const detail = actorDetail.data;
+                const origins = detail.origins ?? [];
+                return <div className="space-y-5">
+                  <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
+                    <Kpi title="Filtered Dry turnover" value={detail.period_turnover_mt} unit="MT" />
+                    <Kpi title="Intake tickets" value={detail.tickets} unit="tickets" />
+                    <Kpi title="Supplier class" value={null} unit="" note={detail.classification || "Belum diklasifikasi di master"} />
+                    <Kpi title="Top sourcing regency" value={null} unit="" note={detail.top_geography?.regency || "Tidak tersedia"} />
+                  </div>
+                  <div>
+                    <h4 className="mb-2 text-xs font-bold uppercase tracking-wide text-[#374151]">Supplier details</h4>
+                    <div className="grid grid-cols-2 gap-x-5 gap-y-3 rounded-sm border border-[#E4E5E8] p-4 text-xs sm:grid-cols-4">
+                      <div><p className="text-[#9AA0A6]">Alt ID</p><p className="mt-1 font-medium text-[#1D2434]">{detail.alt_id || "Not recorded"}</p></div>
+                      <div><p className="text-[#9AA0A6]">Product / category</p><p className="mt-1 font-medium text-[#1D2434]">{detail.product || "Not recorded"}</p></div>
+                      <div><p className="text-[#9AA0A6]">Tier</p><p className="mt-1 text-[#64676C]">Not recorded in intake/master</p></div>
+                      <div><p className="text-[#9AA0A6]">Terminal status</p><p className="mt-1 text-[#64676C]">Not recorded in intake/master</p></div>
+                      <div><p className="text-[#9AA0A6]">Coordinates</p><p className="mt-1 text-[#64676C]">{detail.coordinates_note}</p></div>
+                      <div><p className="text-[#9AA0A6]">Direct producer flag</p><p className="mt-1 text-[#1D2434]">{detail.is_direct_producer ? "Yes — provisional" : "No (default)"}</p></div>
+                      <div><p className="text-[#9AA0A6]">Sourcing type source</p><p className="mt-1 text-[#1D2434]">{detail.sourcing_type_source}</p></div>
+                      <div><p className="text-[#9AA0A6]">Sell to</p><p className="mt-1 text-[#64676C]">Not recorded in intake</p></div>
+                    </div>
+                  </div>
+                  <div>
+                    <div className="mb-2 flex flex-wrap items-end justify-between gap-2"><div><h4 className="text-xs font-bold uppercase tracking-wide text-[#374151]">Sourcing locations from Asal Getah</h4><p className="mt-1 text-[10px] text-[#9AA0A6]">Dry volume and share are calculated from filtered intake rows; geographic names are matched to official ID_AUX where available.</p></div><span className="text-[10px] text-[#64676C]">{origins.length} location groups</span></div>
+                    <div className="max-h-[320px] overflow-auto rounded-sm border border-[#E4E5E8]">
+                      <table className="w-full min-w-[750px] text-xs">
+                        <thead className="sticky top-0 bg-[#F8F8F8] text-left text-[10px] uppercase tracking-wide text-[#64676C]"><tr><th className="py-2 pl-3">Country</th><th className="px-2">Regency / city</th><th className="px-2">District</th><th className="px-2">Sub-district</th><th className="px-2 text-right">Dry (MT)</th><th className="px-2 text-right">Share</th><th className="px-2 text-right">Traceable dry (MT)</th><th className="px-2 pr-3">ID_AUX match</th></tr></thead>
+                        <tbody>{origins.map((origin: any, index: number) => <tr key={`${origin.regency}-${origin.district}-${origin.sub_district}-${index}`} className="border-t border-[#EDEFF2]"><td className="py-2 pl-3">{origin.country || "Indonesia"}</td><td className="px-2">{origin.regency || "Unknown"}</td><td className="px-2">{origin.district || "Unknown"}</td><td className="px-2">{origin.sub_district || "Unknown"}</td><td className="px-2 text-right font-mono">{fmtAngka(origin.dry_mt, 3)}</td><td className="px-2 text-right font-mono">{fmtAngka(origin.share_pct, 2)}%</td><td className="px-2 text-right font-mono">{fmtAngka(origin.traceable_mt, 3)}</td><td className="px-2 pr-3"><span className={`rounded-sm px-1.5 py-0.5 text-[10px] ${origin.matched_to_id_aux ? "bg-[#ECFDF3] text-[#027A48]" : "bg-[#FFFAEB] text-[#B54708]"}`}>{origin.matched_to_id_aux ? "Matched" : "Unmatched"}</span></td></tr>)}
+                          {!origins.length && <tr><td colSpan={8} className="py-8 text-center text-[#9AA0A6]">Tidak ada rincian lokasi untuk filter ini.</td></tr>}
+                        </tbody>
+                      </table>
+                    </div>
+                    <div className="mt-2 grid gap-2 text-[10px] leading-relaxed text-[#64676C] md:grid-cols-2"><p className="rounded-sm bg-[#F8F8F8] p-2">{detail.supply_chain_note}</p><p className="rounded-sm bg-[#F8F8F8] p-2">Top geography is the largest recorded origin. Province and administrative codes are not supplied by ID_AUX and are intentionally omitted; unmatched names are shown as received after normalization.</p></div>
+                  </div>
+                </div>;
+              })()}
+            </div>
+          </section>
+        </div>
+      )}
       {q.error && <p className="rounded-sm border border-[#FECACA] bg-[#FEF2F2] px-3 py-2 text-xs text-[#B91C1C]">{(q.error as Error).message}</p>}
       <p className="text-[10px] leading-relaxed text-[#9AA0A6]">* Direct producer adalah flag sementara per supplier dan default-nya Tidak. Code geografi tidak ada di ID_AUX; kolom Code sengaja dikosongkan, terpisah dari pencocokan nama wilayah.</p>
     </section>

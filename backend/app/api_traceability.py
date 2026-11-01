@@ -12,6 +12,7 @@ from sqlalchemy import (String, and_, case, cast, distinct, func, or_, select)
 from sqlalchemy.orm import Session
 
 from .auth_lokal import wajib_admin
+from .core.klasifikasi_vendor import label as label_klasifikasi
 from .core.traceability import (normalisasi_kabupaten, normalisasi_teks_wilayah,
                                 persen_traceable, rentang_periode)
 from .models import (PengaturanTraceability, ReferensiWilayahTrace, TiketBaris,
@@ -296,9 +297,11 @@ def pasang_router_traceability(app, ambil_session):
         return years, tahun_pakai, base
 
     def actors(session: Session, base) -> list[dict]:
+        """Supplier actors dan lokasi asal terbesar, seluruhnya dari tiket intake."""
         T = TiketBaris
         reg = select(ReferensiWilayahTrace.kabupaten_norm).distinct().subquery()
-        q = (select(T.kode_vendor, Vendor.nama_baku, Vendor.is_direct_producer,
+        q = (select(T.kode_vendor, Vendor.nama_baku, Vendor.klasifikasi,
+                    Vendor.is_direct_producer, func.min(T.nama_vendor_asli).label("nama_intake"),
                     func.count(distinct(T.ticket_no)).label("tickets"),
                     func.sum(T.dry_kg).label("dry"),
                     func.count(distinct(case((reg.c.kabupaten_norm == T.kabupaten_norm,
@@ -309,21 +312,72 @@ def pasang_router_traceability(app, ambil_session):
              .select_from(T).join(base, base.c.id == T.id)
              .outerjoin(Vendor, Vendor.kode == T.kode_vendor)
              .outerjoin(reg, reg.c.kabupaten_norm == T.kabupaten_norm)
-             .group_by(T.kode_vendor, Vendor.nama_baku, Vendor.is_direct_producer)
+             .group_by(T.kode_vendor, Vendor.nama_baku, Vendor.klasifikasi,
+                       Vendor.is_direct_producer)
              .order_by(func.sum(T.dry_kg).desc()))
-        result = []
+        result: dict[str, dict] = {}
         for r in session.execute(q).mappings():
-            result.append({"supplier_code": r["kode_vendor"],
-                           "supplier": r["nama_baku"] or r["kode_vendor"],
-                           "is_direct_producer": bool(r["is_direct_producer"]),
-                           "tickets": int(r["tickets"] or 0),
-                           "dry_mt": round(float(r["dry"] or 0) / 1000, 3),
-                           "traceable_mt": round(float(r["trace"] or 0) / 1000, 3),
-                           "regencies": int(r["regencies"] or 0)})
-        return result
+            direct = bool(r["is_direct_producer"])
+            klasifikasi = label_klasifikasi(r["klasifikasi"])
+            result[r["kode_vendor"]] = {
+                "supplier_code": r["kode_vendor"],
+                "supplier": r["nama_baku"] or r["nama_intake"] or r["kode_vendor"],
+                "is_direct_producer": direct,
+                "classification": klasifikasi,
+                "tier": None,
+                "activity_type": klasifikasi,
+                "terminal_status": None,
+                "sourcing_type": ("Direct producer (provisional)" if direct
+                                  else (klasifikasi or "Belum diklasifikasi")),
+                "tickets": int(r["tickets"] or 0),
+                "dry_mt": round(float(r["dry"] or 0) / 1000, 3),
+                "period_turnover_mt": round(float(r["dry"] or 0) / 1000, 3),
+                "traceable_mt": round(float(r["trace"] or 0) / 1000, 3),
+                "regencies": int(r["regencies"] or 0),
+                "country": None, "regency": None, "district": None,
+                "source_from": 0, "sell_to": None,
+            }
 
-    def actors_export(rows: list[dict]):
-        return rows
+        # Sourcing geographies: group-by is in SQL; keep only summary/top origin
+        # here. The drill-down route returns all of a selected supplier's rows.
+        region_q = (select(T.kode_vendor, T.kabupaten_norm, T.kecamatan_norm,
+                           T.desa_norm,
+                           ReferensiWilayahTrace.kabupaten.label("ref_kabupaten"),
+                           ReferensiWilayahTrace.kecamatan.label("ref_kecamatan"),
+                           func.sum(T.dry_kg).label("dry"))
+                    .select_from(T).join(base, base.c.id == T.id)
+                    .outerjoin(ReferensiWilayahTrace, and_(
+                        ReferensiWilayahTrace.kabupaten_norm == T.kabupaten_norm,
+                        ReferensiWilayahTrace.kecamatan_norm == T.kecamatan_norm,
+                        ReferensiWilayahTrace.desa_norm == T.desa_norm))
+                    .group_by(T.kode_vendor, T.kabupaten_norm, T.kecamatan_norm,
+                              T.desa_norm, ReferensiWilayahTrace.kabupaten,
+                              ReferensiWilayahTrace.kecamatan))
+        origins: dict[str, list[dict]] = {}
+        for r in session.execute(region_q).mappings():
+            if not any((r["kabupaten_norm"], r["kecamatan_norm"], r["desa_norm"])):
+                continue
+            origins.setdefault(r["kode_vendor"], []).append({
+                "kabupaten_norm": r["kabupaten_norm"],
+                "kecamatan_norm": r["kecamatan_norm"],
+                "desa_norm": r["desa_norm"],
+                "kabupaten": r["ref_kabupaten"], "kecamatan": r["ref_kecamatan"],
+                "dry_kg": float(r["dry"] or 0),
+            })
+        for code, rows in origins.items():
+            rows.sort(key=lambda row: row["dry_kg"], reverse=True)
+            best = rows[0]
+            actor = result.get(code)
+            if not actor:
+                continue
+            actor["source_from"] = len(rows)
+            actor["country"] = "Indonesia"
+            actor["regency"] = (best["kabupaten"] or
+                                 (best["kabupaten_norm"].title() if best["kabupaten_norm"] else None))
+            actor["district"] = (best["kecamatan"] or
+                                 (best["kecamatan_norm"].title() if best["kecamatan_norm"] else None))
+        return list(result.values())
+
 
     @router.get("")
     def ringkasan(tahun: int | None = None, periode: str = "ALL",
@@ -377,6 +431,104 @@ def pasang_router_traceability(app, ambil_session):
                         include_latex: bool = False, session: Session = dep):
         _, _, base = filter_data(session, tahun, periode, supplier, eudr, include_latex)
         return {"baris": actors(session, base)}
+
+    @router.get("/actors/{supplier_code}")
+    def detail_supplier_actor(supplier_code: str, tahun: int | None = None,
+                              periode: str = "ALL", eudr: str = "all",
+                              include_latex: bool = False,
+                              session: Session = dep):
+        years, effective_year, base = filter_data(
+            session, tahun, periode, supplier_code, eudr, include_latex)
+        T = TiketBaris
+        nama_intake = session.scalar(select(func.min(T.nama_vendor_asli))
+            .select_from(T).join(base, base.c.id == T.id)
+            .where(T.kode_vendor == supplier_code))
+        vendor = session.get(Vendor, supplier_code)
+        if vendor is None and nama_intake is None:
+            raise HTTPException(404, f"Supplier '{supplier_code}' tidak ditemukan pada intake.")
+
+        ref_match = and_(
+            ReferensiWilayahTrace.kabupaten_norm == T.kabupaten_norm,
+            ReferensiWilayahTrace.kecamatan_norm == T.kecamatan_norm,
+            ReferensiWilayahTrace.desa_norm == T.desa_norm,
+        )
+        q = (select(T.kabupaten_norm, T.kecamatan_norm, T.desa_norm,
+                    ReferensiWilayahTrace.id.label("ref_id"),
+                    ReferensiWilayahTrace.kabupaten.label("ref_kabupaten"),
+                    ReferensiWilayahTrace.kecamatan.label("ref_kecamatan"),
+                    ReferensiWilayahTrace.desa.label("ref_desa"),
+                    func.sum(T.dry_kg).label("dry"),
+                    func.sum(case((and_(T.asal_getah_valid.is_(True),
+                                       ReferensiWilayahTrace.id.is_not(None)),
+                                   T.dry_kg), else_=0)).label("trace_dry"),
+                    func.count(distinct(T.ticket_no)).label("tickets"))
+             .select_from(T).join(base, base.c.id == T.id)
+             .outerjoin(ReferensiWilayahTrace, ref_match)
+             .where(T.kode_vendor == supplier_code)
+             .group_by(T.kabupaten_norm, T.kecamatan_norm, T.desa_norm,
+                       ReferensiWilayahTrace.id,
+                       ReferensiWilayahTrace.kabupaten,
+                       ReferensiWilayahTrace.kecamatan,
+                       ReferensiWilayahTrace.desa)
+             .order_by(func.sum(T.dry_kg).desc()))
+        raw = list(session.execute(q).mappings())
+        total_kg = sum(float(r["dry"] or 0) for r in raw)
+        origins = []
+        for r in raw:
+            kg = float(r["dry"] or 0)
+            if kg <= 0:
+                continue
+            kab = r["ref_kabupaten"] or (r["kabupaten_norm"].title()
+                                         if r["kabupaten_norm"] else None)
+            kec = r["ref_kecamatan"] or (r["kecamatan_norm"].title()
+                                          if r["kecamatan_norm"] else None)
+            desa = r["ref_desa"] or (r["desa_norm"].title() if r["desa_norm"] else None)
+            traced = float(r["trace_dry"] or 0)
+            origins.append({
+                "country": "Indonesia",
+                "regency": kab, "district": kec, "sub_district": desa,
+                "dry_mt": round(kg / 1000, 3),
+                "share_pct": persen_traceable(kg, total_kg),
+                "traceable_mt": round(traced / 1000, 3),
+                "traceability_pct": persen_traceable(traced, kg),
+                "matched_to_id_aux": bool(r["ref_id"] and traced >= kg - 0.001),
+                "tickets": int(r["tickets"] or 0),
+            })
+        ticket_count = session.scalar(
+            select(func.count(distinct(T.ticket_no)))
+            .select_from(T).join(base, base.c.id == T.id)
+            .where(T.kode_vendor == supplier_code)
+        ) or 0
+        classification = label_klasifikasi(vendor.klasifikasi) if vendor else None
+        direct = bool(vendor.is_direct_producer) if vendor else False
+        return {
+            "supplier_code": supplier_code,
+            "supplier": (vendor.nama_baku if vendor else None) or nama_intake or supplier_code,
+            "alt_id": vendor.varian_nama if vendor else None,
+            "product": vendor.kategori if vendor else None,
+            "activity_type": classification,
+            "terminal_status": None,
+            "tier": None,
+            "period_turnover_mt": round(total_kg / 1000, 3),
+            "tickets": int(ticket_count),
+            "country": "Indonesia" if origins else None,
+            "top_geography": origins[0] if origins else None,
+            "origins": origins,
+            "classification": classification,
+            "is_direct_producer": direct,
+            "sourcing_type_label": ("Direct producer (provisional)" if direct
+                                    else (classification or "Belum diklasifikasi")),
+            "sourcing_type_source": ("Master Vendor" if classification or direct
+                                     else "Belum tersedia pada data intake/master"),
+            "coordinates": None,
+            "coordinates_note": "Koordinat tidak tersedia pada ID_AUX atau data intake.",
+            "source_from": origins,
+            "sell_to": [],
+            "supply_chain_note": "Intake mencatat wilayah Asal Getah, bukan hubungan upstream/downstream supplier-ke-pabrik.",
+            "filters": {"year": effective_year, "period": periode.upper(),
+                        "eudr": eudr, "include_latex": include_latex},
+            "years": years,
+        }
 
     @router.get("/unmapped")
     def ekspor_unmapped(tahun: int | None = None, periode: str = "ALL",

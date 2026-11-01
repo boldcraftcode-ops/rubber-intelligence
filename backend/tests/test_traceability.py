@@ -129,6 +129,19 @@ def test_api_agregasi_traceability_berbasis_dry_tiket_valid_dan_ref():
     actor_rows = client.get("/api/traceability/actors", params={"tahun": 2026}).json()["baris"]
     assert len(actor_rows) == 1
     assert actor_rows[0]["is_direct_producer"] is False
+    assert actor_rows[0]["source_from"] == 2
+    assert actor_rows[0]["country"] == "Indonesia"
+    detail = client.get("/api/traceability/actors/V1", params={"tahun": 2026})
+    assert detail.status_code == 200, detail.text
+    detail_payload = detail.json()
+    assert detail_payload["period_turnover_mt"] == 1.0
+    assert detail_payload["tickets"] == 2
+    assert len(detail_payload["origins"]) == 2
+    assert sum(origin["share_pct"] for origin in detail_payload["origins"]) == 100.0
+    assert any(origin["matched_to_id_aux"] for origin in detail_payload["origins"])
+    assert any(not origin["matched_to_id_aux"] for origin in detail_payload["origins"])
+    assert detail_payload["sell_to"] == []
+    assert "bukan hubungan upstream/downstream" in detail_payload["supply_chain_note"]
     changed = client.put("/api/vendor/V1", json={
         "nama_baku": "Supplier One", "is_direct_producer": True})
     assert changed.status_code == 200, changed.text
