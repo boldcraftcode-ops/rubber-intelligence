@@ -1,0 +1,4 @@
+Map data: “Indonesia GeoJSON & TopoJSON Maps (38 Provinces)” by Deny Herianto, https://github.com/denyherianto/indonesia-geojson-topojson-maps-with-38-provinces
+Dataset license: Creative Commons Attribution 4.0 International (CC BY 4.0), https://creativecommons.org/licenses/by/4.0/
+Modification: province-code and identifier properties were removed; PROVINSI names and geometry were retained.
+The boundary layer is used only to visualize province names. Intake values come from the explicit province field on intake-ticket records; no province is inferred from Asal Getah or collector fields. Name mismatches are shown as unmapped instead of guessed.

@@ -228,6 +228,7 @@ function KartuElemen() {
   const { t } = useBahasa();
   const [dari, setDari] = useState("");
   const [sampai, setSampai] = useState("");
+  const [tampilkanCatatan, setTampilkanCatatan] = useState(false);
   const [panel, setPanel] = useState<null | "5w1h" | "bridge" | "doc" | "rca">(null);
   const params = new URLSearchParams();
   if (dari) params.set("dari", dari);
@@ -382,11 +383,18 @@ function KartuElemen() {
             </tbody>
           </table>
         </div>
-        {q.data?.catatan.map((c: string, i: number) => (
-          <p key={i} className="mt-2 rounded-sm bg-[#FFFBEB] border border-[#FDE68A] px-3 py-2 text-xs text-[#B45309]">
-            {c}
-          </p>
-        ))}
+        {!!q.data?.catatan?.length && <div className="mt-2">
+          <button type="button" aria-expanded={tampilkanCatatan}
+            className="rounded-sm border border-[#E4E5E8] bg-[#F8F8F8] px-3 py-1.5 text-xs font-medium text-[#475467] hover:bg-[#F1F2F4]"
+            onClick={() => setTampilkanCatatan((shown) => !shown)}>
+            {tampilkanCatatan ? "Sembunyikan keterangan" : `Tampilkan keterangan (${q.data.catatan.length})`}
+          </button>
+          {tampilkanCatatan && q.data.catatan.map((c: string, i: number) => (
+            <p key={i} className="mt-2 rounded-sm bg-[#FFFBEB] border border-[#FDE68A] px-3 py-2 text-xs text-[#B45309]">
+              {c}
+            </p>
+          ))}
+        </div>}
       </>
     } />
   );
@@ -629,14 +637,10 @@ function KartuGrafikMargin() {
                     const p: any = payload?.[0]?.payload;
                     if (!p) return null;
                     const st = WARNA_STATUS[p.status] ?? WARNA_STATUS["tanpa target"];
-                    const lain = pakaiRp
-                      ? (p.kurs ? `≈ ${fmtAngka(p.marginUsc, 2)} US¢/kg` : null)
-                      : (p.kurs ? `≈ ${fmtAngka(p.marginUsc * p.kurs / 100, 0)} Rp/kg` : null);
                     return (
                       <div className="rounded-sm bg-white border border-[#E4E5E8] p-2 text-xs shadow">
                         <b>{label}</b><br />
-                        {t("Margin")}: <b>{fmtNilai(p.margin ?? 0)}</b> {satuan}
-                        {lain && <span className="text-[#64676C]"> ({lain})</span>}<br />
+                        {t("Margin")}: <b>{fmtNilai(p.margin ?? 0)}</b> {satuan}<br />
                         {t("Target")}: {p.target === null ? "–" : `${fmtNilai(p.target)} ${satuan}`}<br />
                         {t("Selisih")}: <b className={st.teks}>
                           {p.delta === null ? "–" : `${p.delta >= 0 ? "+" : "−"}${fmtNilai(Math.abs(p.delta))}`}
@@ -1321,19 +1325,23 @@ function BlokAngka({ label, angka, satuan, bawah, arah, nada }: {
   satuan?: string;
   bawah: ReactNode;
   arah?: "naik" | "turun" | null;
-  nada?: "navy" | "merah";
+  nada?: "baik" | "buruk" | "netral";
 }) {
+  const warna = nada === "buruk" ? "text-[#FF1313]" : "text-[#1D2434]";
+  const warnaKotak = nada === "baik" ? "border-l-[#16A34A] bg-[#F0FDF4]"
+    : nada === "buruk" ? "border-l-[#DC2626] bg-[#FEF2F2]" : "border-l-[#EDEFF2] bg-white";
   return (
-    <div className="border-l border-[#EDEFF2] px-4 py-3 first:border-l-0 first:pl-0">
+    <div className={`border-l px-4 py-3 first:border-l-0 first:pl-0 ${warnaKotak}`}>
       <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[#64676C]">
         {label}
       </p>
-      <p className={`mt-1 flex items-baseline gap-1 font-mono text-2xl font-bold ${
-        nada === "merah" ? "text-[#FF1313]" : "text-[#1D2434]"}`}>
+      <p className={`mt-1 flex items-baseline gap-1 font-mono text-2xl font-bold ${warna}`}>
         {angka}
         {satuan && <span className="text-xs font-normal text-[#64676C]">{satuan}</span>}
       </p>
-      <p className="mt-0.5 flex items-start gap-1 text-[11px] leading-snug text-[#64676C]">
+      <p className={`mt-0.5 flex items-start gap-1 text-[11px] leading-snug ${
+        nada === "baik" ? "text-[#15803D]" : nada === "buruk" ? "text-[#DC2626]" : "text-[#64676C]"}`}>
+        {nada && nada !== "netral" && <span aria-hidden className="mt-[1px] shrink-0">●</span>}
         {arah && (
           <span aria-hidden className="mt-[1px] shrink-0">
             {arah === "naik" ? "▲" : "▼"}
@@ -1380,57 +1388,75 @@ function StripAngkaKunci({ thn, data, ke }: {
   if (!kini) return null;
 
   const label = `${NAMA_BULAN[kini.bulan]}-${String(thn ?? "").slice(2)}`;
-  const diAtasTarget = (kini.vs_target ?? 0) >= 0;
   const selisih = kini.op_margin != null && lalu?.op_margin != null
     ? kini.op_margin - lalu.op_margin : null;
-  const diBawahSafety = docKini?.status === "di bawah safety";
+  const intakeChange = kini.ton != null && lalu?.ton != null ? kini.ton - lalu.ton : null;
+  const statusTarget = kini.target == null ? "netral" : (kini.vs_target ?? 0) >= 0 ? "baik" : "buruk";
+  const statusMargin = selisih === null || selisih === 0 ? "netral" : selisih > 0 ? "baik" : "buruk";
+  const statusSicom = dSicom === null || dSicom === 0 ? "netral" : dSicom > 0 ? "baik" : "buruk";
+  const statusDoc = docKini?.status === "aman" ? "baik"
+    : docKini?.status === "di bawah safety" ? "buruk" : "netral";
+  const statusIntake = intakeChange === null || intakeChange === 0 ? "netral"
+    : intakeChange > 0 ? "baik" : "buruk";
 
   return (
     <section className="rounded-sm border border-[#E4E5E8] bg-white shadow-[0_1px_3px_rgba(29,36,52,0.08)]">
-      <div className="grid gap-0 px-5 py-1 sm:grid-cols-2 xl:grid-cols-5">
+      <div className="overflow-x-auto">
+        <div className="grid min-w-[1100px] grid-cols-5 gap-0 px-5 py-1">
         <BlokAngka
           label={`${t("OP Margin")} · ${label}`}
           angka={fmtAngka(kini.op_margin, 2)}
           satuan="US¢/kg"
-          arah={diAtasTarget ? "naik" : "turun"}
-          nada={diAtasTarget ? "navy" : "merah"}
+          arah={statusTarget === "netral" ? null : statusTarget === "baik" ? "naik" : "turun"}
+          nada={statusTarget}
           bawah={kini.target != null
-            ? `${diAtasTarget ? t("di atas") : t("di bawah")} ${t("target")} ` +
-              `${fmtAngka(Math.abs(kini.vs_target ?? 0), 2)} (${t("target")} ` +
-              `${fmtAngka(kini.target, 1)})`
-            : t("target belum diisi")}
+            ? `${statusTarget === "baik" ? "Kabar baik" : "Kabar buruk"}: margin ${statusTarget === "baik" ? "di atas" : "di bawah"} target ${fmtAngka(Math.abs(kini.vs_target ?? 0), 2)} US¢/kg (target ${fmtAngka(kini.target, 2)}).`
+            : "Belum ada target; status kinerja belum dapat dinilai."}
         />
         <BlokAngka
           label={`${t("Perubahan vs")} ${lalu ? `${NAMA_BULAN[lalu.bulan]}-${String(thn ?? "").slice(2)}` : "–"}`}
           angka={tandaAngka(selisih)}
           satuan="US¢/kg"
-          arah={selisih === null ? null : selisih >= 0 ? "naik" : "turun"}
-          nada={selisih !== null && selisih < 0 ? "merah" : "navy"}
-          bawah={dSicom !== null || dOp !== null
-            ? `${t("SICOM")} ${tandaAngka(dSicom)} · ${t("OP Price")} ${tandaAngka(dOp)}`
-            : t("rincian penyebab belum tersedia")}
+          arah={statusMargin === "netral" ? null : statusMargin === "baik" ? "naik" : "turun"}
+          nada={statusMargin}
+          bawah={selisih === null ? "Belum ada bulan berdata sebelumnya sebagai pembanding."
+            : selisih > 0 ? `Kabar baik: margin naik ${fmtAngka(selisih, 2)} US¢/kg vs bulan berdata sebelumnya.`
+            : selisih < 0 ? `Kabar buruk: margin turun ${fmtAngka(Math.abs(selisih), 2)} US¢/kg vs bulan berdata sebelumnya.`
+            : "Margin stabil dibanding bulan berdata sebelumnya."}
         />
         <BlokAngka
           label={`${t("SICOM")} · ${label}`}
           angka={fmtAngka(kini.sicom, 2)}
           satuan="US¢/kg"
-          bawah={t("harga acuan pasar, di luar kendali")}
+          arah={statusSicom === "netral" ? null : statusSicom === "baik" ? "naik" : "turun"}
+          nada={statusSicom}
+          bawah={dSicom === null ? "Belum ada perubahan historis untuk dibandingkan."
+            : dSicom > 0 ? `Kabar baik: SICOM naik ${fmtAngka(dSicom, 2)}; mendukung margin bila OP Price tidak naik sebanding.`
+            : dSicom < 0 ? `Kabar buruk: SICOM turun ${fmtAngka(Math.abs(dSicom), 2)}; menekan margin bila OP Price tidak turun mengimbangi.`
+            : "SICOM stabil dibanding bulan berdata sebelumnya."}
         />
         <BlokAngka
           label={`Days of Cover · ${docKini?.bulan ?? "–"}`}
           angka={docKini?.doc_hari != null ? fmtAngka(docKini.doc_hari, 1) : "–"}
           satuan={t("hari")}
-          nada={diBawahSafety ? "merah" : "navy"}
+          arah={statusDoc === "netral" ? null : statusDoc === "baik" ? "naik" : "turun"}
+          nada={statusDoc}
           bawah={docKini?.safety_hari != null
-            ? `${t(docKini.status ?? "–")} · ${t("safety")} ${fmtAngka(docKini.safety_hari, 1)} ${t("hari")}`
-            : t("belum bisa dihitung")}
+            ? `${statusDoc === "baik" ? "Kabar baik" : "Kabar buruk"}: cover ${fmtAngka(docKini.doc_hari, 1)} hari; safety ${fmtAngka(docKini.safety_hari, 1)} hari.`
+            : "Belum ada safety atau data yang cukup untuk menilai cover."}
         />
         <BlokAngka
           label={`${t("Intake")} · ${label}`}
-          angka={fmtAngka(kini.ton, 0)}
+          angka={fmtAngka(kini.ton, 2)}
           satuan={t("ton kering")}
-          bawah={`${kini.hari_pembelian ?? "–"} ${t("hari pembelian")}`}
+          arah={statusIntake === "netral" ? null : statusIntake === "baik" ? "naik" : "turun"}
+          nada={statusIntake}
+          bawah={intakeChange === null ? `${kini.hari_pembelian ?? "–"} hari pembelian; belum ada pembanding.`
+            : intakeChange > 0 ? `Kabar baik: volume intake naik ${fmtAngka(intakeChange, 2)} ton dari bulan berdata sebelumnya.`
+            : intakeChange < 0 ? `Kabar buruk: volume intake turun ${fmtAngka(Math.abs(intakeChange), 2)} ton dari bulan berdata sebelumnya.`
+            : "Volume intake sama dengan bulan berdata sebelumnya."}
         />
+        </div>
       </div>
       <p className="border-t border-[#EDEFF2] px-5 py-2 text-[11px] text-[#9AA0A6]">
         {t("Pada blok perubahan, SICOM dan OP Price adalah perubahan harga bulan itu (US¢/kg): SICOM naik menolong margin, OP Price naik menekan margin. Rincian angkanya ada di Margin Bridge pada kartu di bawah.")}
@@ -1566,9 +1592,9 @@ export default function Ringkasan({ ke }: { ke?: (tab: string) => void }) {
   const [telusur, setTelusur] = useState<number | null>(null);
 
   const label = [
-    ["sicom", "SICOM", 4], ["op_price", "OP Price", 4], ["op_margin", "OP Margin", 4],
-    ["ton", "Ton (kering)", 3], ["target", "Target", 1],
-    ["pencapaian", "Pencapaian", 1], ["vs_target", "vs Target", 4],
+    ["sicom", "SICOM", 2], ["op_price", "OP Price", 2], ["op_margin", "OP Margin", 2],
+    ["ton", "Ton (kering)", 2], ["target", "Target", 2],
+    ["pencapaian", "Pencapaian", 2], ["vs_target", "vs Target", 2],
   ] as const;
 
   return (
@@ -1625,11 +1651,11 @@ export default function Ringkasan({ ke }: { ke?: (tab: string) => void }) {
                     <th key={b.bulan} className="text-right px-1">{NAMA_BULAN[b.bulan]}</th>
                   ))}
                   <th className="text-right px-1 font-semibold">{t("Avg YTD")}</th>
-                  <th className="text-right px-1">{t("Tertimbang")}</th>
+                  <th className="text-right px-1" title="Rata-rata OP Margin dengan bobot tonase kering; bulan dengan tonase lebih besar lebih berpengaruh.">{t("Tertimbang (Margin)")}</th>
                 </tr>
               </thead>
               <tbody>
-                {label.map(([kunci, nama, des]) => (
+                {label.map(([kunci, nama]) => (
                   <tr key={kunci} className="border-b border-[#EDEFF2]">
                     <td className="py-1 pr-2 font-medium text-[#1D2434] whitespace-nowrap">{t(nama)}</td>
                     {ringkas.data?.bulan.map((b: any) => (
@@ -1640,15 +1666,17 @@ export default function Ringkasan({ ke }: { ke?: (tab: string) => void }) {
                           title={kunci === "op_margin" ? (b.catatan_koreksi ?? "klik untuk telusur") : undefined}
                           onClick={() => kunci === "op_margin" && setTelusur(b.bulan)}>
                         {kunci === "pencapaian"
-                          ? (b.pencapaian !== null ? fmtAngka(b.pencapaian * 100, 1) + "%" : "–")
-                          : fmtAngka(b[kunci], des)}
+                          ? (b.pencapaian !== null ? fmtAngka(b.pencapaian * 100, 2) + "%" : "–")
+                          : fmtAngka(b[kunci], 2)}
                       </td>
                     ))}
                     <td className="text-right px-1 font-mono font-semibold">
-                      {kunci === "op_margin" ? fmtAngka(ringkas.data?.avg_ytd_sederhana) : ""}
+                      {kunci === "sicom" ? fmtAngka(ringkas.data?.avg_ytd_sicom_sederhana, 2)
+                        : kunci === "op_price" ? fmtAngka(ringkas.data?.avg_ytd_op_price_sederhana, 2)
+                        : kunci === "op_margin" ? fmtAngka(ringkas.data?.avg_ytd_sederhana, 2) : ""}
                     </td>
                     <td className="text-right px-1 font-mono text-[#64676C]">
-                      {kunci === "op_margin" ? fmtAngka(ringkas.data?.avg_ytd_tertimbang) : ""}
+                      {kunci === "op_margin" ? fmtAngka(ringkas.data?.avg_ytd_tertimbang, 2) : ""}
                     </td>
                   </tr>
                 ))}
@@ -1661,7 +1689,7 @@ export default function Ringkasan({ ke }: { ke?: (tab: string) => void }) {
             </p>
           ))}
           <p className="mt-2 text-xs text-[#64676C]">
-            {t('Avg YTD = rata-rata sederhana bulan berdata (resmi, seperti Excel); kolom "Tertimbang" = rata-rata tertimbang tonase (informasi).')}
+            {t('Avg YTD = rata-rata sederhana dari bulan yang memiliki data, tersedia untuk SICOM, OP Price, dan OP Margin. Tertimbang (Margin) = Σ(OP Margin × ton kering) ÷ Σ(ton kering); bulan dengan tonase lebih besar memiliki pengaruh lebih besar.')}
           </p>
         </>
       } />} />

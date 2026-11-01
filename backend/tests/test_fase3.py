@@ -43,6 +43,8 @@ def test_ringkasan_2026_lengkap(klien):
     assert round(jan["ton"], 3) == 3885.166
     assert jan["target"] == 12.0
     assert round(jan["vs_target"], 4) == -1.4275
+    assert r["avg_ytd_sicom_sederhana"] is not None
+    assert r["avg_ytd_op_price_sederhana"] is not None
     assert r["avg_ytd_sederhana"] is not None
     assert r["avg_ytd_tertimbang"] is not None
 

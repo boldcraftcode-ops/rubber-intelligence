@@ -874,6 +874,10 @@ def pasang_router(app, ambil_session):
         hasil = {
             "tahun": tahun,
             "bulan": bulan_data,
+            "avg_ytd_sicom_sederhana": rumus.rata_rata_sederhana(
+                [b.sicom_usc for b in baris]),
+            "avg_ytd_op_price_sederhana": rumus.rata_rata_sederhana(
+                [b.harga_beli_usc for b in baris]),
             "avg_ytd_sederhana": rumus.rata_rata_sederhana(
                 [b.op_margin_usc for b in baris]),
             "avg_ytd_tertimbang": rumus.rata_rata_tertimbang(
@@ -887,8 +891,11 @@ def pasang_router(app, ambil_session):
             isi = [[b["bulan"], b["sicom"], b["op_price"], b["op_margin"], b["ton"],
                     b["target"], b["pencapaian"], b["vs_target"],
                     b["catatan_koreksi"] or ""] for b in bulan_data]
-            isi.append(["Avg YTD sederhana (resmi)", "", "", hasil["avg_ytd_sederhana"]])
-            isi.append(["Avg tertimbang tonase (informasi)", "", "",
+            isi.append(["Avg YTD sederhana (resmi)",
+                        hasil["avg_ytd_sicom_sederhana"],
+                        hasil["avg_ytd_op_price_sederhana"],
+                        hasil["avg_ytd_sederhana"]])
+            isi.append(["Avg OP Margin tertimbang tonase (informasi)", "", "",
                         hasil["avg_ytd_tertimbang"]])
             return respon_xlsx(f"ringkasan_{tahun}.xlsx", judul, isi)
         return hasil

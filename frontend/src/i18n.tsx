@@ -236,9 +236,10 @@ const KAMUS: Record<string, string> = {
   "vs Target": "vs Target",
   "Avg YTD": "Avg YTD",
   "Tertimbang": "Weighted",
+  "Tertimbang (Margin)": "Weighted (Margin)",
   "Catatan koreksi:": "Correction note:",
-  "Avg YTD = rata-rata sederhana bulan berdata (resmi, seperti Excel); kolom \"Tertimbang\" = rata-rata tertimbang tonase (informasi).":
-    "Avg YTD = simple average of months with data (official, as in Excel); the \"Weighted\" column is the tonnage-weighted average (informational).",
+  "Avg YTD = rata-rata sederhana dari bulan yang memiliki data, tersedia untuk SICOM, OP Price, dan OP Margin. Tertimbang (Margin) = Σ(OP Margin × ton kering) ÷ Σ(ton kering); bulan dengan tonase lebih besar memiliki pengaruh lebih besar.":
+    "Avg YTD = simple average of months with data, available for SICOM, OP Price and OP Margin. Weighted (Margin) = Σ(OP Margin × dry tonnes) ÷ Σ(dry tonnes); months with higher volume carry more weight.",
   // grafik margin
   "OP Margin bulanan vs target": "Monthly OP Margin vs target",
   "Tujuan grafik: menjawab “apakah margin tiap bulan mencapai target, dan bagaimana trennya?”":
