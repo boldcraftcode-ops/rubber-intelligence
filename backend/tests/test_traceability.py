@@ -172,9 +172,14 @@ def test_koreksi_manual_subdistrict_updates_supplier_and_regional_traceability()
     Base.metadata.create_all(eng)
     with Session(eng) as session:
         session.add(Vendor(kode="V1", nama_baku="Supplier One", status="aktif"))
-        session.add(ReferensiWilayahTrace(
-            kabupaten_norm="MEDAN", kecamatan_norm="MEDAN BARU", desa_norm="BABURA",
-            kabupaten="Kota Medan", kecamatan="Medan Baru", desa="Babura", code=None))
+        session.add_all([
+            ReferensiWilayahTrace(
+                kabupaten_norm="MEDAN", kecamatan_norm="MEDAN BARU", desa_norm="BABURA",
+                kabupaten="Kota Medan", kecamatan="Medan Baru", desa="Babura", code=None),
+            ReferensiWilayahTrace(
+                kabupaten_norm="MEDAN", kecamatan_norm="MEDAN BARU", desa_norm="BABURA TIMUR",
+                kabupaten="Kota Medan", kecamatan="Medan Baru", desa="Babura Timur", code=None),
+        ])
         session.add(Vendor(kode="V2", nama_baku="Supplier Two", status="aktif"))
         for no, vendor, desa, dry, fp in (
             ("T1", "V1", "BABURA", 500, "a" * 64),
@@ -187,6 +192,16 @@ def test_koreksi_manual_subdistrict_updates_supplier_and_regional_traceability()
                 dry_kg=dry, asal_getah=f"Sumatera Utara, Kota Medan, Medan Baru, {desa.title()}",
                 kabupaten_norm="MEDAN", kecamatan_norm="MEDAN BARU", desa_norm=desa,
                 asal_getah_valid=True, source_fingerprint=fp, tiket_nol=False))
+        for no, desa, dry, fp in (("T-OLD-1", "Babura", 300, "d" * 64),
+                                  ("T-OLD-2", "Babura Timur", 200, "e" * 64)):
+            session.add(TiketBaris(
+                ticket_no=no, line_seq=1, ticket_date=dt.date(2025, 4, 1),
+                kode_vendor="V1", item_code="SIR20", wet_kg=dry * 2, drc_pct=50,
+                dry_kg=dry,
+                asal_getah=f"Sumatera Utara, Kota Medan, Medan Baru, {desa}",
+                kabupaten_norm="MEDAN", kecamatan_norm="MEDAN BARU",
+                desa_norm=desa.upper(), asal_getah_valid=True,
+                source_fingerprint=fp, tiket_nol=False))
         session.commit()
 
     client = TestClient(buat_app(eng))
@@ -198,7 +213,19 @@ def test_koreksi_manual_subdistrict_updates_supplier_and_regional_traceability()
                      if row["source_key"]["desa_norm"] == "BABURA BARU")
     options = client.get("/api/traceability/locations/subdistricts", params={
         "kabupaten_norm": "MEDAN", "kecamatan_norm": "MEDAN BARU"}).json()
-    assert options["options"] == [{"value": "BABURA", "label": "Babura"}]
+    assert options["options"] == [
+        {"value": "BABURA", "label": "Babura"},
+        {"value": "BABURA TIMUR", "label": "Babura Timur"},
+    ]
+    rekomendasi = client.get("/api/traceability/actors/V1/origin-recommendations", params={
+        **params, "source_kabupaten_norm": "MEDAN",
+        "source_kecamatan_norm": "MEDAN BARU"})
+    assert rekomendasi.status_code == 200, rekomendasi.text
+    suggestion = rekomendasi.json()["recommendations"][0]
+    assert suggestion["sub_district"] == "Babura"
+    assert suggestion["confidence_pct"] == 60.0
+    assert suggestion["historical_dry_mt"] == 0.3
+    assert suggestion["historical_years"] == 1
 
     saved = client.put("/api/traceability/actors/V1/origin-correction", params=params,
                        json={"source_kabupaten_norm": unmatched["source_key"]["kabupaten_norm"],

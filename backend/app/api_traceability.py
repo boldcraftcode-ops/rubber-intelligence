@@ -609,6 +609,72 @@ def pasang_router_traceability(app, ambil_session):
         return {"options": [{"value": norm, "label": label}
                              for norm, label in rows if norm and label]}
 
+    @router.get("/actors/{supplier_code}/origin-recommendations")
+    def rekomendasi_subdistrict(supplier_code: str, source_kabupaten_norm: str,
+                                source_kecamatan_norm: str, tahun: int | None = None,
+                                eudr: str = "all", include_latex: bool = False,
+                                session: Session = dep):
+        muat_referensi_bawaan(session)
+        years = _rentang_tahun(session)
+        year = tahun if tahun is not None else (years[0] if years else None)
+        if year is None:
+            return {"recommendations": [], "history_through": None,
+                    "basis": "Belum ada tahun intake yang dapat dijadikan dasar."}
+        kab = normalisasi_kabupaten(source_kabupaten_norm) or ""
+        kec = normalisasi_teks_wilayah(source_kecamatan_norm) or ""
+        if not kab or not kec:
+            return {"recommendations": [], "history_through": year - 1,
+                    "basis": "Regency/District sumber belum cukup lengkap untuk rekomendasi."}
+
+        T = TiketBaris
+        K = KoreksiWilayahTrace
+        target = aliased(ReferensiWilayahTrace)
+        raw_ref = aliased(ReferensiWilayahTrace)
+        history_base = _filter_base(session, None, "ALL", supplier_code,
+                                    eudr, include_latex)
+        tahun_sql = (func.strftime("%Y", T.ticket_date)
+                     if session.get_bind().dialect.name == "sqlite"
+                     else func.extract("year", T.ticket_date))
+        kab_eff = func.coalesce(target.kabupaten_norm, T.kabupaten_norm)
+        kec_eff = func.coalesce(target.kecamatan_norm, T.kecamatan_norm)
+        desa_eff = func.coalesce(target.desa_norm, T.desa_norm)
+        tahun_lalu = dt.date(year, 1, 1)
+        q = (select(desa_eff.label("desa_norm"),
+                    func.coalesce(target.desa, raw_ref.desa).label("desa"),
+                    func.sum(T.dry_kg).label("dry"),
+                    func.count(distinct(T.ticket_no)).label("tickets"),
+                    func.count(distinct(tahun_sql)).label("years"))
+             .select_from(T).join(history_base, history_base.c.id == T.id)
+             .outerjoin(K, _koreksi_kunci(T, K))
+             .outerjoin(target, target.id == K.target_ref_id)
+             .outerjoin(raw_ref, and_(raw_ref.kabupaten_norm == T.kabupaten_norm,
+                                      raw_ref.kecamatan_norm == T.kecamatan_norm,
+                                      raw_ref.desa_norm == T.desa_norm))
+             .where(T.kode_vendor == supplier_code,
+                    T.ticket_date < tahun_lalu,
+                    kab_eff == kab, kec_eff == kec,
+                    or_(K.id.is_not(None),
+                        and_(T.asal_getah_valid.is_(True), raw_ref.id.is_not(None))))
+             .group_by(desa_eff, target.desa, raw_ref.desa)
+             .order_by(func.sum(T.dry_kg).desc()))
+        rows = list(session.execute(q).mappings())
+        total_dry = sum(float(r["dry"] or 0) for r in rows)
+        recommendations = [{
+            "sub_district_norm": r["desa_norm"],
+            "sub_district": r["desa"],
+            "confidence_pct": persen_traceable(float(r["dry"] or 0), total_dry),
+            "historical_dry_mt": round(float(r["dry"] or 0) / 1000, 3),
+            "historical_tickets": int(r["tickets"] or 0),
+            "historical_years": int(r["years"] or 0),
+        } for r in rows if r["desa_norm"] and r["desa"]]
+        return {
+            "recommendations": recommendations,
+            "history_through": year - 1,
+            "basis": ("Persentase adalah porsi Dry historis supplier ini pada Regency "
+                      "dan District yang sama; ini indikator rekomendasi, bukan "
+                      "probabilitas bahwa lokasi saat ini pasti benar."),
+        }
+
     @router.put("/actors/{supplier_code}/origin-correction")
     def simpan_koreksi_asal(supplier_code: str, data: KoreksiLokasiMasuk,
                             request: Request, tahun: int | None = None,

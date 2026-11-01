@@ -72,6 +72,16 @@ export default function Traceability() {
     },
     enabled: Boolean(editingOrigin),
   });
+  const historicalRecommendations = useQuery({
+    queryKey: ["traceability-origin-recommendations", selectedActor, editingOrigin?.source_key, query],
+    queryFn: () => {
+      const p = new URLSearchParams(query);
+      p.set("source_kabupaten_norm", editingOrigin.source_key.kabupaten_norm);
+      p.set("source_kecamatan_norm", editingOrigin.source_key.kecamatan_norm);
+      return ambilJson(`/api/traceability/actors/${encodeURIComponent(selectedActor!)}/origin-recommendations?${p}`);
+    },
+    enabled: Boolean(editingOrigin && selectedActor),
+  });
   const simpanKoreksi = useMutation({
     mutationFn: ({ origin, target }: { origin: any; target: string | null }) =>
       ambilJson(`/api/traceability/actors/${encodeURIComponent(selectedActor!)}/origin-correction?${query}`, {
@@ -88,6 +98,7 @@ export default function Traceability() {
         queryClient.invalidateQueries({ queryKey: ["traceability"] }),
         queryClient.invalidateQueries({ queryKey: ["traceability-actors"] }),
         queryClient.invalidateQueries({ queryKey: ["traceability-actor-detail"] }),
+        queryClient.invalidateQueries({ queryKey: ["traceability-origin-recommendations"] }),
       ]);
       setEditingOrigin(null);
     },
@@ -301,6 +312,14 @@ export default function Traceability() {
                                   <option value="">{subdistrictOptions.isLoading ? "Memuat pilihan SCDF…" : "Pilih Sub-district SCDF"}</option>
                                   {(subdistrictOptions.data?.options ?? []).map((option: any) => <option key={option.value} value={option.value}>{option.label}</option>)}
                                 </select>
+                                <div className="rounded-sm border border-[#D1D5DB] bg-[#F8FAFC] p-2">
+                                  <p className="text-[10px] font-semibold text-[#344054]">Rekomendasi dari intake tahun sebelumnya{historicalRecommendations.data?.history_through ? ` (s.d. ${historicalRecommendations.data.history_through})` : ""}</p>
+                                  {historicalRecommendations.isLoading && <p className="mt-1 text-[10px] text-[#667085]">Menghitung pola historis…</p>}
+                                  {(historicalRecommendations.data?.recommendations ?? []).slice(0, 3).map((recommendation: any) => <div key={recommendation.sub_district_norm} className="mt-1 flex items-center justify-between gap-2 text-[10px]"><span><b>{recommendation.sub_district}</b> · Keyakinan historis {fmtAngka(recommendation.confidence_pct, 1)}% · {recommendation.historical_tickets} tiket / {recommendation.historical_years} tahun</span><button className="shrink-0 rounded-sm border border-[#D1D5DB] bg-white px-1.5 py-0.5 font-semibold text-[#344054] hover:bg-[#F2F4F7]" onClick={() => setTargetSubdistrict(recommendation.sub_district_norm)}>Pakai</button></div>)}
+                                  {historicalRecommendations.error && <p className="mt-1 text-[10px] text-[#B42318]">Gagal memuat rekomendasi historis: {(historicalRecommendations.error as Error).message}</p>}
+                                  {!historicalRecommendations.isLoading && !historicalRecommendations.error && !(historicalRecommendations.data?.recommendations?.length) && <p className="mt-1 text-[10px] text-[#667085]">Belum ada lokasi cocok dari intake tahun sebelumnya untuk supplier, Regency, dan District ini.</p>}
+                                  <p className="mt-1 text-[9px] leading-relaxed text-[#667085]">Persentase adalah porsi volume Dry historis pada supplier dan Regency/District yang sama, bukan probabilitas bahwa lokasi sekarang pasti benar. Mohon verifikasi sebelum menyimpan.</p>
+                                </div>
                                 {!subdistrictOptions.isLoading && !(subdistrictOptions.data?.options?.length) && <p className="text-[10px] text-[#B54708]">Tidak ada pilihan SCDF untuk Regency/District ini. Periksa parent location pada intake.</p>}
                                 <div className="flex flex-wrap gap-1">
                                   <button className="rounded-sm bg-[#1D2434] px-2 py-1 text-[10px] font-semibold text-white disabled:opacity-50" disabled={!targetSubdistrict || simpanKoreksi.isPending} onClick={() => simpanKoreksi.mutate({ origin, target: targetSubdistrict })}>{simpanKoreksi.isPending ? "Menyimpan…" : "Simpan"}</button>
