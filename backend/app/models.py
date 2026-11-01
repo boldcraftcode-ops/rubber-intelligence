@@ -82,6 +82,8 @@ class Vendor(Base):
     alamat: Mapped[str | None] = mapped_column(Text, nullable=True)
     kontak_person: Mapped[str | None] = mapped_column(String(200), nullable=True)
     klasifikasi: Mapped[str | None] = mapped_column(String(30), nullable=True)
+    is_direct_producer: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default="false", nullable=False)
 
 
 class Collector(Base):
@@ -134,11 +136,53 @@ class TiketBaris(Base):
     kabupaten: Mapped[str | None] = mapped_column(String(100), nullable=True)
     kecamatan: Mapped[str | None] = mapped_column(String(100), nullable=True)
     desa: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    # Kunci normalisasi disiapkan saat impor/backfill supaya agregasi wilayah
+    # dapat GROUP BY di database tanpa memproses ribuan baris di browser.
+    kabupaten_norm: Mapped[str | None] = mapped_column(String(120), index=True, nullable=True)
+    kecamatan_norm: Mapped[str | None] = mapped_column(String(120), index=True, nullable=True)
+    desa_norm: Mapped[str | None] = mapped_column(String(120), index=True, nullable=True)
+    asal_getah_valid: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    source_fingerprint: Mapped[str | None] = mapped_column(String(64), index=True, nullable=True)
     bin: Mapped[str | None] = mapped_column(String(50), nullable=True)
     location: Mapped[str | None] = mapped_column(String(50), nullable=True)
     tiket_nol: Mapped[bool] = mapped_column(Boolean, default=False)  # Wet = 0
     peringatan: Mapped[str | None] = mapped_column(Text, nullable=True)
     unggahan_id: Mapped[int | None] = mapped_column(ForeignKey("raw_unggahan.id"), nullable=True)
+
+
+class ReferensiWilayahTrace(Base):
+    """Referensi pasangan kabupaten/kecamatan/desa dari sheet ID_AUX.
+
+    ID_AUX yang disediakan berisi Kabupaten/Kecamatan dan Desa, tetapi tidak
+    berisi Provinsi maupun kode administrasi. Kolom crosswalk Provinsi dan
+    `code` sengaja NULL sampai referensi resmi yang memuatnya tersedia.
+    """
+    __tablename__ = "traceability_wilayah"
+    __table_args__ = (UniqueConstraint(
+        "kabupaten_norm", "kecamatan_norm", "desa_norm",
+        name="uq_traceability_wilayah"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    provinsi_norm: Mapped[str | None] = mapped_column(String(120), index=True, nullable=True)
+    kabupaten_norm: Mapped[str] = mapped_column(String(120), index=True)
+    kecamatan_norm: Mapped[str] = mapped_column(String(120), index=True)
+    desa_norm: Mapped[str] = mapped_column(String(120), index=True)
+    provinsi: Mapped[str | None] = mapped_column(String(120), nullable=True)
+    kabupaten: Mapped[str] = mapped_column(String(120))
+    kecamatan: Mapped[str] = mapped_column(String(120))
+    desa: Mapped[str] = mapped_column(String(120))
+    code: Mapped[str | None] = mapped_column(String(30), nullable=True)
+
+
+class PengaturanTraceability(Base):
+    """Label tambahan pada tabel Traceability (baris tunggal, id=1)."""
+    __tablename__ = "traceability_pengaturan"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, default=1)
+    accounting: Mapped[str] = mapped_column(
+        String(120), default="Paper records (all)", server_default="Paper records (all)")
+    scope: Mapped[str] = mapped_column(
+        String(120), default="Client-specific", server_default="Client-specific")
 
 
 class Pembelian(Base):

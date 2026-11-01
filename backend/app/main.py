@@ -37,7 +37,7 @@ from .auth import KonfigurasiAuth
 from .core.alarm import evaluasi_alarm
 from .core.kualitas import data_terlambat
 from .core.lookup import kurs_pada, sicom_pada
-from .core.skema import pastikan_kolom_baru
+from .core.skema import isi_kunci_traceability, pastikan_kolom_baru
 from .db import buat_engine, buat_session_factory
 from .mart import bangun_mart
 from .models import (Base, Grade, Kurs, MartHarian, Pembelian, RawBaris,
@@ -135,6 +135,7 @@ def buat_app(engine: Engine | None = None) -> FastAPI:
     # Database yang sudah ada tidak ikut berubah lewat create_all: tambahkan
     # kolom baru (mis. profil vendor) tanpa menyentuh data lama.
     pastikan_kolom_baru(engine)
+    isi_kunci_traceability(engine)
     SessionLocal = buat_session_factory(engine)
 
     # Di produksi, halaman dokumentasi otomatis dimatikan.
@@ -193,6 +194,10 @@ def buat_app(engine: Engine | None = None) -> FastAPI:
     # Master Collector (afiliasi vendor + wilayah operasional)
     from .api_collector import pasang_router_collector
     pasang_router_collector(app, ambil_session)
+
+    # Traceability (agregasi server-side + referensi ID_AUX)
+    from .api_traceability import pasang_router_traceability
+    pasang_router_traceability(app, ambil_session)
 
     # Rute modul Database (info, kosongkan, ekspor, impor)
     from .api_database import pasang_router_database

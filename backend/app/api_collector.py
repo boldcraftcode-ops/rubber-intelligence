@@ -16,7 +16,8 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from .core.alarm import catat_audit
-from .models import Collector, Vendor
+from .core.traceability import normalisasi_kabupaten, normalisasi_teks_wilayah
+from .models import Collector, ReferensiWilayahTrace, Vendor
 
 SHEET = "Master_Collector"
 KOLOM = ["Kode_Kolektor", "Nama_Kolektor", "NIK", "No_HP", "Afiliasi_Vendor",
@@ -97,6 +98,63 @@ def _periksa_nik(session: Session, nik: str | None, kode: str) -> str | None:
     return nik
 
 
+def _periksa_wilayah(session: Session, provinsi: str | None,
+                     kabupaten_kota: str | None, desa: str | None,
+                     lokasi_lama: tuple[str | None, str | None, str | None] | None = None) -> None:
+    """Batasi lokasi baru ke referensi ID_AUX.
+
+    Baris lama yang seluruh lokasinya tidak berubah boleh tetap disunting pada
+    kolom lain. ID_AUX saat ini tidak memiliki data provinsi; nilai provinsi
+    baru ditolak sampai mapping resmi tersedia.
+    """
+    from .api_traceability import muat_referensi_bawaan
+    muat_referensi_bawaan(session)
+    provinsi = _bersih(provinsi)
+    kabupaten_kota = _bersih(kabupaten_kota)
+    desa = _bersih(desa)
+    lokasi_baru = (provinsi, kabupaten_kota, desa)
+    if lokasi_lama and lokasi_baru == lokasi_lama:
+        return
+
+    p_norm = normalisasi_teks_wilayah(provinsi)
+    k_norm = normalisasi_kabupaten(kabupaten_kota)
+    d_norm = normalisasi_teks_wilayah(desa)
+
+    if p_norm:
+        resmi = session.scalar(select(ReferensiWilayahTrace.id).where(
+            ReferensiWilayahTrace.provinsi_norm == p_norm).limit(1))
+        prov_lama = normalisasi_teks_wilayah(lokasi_lama[0]) if lokasi_lama else ""
+        if not resmi and p_norm != prov_lama:
+            raise HTTPException(422,
+                "Provinsi tidak dapat diverifikasi: ID_AUX.xlsx tidak menyediakan "
+                "kolom Provinsi. Kosongkan sementara atau tambahkan crosswalk "
+                "Provinsi resmi yang terhubung ke ID_AUX.")
+
+    if k_norm:
+        kondisi = [ReferensiWilayahTrace.kabupaten_norm == k_norm]
+        if p_norm and session.scalar(select(ReferensiWilayahTrace.id).where(
+                ReferensiWilayahTrace.provinsi_norm == p_norm).limit(1)):
+            kondisi.append(ReferensiWilayahTrace.provinsi_norm == p_norm)
+        if not session.scalar(select(ReferensiWilayahTrace.id).where(*kondisi).limit(1)):
+            raise HTTPException(422,
+                f"Kabupaten/Kota '{kabupaten_kota}' tidak ditemukan pada ID_AUX.")
+
+    if d_norm:
+        if not k_norm:
+            raise HTTPException(422,
+                "Pilih Kabupaten/Kota dari ID_AUX sebelum memilih Desa.")
+        kondisi_desa = [ReferensiWilayahTrace.kabupaten_norm == k_norm,
+                         ReferensiWilayahTrace.desa_norm == d_norm]
+        if p_norm and session.scalar(select(ReferensiWilayahTrace.id).where(
+                ReferensiWilayahTrace.provinsi_norm == p_norm).limit(1)):
+            kondisi_desa.append(ReferensiWilayahTrace.provinsi_norm == p_norm)
+        if not session.scalar(select(ReferensiWilayahTrace.id).where(
+                *kondisi_desa).limit(1)):
+            raise HTTPException(422,
+                f"Desa '{desa}' tidak ditemukan pada ID_AUX untuk Kabupaten/Kota "
+                f"'{kabupaten_kota}'.")
+
+
 def _baris(session: Session, c: Collector) -> dict:
     vendor = session.get(Vendor, c.kode_vendor)
     return {
@@ -111,6 +169,62 @@ def _baris(session: Session, c: Collector) -> dict:
 def pasang_router_collector(app, ambil_session):
     router = APIRouter(prefix="/api")
     dep = Depends(ambil_session)
+
+    @router.get("/collector/wilayah")
+    def pilihan_wilayah(provinsi: str | None = None,
+                        kabupaten_kota: str | None = None,
+                        session: Session = dep):
+        """Pilihan dropdown resmi yang benar-benar tersedia pada ID_AUX.
+
+        Provinsi hanya akan ditampilkan jika ada kolom/mapping provinsi pada
+        referensi resmi. ID_AUX saat ini tidak memuatnya; data intake tidak
+        dipakai sebagai pengganti referensi resmi.
+        """
+        from .api_traceability import muat_referensi_bawaan
+
+        muat_referensi_bawaan(session)
+        p_norm = normalisasi_teks_wilayah(provinsi)
+        province_query = select(ReferensiWilayahTrace.provinsi_norm,
+                                func.min(ReferensiWilayahTrace.provinsi).label("nama"))\
+            .where(ReferensiWilayahTrace.provinsi_norm.is_not(None))\
+            .group_by(ReferensiWilayahTrace.provinsi_norm)\
+            .order_by(ReferensiWilayahTrace.provinsi_norm)
+        provinces = [{"value": nama, "label": nama}
+                     for _, nama in session.execute(province_query) if nama]
+
+        kabupaten_query = select(
+            ReferensiWilayahTrace.kabupaten_norm,
+            func.min(ReferensiWilayahTrace.kabupaten).label("nama"))
+        province_in_reference = bool(p_norm and session.scalar(
+            select(ReferensiWilayahTrace.id).where(
+                ReferensiWilayahTrace.provinsi_norm == p_norm).limit(1)))
+        if province_in_reference:
+            kabupaten_query = kabupaten_query.where(
+                ReferensiWilayahTrace.provinsi_norm == p_norm)
+        kabupaten_rows = session.execute(
+            kabupaten_query.group_by(ReferensiWilayahTrace.kabupaten_norm)
+            .order_by(ReferensiWilayahTrace.kabupaten_norm)).all()
+        kabupaten_options = [{"value": nama, "label": nama}
+                             for _, nama in kabupaten_rows if nama]
+
+        desa_options: list[dict[str, str]] = []
+        k_norm = normalisasi_kabupaten(kabupaten_kota)
+        if k_norm:
+            desa_rows = session.execute(
+                select(ReferensiWilayahTrace.desa_norm,
+                       func.min(ReferensiWilayahTrace.desa).label("nama"))
+                .where(ReferensiWilayahTrace.kabupaten_norm == k_norm)
+                .group_by(ReferensiWilayahTrace.desa_norm)
+                .order_by(ReferensiWilayahTrace.desa_norm)
+            ).all()
+            desa_options = [{"value": nama, "label": nama} for _, nama in desa_rows]
+
+        return {
+            "provinsi": provinces,
+            "kabupaten_kota": kabupaten_options,
+            "desa": desa_options,
+            "catatan": "ID_AUX menyediakan Kabupaten/Kota dan Desa, tetapi tidak menyediakan Provinsi. Opsi Provinsi tidak diambil dari intake agar tetap sesuai sumber resmi.",
+        }
 
     @router.get("/collector")
     def daftar(q: str | None = None, kode_vendor: str | None = None,
@@ -141,6 +255,7 @@ def pasang_router_collector(app, ambil_session):
             raise HTTPException(409, f"Kode kolektor '{kode}' sudah terdaftar.")
         kode_vendor, _ = _periksa_vendor(session, data.kode_vendor)
         nik = _periksa_nik(session, data.nik, kode)
+        _periksa_wilayah(session, data.provinsi, data.kabupaten_kota, data.desa)
         nama = _bersih(data.nama)
         if not nama:
             raise HTTPException(422, "Nama kolektor wajib diisi.")
@@ -163,6 +278,8 @@ def pasang_router_collector(app, ambil_session):
             raise HTTPException(404, f"Kolektor '{kode}' tidak ditemukan.")
         kode_vendor, _ = _periksa_vendor(session, data.kode_vendor)
         nik = _periksa_nik(session, data.nik, kode)
+        _periksa_wilayah(session, data.provinsi, data.kabupaten_kota, data.desa,
+                         (c.provinsi, c.kabupaten_kota, c.desa))
         lama = {"nama": c.nama, "nik": c.nik, "no_hp": c.no_hp,
                 "kode_vendor": c.kode_vendor, "provinsi": c.provinsi,
                 "kabupaten_kota": c.kabupaten_kota, "desa": c.desa}
@@ -206,9 +323,15 @@ def pasang_router_collector(app, ambil_session):
                        c.provinsi, c.kabupaten_kota, c.desa])
         if not kolektor:
             vendor = session.scalar(select(Vendor).order_by(Vendor.kode))
+            from .api_traceability import muat_referensi_bawaan
+            muat_referensi_bawaan(session)
+            wilayah_contoh = session.scalar(select(ReferensiWilayahTrace).order_by(
+                ReferensiWilayahTrace.kabupaten_norm,
+                ReferensiWilayahTrace.desa_norm).limit(1))
             ws.append(["K001", "Budi Contoh", "3201010101900001", "081200000001",
-                       vendor.kode if vendor else "V001", "Sumatera Utara",
-                       "Kota Medan", "Medan Sunggal"])
+                       vendor.kode if vendor else "V001", None,
+                       wilayah_contoh.kabupaten if wilayah_contoh else None,
+                       wilayah_contoh.desa if wilayah_contoh else None])
         for kolom, lebar in zip("ABCDEFGH", (18, 32, 22, 20, 22, 24, 28, 28)):
             ws.column_dimensions[kolom].width = lebar
         ws.freeze_panes = "A2"
@@ -219,10 +342,11 @@ def pasang_router_collector(app, ambil_session):
             ["2. Kode_Kolektor, Nama_Kolektor, dan Afiliasi_Vendor wajib."],
             ["3. Afiliasi_Vendor harus memakai Kode_Vendor yang ada di Master Vendor."],
             ["4. NIK harus 16 angka. Atur format sel NIK sebagai Teks sebelum mengisi."],
-            ["5. Wilayah diisi bertingkat: Provinsi, Kabupaten/Kota, lalu Desa."],
-            ["6. Kode kolektor yang sudah ada akan diperbarui, bukan digandakan."],
-            ["7. Sel opsional kosong saat impor tidak menghapus data yang sudah ada."],
-            ["8. Baris yang salah dilaporkan; baris lain yang benar tetap diproses."],
+            ["5. Kabupaten/Kota dan Desa harus sesuai dengan ID_AUX.xlsx; pilih nilainya pada form aplikasi."],
+            ["6. ID_AUX.xlsx yang tersedia tidak memuat Provinsi; kolom Provinsi dibiarkan kosong sampai crosswalk resmi tersedia."],
+            ["7. Kode kolektor yang sudah ada akan diperbarui, bukan digandakan."],
+            ["8. Sel opsional kosong saat impor tidak menghapus data yang sudah ada."],
+            ["9. Baris dengan wilayah di luar referensi resmi ditolak; baris lain tetap diproses."],
         ]:
             panduan.append(row)
         panduan.column_dimensions["A"].width = 115
@@ -325,8 +449,20 @@ def pasang_router_collector(app, ambil_session):
                         reason = f"{label} melebihi {limit} karakter."
                         break
             if not reason and nik and session.scalar(select(Collector.kode).where(
-                    Collector.nik == nik, Collector.kode != kode)): 
+                    Collector.nik == nik, Collector.kode != kode)):
                 reason = "NIK tersebut sudah terdaftar pada kolektor lain."
+            existing = session.get(Collector, kode)
+            if not reason:
+                provinsi_baru = _bersih(val(row, "provinsi")) or (existing.provinsi if existing else None)
+                kabupaten_baru = _bersih(val(row, "kabupaten_kota")) or (existing.kabupaten_kota if existing else None)
+                desa_baru = _bersih(val(row, "desa")) or (existing.desa if existing else None)
+                lokasi_lama = ((existing.provinsi, existing.kabupaten_kota, existing.desa)
+                               if existing else None)
+                try:
+                    _periksa_wilayah(session, provinsi_baru, kabupaten_baru,
+                                     desa_baru, lokasi_lama)
+                except HTTPException as e:
+                    reason = str(e.detail)
             if reason:
                 tolak.append({"baris": no, "kode": kode or None, "alasan": reason})
                 continue

@@ -56,6 +56,7 @@ class VendorMasuk(BaseModel):
     alamat: str | None = None
     kontak_person: str | None = None
     klasifikasi: str | None = None
+    is_direct_producer: bool = False
     pengisi: str = "?"
 
 
@@ -67,6 +68,7 @@ class VendorUbah(BaseModel):
     alamat: str | None = None
     kontak_person: str | None = None
     klasifikasi: str | None = None
+    is_direct_producer: bool = False
     pengisi: str = "?"
 
 
@@ -148,6 +150,7 @@ def _baris_vendor(session: Session, v: Vendor) -> dict:
         "status": (v.status or "").strip().lower() or "aktif",
         "alamat": v.alamat, "kontak_person": v.kontak_person,
         "klasifikasi": v.klasifikasi,
+        "is_direct_producer": bool(v.is_direct_producer),
         "klasifikasi_label": label_klasifikasi(v.klasifikasi), **pakai,
     }
 
@@ -234,11 +237,13 @@ def pasang_router_vendor(app, ambil_session):
             alamat=_bersih(data.alamat),
             kontak_person=_bersih(data.kontak_person),
             klasifikasi=_klasifikasi_atau_tolak(data.klasifikasi),
+            is_direct_producer=data.is_direct_producer,
         )
         session.add(v)
         catat_audit(session, data.pengisi, "tambah", "vendor", {
             "kode": kode, "nama_baku": v.nama_baku, "kategori": v.kategori,
-            "status": v.status, "klasifikasi": v.klasifikasi})
+            "status": v.status, "klasifikasi": v.klasifikasi,
+            "is_direct_producer": v.is_direct_producer})
         session.commit()
         return {"status": "tersimpan",
                 "pesan": f"Vendor {kode} — {v.nama_baku} ditambahkan.",
@@ -255,7 +260,8 @@ def pasang_router_vendor(app, ambil_session):
         lama = {"nama_baku": v.nama_baku, "varian_nama": v.varian_nama,
                 "kategori": v.kategori, "status": v.status,
                 "alamat": v.alamat, "kontak_person": v.kontak_person,
-                "klasifikasi": v.klasifikasi}
+                "klasifikasi": v.klasifikasi,
+                "is_direct_producer": v.is_direct_producer}
         v.nama_baku = (data.nama_baku or "").strip() or v.nama_baku
         v.varian_nama = _bersih(data.varian_nama)
         v.kategori = _bersih(data.kategori)
@@ -263,12 +269,14 @@ def pasang_router_vendor(app, ambil_session):
         v.alamat = _bersih(data.alamat)
         v.kontak_person = _bersih(data.kontak_person)
         v.klasifikasi = _klasifikasi_atau_tolak(data.klasifikasi)
+        v.is_direct_producer = data.is_direct_producer
         catat_audit(session, data.pengisi, "ubah", "vendor", {
             "kode": kode, "lama": lama,
             "baru": {"nama_baku": v.nama_baku, "varian_nama": v.varian_nama,
                      "kategori": v.kategori, "status": v.status,
                      "alamat": v.alamat, "kontak_person": v.kontak_person,
-                     "klasifikasi": v.klasifikasi}})
+                     "klasifikasi": v.klasifikasi,
+                     "is_direct_producer": v.is_direct_producer}})
         session.commit()
         return {"status": "tersimpan",
                 "pesan": f"Vendor {kode} diperbarui. Riwayat tiket/pembelian "

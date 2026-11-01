@@ -589,10 +589,14 @@ def _impor_master_data_impl(path: str, session: Session, pengunggah: str = "?",
     _workbook.append(wb)
     total = 0
     sebelum = len(hasil.peringatan)
+    fingerprint_global: set[str] = set(session.scalars(
+        select(TiketBaris.source_fingerprint).where(
+            TiketBaris.source_fingerprint.is_not(None))))
     for nama in wb.sheetnames:
         if kemajuan is not None:
             kemajuan(f"Memeriksa sheet {nama}")
-        total += impor_sheet_tiket(wb[nama], session, unggahan.id, hasil.peringatan)
+        total += impor_sheet_tiket(wb[nama], session, unggahan.id, hasil.peringatan,
+                                   fingerprint_global=fingerprint_global)
     hasil.jumlah["tiket_baris"] = total
 
     # Peringatan tiket dicatat sebagai rincian supaya bisa diunduh sebagai

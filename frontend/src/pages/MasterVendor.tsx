@@ -11,7 +11,7 @@ const pengisi = () => {
 
 const KOSONG = {
   kode: "", nama_baku: "", varian_nama: "", kategori: "", status: "aktif",
-  alamat: "", kontak_person: "", klasifikasi: "",
+  alamat: "", kontak_person: "", klasifikasi: "", is_direct_producer: false,
 };
 
 /* Klasifikasi pemasok: tiga pilihan yang diminta pemilik. Kode dipakai API,
@@ -68,7 +68,8 @@ export function KartuDaftarVendor() {
           kategori: form.kategori || null, status: form.status,
           alamat: form.alamat || null,
           kontak_person: form.kontak_person || null,
-          klasifikasi: form.klasifikasi || null, pengisi: pengisi(),
+          klasifikasi: form.klasifikasi || null,
+          is_direct_producer: Boolean(form.is_direct_producer), pengisi: pengisi(),
         })
       : kirimMetode("/api/vendor", "POST", { ...form, pengisi: pengisi() }),
     onSuccess: (d) => {
@@ -93,7 +94,8 @@ export function KartuDaftarVendor() {
     setForm({ kode: b.kode, nama_baku: b.nama_baku, varian_nama: b.varian_nama ?? "",
               kategori: b.kategori ?? "", status: b.status ?? "aktif",
               alamat: b.alamat ?? "", kontak_person: b.kontak_person ?? "",
-              klasifikasi: b.klasifikasi ?? "" });
+              klasifikasi: b.klasifikasi ?? "",
+              is_direct_producer: Boolean(b.is_direct_producer) });
     setInfo(null);
   };
 
@@ -163,7 +165,7 @@ export function KartuDaftarVendor() {
             <thead className="sticky top-0 bg-white">
               <tr className="text-left text-[#64676C] border-b">
                 <th className="py-1">Kode</th><th>Nama baku</th><th>Klasifikasi</th>
-                <th>Kontak</th><th>Alamat</th><th>Kategori</th><th>Status</th>
+                <th>Produsen langsung*</th><th>Kontak</th><th>Alamat</th><th>Kategori</th><th>Status</th>
                 <th className="text-right">Tiket</th>
                 <th className="text-right">Ton kering</th>
                 <th>Intake terakhir</th><th></th>
@@ -190,6 +192,11 @@ export function KartuDaftarVendor() {
                     ) : (
                       <span className="text-[10px] text-[#9AA0A6]">belum diisi</span>
                     )}
+                  </td>
+                  <td>
+                    <span className={`rounded-sm border px-1.5 py-0.5 text-[10px] whitespace-nowrap ${b.is_direct_producer ? "bg-[#ECFDF5] text-[#166534] border-[#A7F3D0]" : "bg-[#F3F4F6] text-[#64676C] border-[#E5E7EB]"}`}>
+                      {b.is_direct_producer ? "Ya" : "Tidak"}
+                    </span>
                   </td>
                   <td className="max-w-32 truncate text-[#64676C]" title={b.kontak_person ?? ""}>
                     {b.kontak_person ?? "–"}
@@ -232,7 +239,7 @@ export function KartuDaftarVendor() {
                 </tr>
               ))}
               {q.data?.baris.length === 0 && (
-                <tr><td colSpan={10} className="py-3 text-[#64676C]">
+                <tr><td colSpan={12} className="py-3 text-[#64676C]">
                   Tidak ada vendor yang cocok. Kosongkan pencarian, atau tambahkan
                   vendor baru di bawah.
                 </td></tr>
@@ -315,6 +322,12 @@ export function KartuDaftarVendor() {
                     value={form.alamat}
                     onChange={(e) => setForm({ ...form, alamat: e.target.value })} />
         </div>
+        <label className="mt-2 inline-flex items-start gap-2 text-xs text-[#374151]">
+          <input type="checkbox" className="mt-0.5"
+                 checked={Boolean(form.is_direct_producer)}
+                 onChange={(e) => setForm({ ...form, is_direct_producer: e.target.checked })} />
+          <span><b>Produsen langsung</b> <span className="text-[#64676C]">(penanda sementara; default tidak)</span></span>
+        </label>
         {ubahKode && (
           <button className={`${kelasTombolKecil} mt-2`}
                   onClick={() => { setUbahKode(null); setForm({ ...KOSONG }); setInfo(null); }}>
