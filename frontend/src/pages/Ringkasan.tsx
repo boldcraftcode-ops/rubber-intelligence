@@ -4,7 +4,7 @@ import {
   Bar, BarChart, CartesianGrid, Cell, ComposedChart, LabelList, Legend, Line,
   LineChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from "recharts";
-import { Kartu, KepalaPanel, NAMA_BULAN, Panel5W1H, ambilJson, fmtAngka, fmtTanggal, kelasTombolAnalisa, kelasTombolKecil, pesanGalat, urlApi } from "../bersama";
+import { Kartu, KartuMuatSaatDiminta, KepalaPanel, NAMA_BULAN, Panel5W1H, ambilJson, fmtAngka, fmtTanggal, kelasTombolAnalisa, kelasTombolKecil, pesanGalat, urlApi } from "../bersama";
 import { useBahasa } from "../i18n";
 
 /* Palet korporat (navy / merah / abu) untuk seri grafik. */
@@ -134,12 +134,102 @@ function Telusur({ tahun, bulan, tutup }: { tahun: number; bulan: number; tutup:
   );
 }
 
+/* ---------- panel RCA 5 Why: angka dihitung server dari periode kartu ---------- */
+function PanelRCA({ url, tutup }: { url: string; tutup: () => void }) {
+  const q = useQuery({ queryKey: ["rca-rm-stock-intake-pricing", url], queryFn: () => ambilJson(url) });
+  const fmt = (v: number | null | undefined, d = 2) => v == null ? "—" : fmtAngka(v, d);
+  const delta = (v: number | null | undefined, d = 2) =>
+    v == null ? "—" : `${v > 0 ? "+" : ""}${fmtAngka(v, d)}`;
+  const bagian = (judul: string, isi: ReactNode) => (
+    <section className="rounded-sm border border-[#E4E5E8] bg-[#F8F8F8] p-3">
+      <h4 className="mb-2 text-sm font-semibold text-[#FF1313]">{judul}</h4>{isi}
+    </section>
+  );
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-3" onClick={tutup}>
+      <div className="max-h-[92vh] w-full max-w-6xl overflow-y-auto rounded-sm border border-[#E4E5E8] bg-white p-5 shadow-xl"
+           onClick={(e) => e.stopPropagation()}>
+        <div className="mb-4 flex items-start justify-between gap-3">
+          <div>
+            <h3 className="text-lg font-semibold text-[#1D2434]">Analisa Akar Masalah — RM Stock, Intake vs Pricing</h3>
+            <p className="text-sm text-[#64676C]">Berbasis angka pada periode yang tampil. FAKTA dipisahkan dari HIPOTESIS.</p>
+          </div>
+          <button className={kelasTombolKecil} onClick={tutup}>Tutup</button>
+        </div>
+        {q.isLoading && <p className="py-6 text-sm text-[#64676C]">Menghitung analisa dari data periode…</p>}
+        {q.error && <p className="rounded-sm border border-[#FECACA] bg-[#FEF2F2] p-3 text-sm text-[#1D2434]">{pesanGalat(q.error)}</p>}
+        {q.data && !q.data.ada_data && <p className="rounded-sm border border-[#E4E5E8] bg-[#F8F8F8] p-3 text-sm text-[#1D2434]">{q.data.kesimpulan}</p>}
+        {q.data?.ada_data && (
+          <div className="grid gap-3">
+            {bagian("1. Kesimpulan", <p className="text-sm leading-relaxed text-[#1D2434]">{q.data.kesimpulan}</p>)}
+            {bagian("2. Temuan data (FAKTA)", <ul className="grid list-disc gap-1 pl-5 text-sm leading-relaxed text-[#1D2434]">
+              {q.data.temuan_data.map((x: string, i: number) => <li key={i}>{x}</li>)}
+            </ul>)}
+            {bagian("3. Anomali", <ul className="grid gap-2">
+              {q.data.anomali.map((x: any, i: number) => (
+                <li key={i} className="border-l-2 border-[#FF1313] pl-3 text-sm text-[#1D2434]">
+                  <b>{x.bulan} · {x.jenis}:</b> {x.fakta}
+                </li>
+              ))}
+            </ul>)}
+            {bagian("4. Root cause — 5 Why", <ol className="grid gap-2">
+              {q.data.root_cause.map((x: any) => (
+                <li key={x.level} className="rounded-sm border border-[#E4E5E8] bg-white p-3">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="font-semibold text-[#1D2434]">Why {x.level}/5 — {x.pertanyaan}</span>
+                    <span className={`rounded-sm px-2 py-0.5 text-[11px] font-semibold ${x.jenis === "FAKTA" ? "bg-[#E9EDF3] text-[#1D2434]" : "bg-[#FFF1F1] text-[#1D2434]"}`}>{x.jenis}</span>
+                    {x.jenis === "HIPOTESIS" && <span className="text-xs text-[#64676C]">Keyakinan: {x.keyakinan}</span>}
+                  </div>
+                  <p className="mt-1 text-sm leading-relaxed text-[#1D2434]">{x.jawaban}</p>
+                  {x.jenis === "HIPOTESIS" && <p className="mt-1 text-xs text-[#64676C]"><b>Data pembanding:</b> {x.data_dibutuhkan}</p>}
+                </li>
+              ))}
+            </ol>)}
+            {bagian("5. Rekomendasi", <ol className="grid list-decimal gap-2 pl-5">
+              {q.data.rekomendasi.map((x: any, i: number) => (
+                <li key={i} className="text-sm leading-relaxed text-[#1D2434]"><b>{x.aksi}</b><br />Target: {x.target_angka}<br /><span className="text-[#64676C]">Waktu evaluasi: {x.evaluasi}</span></li>
+              ))}
+            </ol>)}
+            {bagian("6. Keterbatasan & data tambahan", <ul className="grid list-disc gap-1 pl-5 text-sm leading-relaxed text-[#1D2434]">
+              {q.data.keterbatasan.map((x: string, i: number) => <li key={i}>{x}</li>)}
+              <li>Untuk menguji akar sebab: tambahkan data harga pesaing/pengepul, pemakaian dan produksi bulanan, cuaca, stok terverifikasi, serta tiket per pemasok/wilayah.</li>
+            </ul>)}
+            {bagian("Perhitungan bulanan (MoM)", <>
+              <p className="mb-2 text-xs text-[#64676C]">Δ MoM ditampilkan hanya untuk bulan kalender berurutan. Estimasi nilai margin = intake ton × margin US¢/kg × 10; bukan laba bersih.</p>
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[1500px] border-collapse text-xs">
+                  <thead><tr className="border-b border-[#E4E5E8] text-left text-[#64676C]">
+                    {["Bulan", "Intake ton", "Δ Intake ton", "SICOM", "Δ SICOM", "OP Price", "Δ OP Price", "Margin", "Δ Margin", "Estimasi margin US$", "RM Stock ton", "Status stok", "Gap safety ton", "Cover hari", "Sumber intake"].map(h => <th key={h} className="px-2 py-2">{h}</th>)}
+                  </tr></thead>
+                  <tbody>{q.data.per_bulan.map((r: any) => (
+                    <tr key={`${r.tahun}-${r.bulan}`} className="border-b border-[#E4E5E8] text-[#1D2434]">
+                      <td className="px-2 py-2 font-semibold">{r.label}</td>
+                      <td className="px-2 text-right">{fmt(r.intake_ton, 3)}</td><td className="px-2 text-right">{r.moM_tersedia ? delta(r.delta_intake_ton, 3) : "—"}{r.moM_tersedia && r.delta_intake_ton_pct != null ? ` (${delta(r.delta_intake_ton_pct)}%)` : ""}</td>
+                      <td className="px-2 text-right">{fmt(r.sicom, 3)}</td><td className="px-2 text-right">{r.moM_tersedia ? delta(r.delta_sicom, 3) : "—"}</td>
+                      <td className="px-2 text-right">{fmt(r.op_price, 3)}</td><td className="px-2 text-right">{r.moM_tersedia ? delta(r.delta_op_price, 3) : "—"}</td>
+                      <td className="px-2 text-right">{fmt(r.op_margin, 3)}</td><td className="px-2 text-right">{r.moM_tersedia ? delta(r.delta_op_margin, 3) : "—"}</td>
+                      <td className="px-2 text-right">{fmt(r.estimasi_total_margin_usd, 2)}</td><td className="px-2 text-right">{fmt(r.rm_stock_ton, 3)}</td><td className="px-2">{r.rm_stock_ton == null ? "—" : r.stok_sebagian ? "Sebagian" : "Akhir bulan"}</td>
+                      <td className="px-2 text-right">{fmt(r.selisih_stok_safety_ton, 3)}</td><td className="px-2 text-right">{fmt(r.days_of_cover, 2)}</td>
+                      <td className="px-2">{r.sumber_intake || "—"}{r.keandalan_intake.startsWith("lebih rendah") ? " · keandalan lebih rendah" : ""}</td>
+                    </tr>
+                  ))}</tbody>
+                </table>
+              </div>
+            </>)}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 /* ---------- elemen OP Margin: RM Stock-Intake vs Pricing (seperti Excel) ---------- */
 function KartuElemen() {
   const { t } = useBahasa();
   const [dari, setDari] = useState("");
   const [sampai, setSampai] = useState("");
-  const [panel, setPanel] = useState<null | "5w1h" | "bridge" | "doc">(null);
+  const [tampilkanCatatan, setTampilkanCatatan] = useState(false);
+  const [panel, setPanel] = useState<null | "5w1h" | "bridge" | "doc" | "rca">(null);
   const params = new URLSearchParams();
   if (dari) params.set("dari", dari);
   if (sampai) params.set("sampai", sampai);
@@ -162,6 +252,7 @@ function KartuElemen() {
   const ubahPeriode = (a: string, b: string) => { setPeriA(a); setPeriB(b); };
   const urlBridge = `/api/margin-bridge${qsPeriode}`;
   const urlDoc = `/api/days-of-cover${qsPeriode}`;
+  const urlRca = `/api/ringkasan-elemen/rca${qsPeriode}`;
 
   const q = useQuery({
     queryKey: ["ringkasan-elemen", url],
@@ -199,6 +290,9 @@ function KartuElemen() {
             <button className={kelasTombolAnalisa} onClick={() => setPanel("5w1h")}>
               ✨ 5W1H
             </button>
+            <button className={kelasTombolAnalisa} onClick={() => setPanel("rca")}>
+              🔎 RCA · 5 Why
+            </button>
             <button className={kelasTombolAnalisa} onClick={() => setPanel("bridge")}>
               🌉 {t("Margin Bridge")}
             </button>
@@ -214,6 +308,7 @@ function KartuElemen() {
           <Panel5W1H judul={`${t("Analisa grafik")} — 5W1H`}
                      url={urlAnalisa + qsPeriode} tutup={() => setPanel(null)} />
         )}
+        {panel === "rca" && <PanelRCA url={urlRca} tutup={() => setPanel(null)} />}
         {panel === "bridge" && (
           <PanelMarginBridge url={urlBridge} tutup={() => setPanel(null)}
                              awal={awalAnalisa} akhir={akhirAnalisa}
@@ -288,11 +383,18 @@ function KartuElemen() {
             </tbody>
           </table>
         </div>
-        {q.data?.catatan.map((c: string, i: number) => (
-          <p key={i} className="mt-2 rounded-sm bg-[#FFFBEB] border border-[#FDE68A] px-3 py-2 text-xs text-[#B45309]">
-            {c}
-          </p>
-        ))}
+        {!!q.data?.catatan?.length && <div className="mt-2">
+          <button type="button" aria-expanded={tampilkanCatatan}
+            className="rounded-sm border border-[#E4E5E8] bg-[#F8F8F8] px-3 py-1.5 text-xs font-medium text-[#475467] hover:bg-[#F1F2F4]"
+            onClick={() => setTampilkanCatatan((shown) => !shown)}>
+            {tampilkanCatatan ? "Sembunyikan keterangan" : `Tampilkan keterangan (${q.data.catatan.length})`}
+          </button>
+          {tampilkanCatatan && q.data.catatan.map((c: string, i: number) => (
+            <p key={i} className="mt-2 rounded-sm bg-[#FFFBEB] border border-[#FDE68A] px-3 py-2 text-xs text-[#B45309]">
+              {c}
+            </p>
+          ))}
+        </div>}
       </>
     } />
   );
@@ -535,14 +637,10 @@ function KartuGrafikMargin() {
                     const p: any = payload?.[0]?.payload;
                     if (!p) return null;
                     const st = WARNA_STATUS[p.status] ?? WARNA_STATUS["tanpa target"];
-                    const lain = pakaiRp
-                      ? (p.kurs ? `≈ ${fmtAngka(p.marginUsc, 2)} US¢/kg` : null)
-                      : (p.kurs ? `≈ ${fmtAngka(p.marginUsc * p.kurs / 100, 0)} Rp/kg` : null);
                     return (
                       <div className="rounded-sm bg-white border border-[#E4E5E8] p-2 text-xs shadow">
                         <b>{label}</b><br />
-                        {t("Margin")}: <b>{fmtNilai(p.margin ?? 0)}</b> {satuan}
-                        {lain && <span className="text-[#64676C]"> ({lain})</span>}<br />
+                        {t("Margin")}: <b>{fmtNilai(p.margin ?? 0)}</b> {satuan}<br />
                         {t("Target")}: {p.target === null ? "–" : `${fmtNilai(p.target)} ${satuan}`}<br />
                         {t("Selisih")}: <b className={st.teks}>
                           {p.delta === null ? "–" : `${p.delta >= 0 ? "+" : "−"}${fmtNilai(Math.abs(p.delta))}`}
@@ -1227,19 +1325,23 @@ function BlokAngka({ label, angka, satuan, bawah, arah, nada }: {
   satuan?: string;
   bawah: ReactNode;
   arah?: "naik" | "turun" | null;
-  nada?: "navy" | "merah";
+  nada?: "baik" | "buruk" | "netral";
 }) {
+  const warna = nada === "buruk" ? "text-[#FF1313]" : "text-[#1D2434]";
+  const warnaKotak = nada === "baik" ? "border-l-[#16A34A] bg-[#F0FDF4]"
+    : nada === "buruk" ? "border-l-[#DC2626] bg-[#FEF2F2]" : "border-l-[#EDEFF2] bg-white";
   return (
-    <div className="border-l border-[#EDEFF2] px-4 py-3 first:border-l-0 first:pl-0">
+    <div className={`border-l px-4 py-3 first:border-l-0 first:pl-0 ${warnaKotak}`}>
       <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[#64676C]">
         {label}
       </p>
-      <p className={`mt-1 flex items-baseline gap-1 font-mono text-2xl font-bold ${
-        nada === "merah" ? "text-[#FF1313]" : "text-[#1D2434]"}`}>
+      <p className={`mt-1 flex items-baseline gap-1 font-mono text-2xl font-bold ${warna}`}>
         {angka}
         {satuan && <span className="text-xs font-normal text-[#64676C]">{satuan}</span>}
       </p>
-      <p className="mt-0.5 flex items-start gap-1 text-[11px] leading-snug text-[#64676C]">
+      <p className={`mt-0.5 flex items-start gap-1 text-[11px] leading-snug ${
+        nada === "baik" ? "text-[#15803D]" : nada === "buruk" ? "text-[#DC2626]" : "text-[#64676C]"}`}>
+        {nada && nada !== "netral" && <span aria-hidden className="mt-[1px] shrink-0">●</span>}
         {arah && (
           <span aria-hidden className="mt-[1px] shrink-0">
             {arah === "naik" ? "▲" : "▼"}
@@ -1286,57 +1388,75 @@ function StripAngkaKunci({ thn, data, ke }: {
   if (!kini) return null;
 
   const label = `${NAMA_BULAN[kini.bulan]}-${String(thn ?? "").slice(2)}`;
-  const diAtasTarget = (kini.vs_target ?? 0) >= 0;
   const selisih = kini.op_margin != null && lalu?.op_margin != null
     ? kini.op_margin - lalu.op_margin : null;
-  const diBawahSafety = docKini?.status === "di bawah safety";
+  const intakeChange = kini.ton != null && lalu?.ton != null ? kini.ton - lalu.ton : null;
+  const statusTarget = kini.target == null ? "netral" : (kini.vs_target ?? 0) >= 0 ? "baik" : "buruk";
+  const statusMargin = selisih === null || selisih === 0 ? "netral" : selisih > 0 ? "baik" : "buruk";
+  const statusSicom = dSicom === null || dSicom === 0 ? "netral" : dSicom > 0 ? "baik" : "buruk";
+  const statusDoc = docKini?.status === "aman" ? "baik"
+    : docKini?.status === "di bawah safety" ? "buruk" : "netral";
+  const statusIntake = intakeChange === null || intakeChange === 0 ? "netral"
+    : intakeChange > 0 ? "baik" : "buruk";
 
   return (
     <section className="rounded-sm border border-[#E4E5E8] bg-white shadow-[0_1px_3px_rgba(29,36,52,0.08)]">
-      <div className="grid gap-0 px-5 py-1 sm:grid-cols-2 xl:grid-cols-5">
+      <div className="overflow-x-auto">
+        <div className="grid min-w-[1100px] grid-cols-5 gap-0 px-5 py-1">
         <BlokAngka
           label={`${t("OP Margin")} · ${label}`}
           angka={fmtAngka(kini.op_margin, 2)}
           satuan="US¢/kg"
-          arah={diAtasTarget ? "naik" : "turun"}
-          nada={diAtasTarget ? "navy" : "merah"}
+          arah={statusTarget === "netral" ? null : statusTarget === "baik" ? "naik" : "turun"}
+          nada={statusTarget}
           bawah={kini.target != null
-            ? `${diAtasTarget ? t("di atas") : t("di bawah")} ${t("target")} ` +
-              `${fmtAngka(Math.abs(kini.vs_target ?? 0), 2)} (${t("target")} ` +
-              `${fmtAngka(kini.target, 1)})`
-            : t("target belum diisi")}
+            ? `${statusTarget === "baik" ? "Kabar baik" : "Kabar buruk"}: margin ${statusTarget === "baik" ? "di atas" : "di bawah"} target ${fmtAngka(Math.abs(kini.vs_target ?? 0), 2)} US¢/kg (target ${fmtAngka(kini.target, 2)}).`
+            : "Belum ada target; status kinerja belum dapat dinilai."}
         />
         <BlokAngka
           label={`${t("Perubahan vs")} ${lalu ? `${NAMA_BULAN[lalu.bulan]}-${String(thn ?? "").slice(2)}` : "–"}`}
           angka={tandaAngka(selisih)}
           satuan="US¢/kg"
-          arah={selisih === null ? null : selisih >= 0 ? "naik" : "turun"}
-          nada={selisih !== null && selisih < 0 ? "merah" : "navy"}
-          bawah={dSicom !== null || dOp !== null
-            ? `${t("SICOM")} ${tandaAngka(dSicom)} · ${t("OP Price")} ${tandaAngka(dOp)}`
-            : t("rincian penyebab belum tersedia")}
+          arah={statusMargin === "netral" ? null : statusMargin === "baik" ? "naik" : "turun"}
+          nada={statusMargin}
+          bawah={selisih === null ? "Belum ada bulan berdata sebelumnya sebagai pembanding."
+            : selisih > 0 ? `Kabar baik: margin naik ${fmtAngka(selisih, 2)} US¢/kg vs bulan berdata sebelumnya.`
+            : selisih < 0 ? `Kabar buruk: margin turun ${fmtAngka(Math.abs(selisih), 2)} US¢/kg vs bulan berdata sebelumnya.`
+            : "Margin stabil dibanding bulan berdata sebelumnya."}
         />
         <BlokAngka
           label={`${t("SICOM")} · ${label}`}
           angka={fmtAngka(kini.sicom, 2)}
           satuan="US¢/kg"
-          bawah={t("harga acuan pasar, di luar kendali")}
+          arah={statusSicom === "netral" ? null : statusSicom === "baik" ? "naik" : "turun"}
+          nada={statusSicom}
+          bawah={dSicom === null ? "Belum ada perubahan historis untuk dibandingkan."
+            : dSicom > 0 ? `Kabar baik: SICOM naik ${fmtAngka(dSicom, 2)}; mendukung margin bila OP Price tidak naik sebanding.`
+            : dSicom < 0 ? `Kabar buruk: SICOM turun ${fmtAngka(Math.abs(dSicom), 2)}; menekan margin bila OP Price tidak turun mengimbangi.`
+            : "SICOM stabil dibanding bulan berdata sebelumnya."}
         />
         <BlokAngka
           label={`Days of Cover · ${docKini?.bulan ?? "–"}`}
           angka={docKini?.doc_hari != null ? fmtAngka(docKini.doc_hari, 1) : "–"}
           satuan={t("hari")}
-          nada={diBawahSafety ? "merah" : "navy"}
+          arah={statusDoc === "netral" ? null : statusDoc === "baik" ? "naik" : "turun"}
+          nada={statusDoc}
           bawah={docKini?.safety_hari != null
-            ? `${t(docKini.status ?? "–")} · ${t("safety")} ${fmtAngka(docKini.safety_hari, 1)} ${t("hari")}`
-            : t("belum bisa dihitung")}
+            ? `${statusDoc === "baik" ? "Kabar baik" : "Kabar buruk"}: cover ${fmtAngka(docKini.doc_hari, 1)} hari; safety ${fmtAngka(docKini.safety_hari, 1)} hari.`
+            : "Belum ada safety atau data yang cukup untuk menilai cover."}
         />
         <BlokAngka
           label={`${t("Intake")} · ${label}`}
-          angka={fmtAngka(kini.ton, 0)}
+          angka={fmtAngka(kini.ton, 2)}
           satuan={t("ton kering")}
-          bawah={`${kini.hari_pembelian ?? "–"} ${t("hari pembelian")}`}
+          arah={statusIntake === "netral" ? null : statusIntake === "baik" ? "naik" : "turun"}
+          nada={statusIntake}
+          bawah={intakeChange === null ? `${kini.hari_pembelian ?? "–"} hari pembelian; belum ada pembanding.`
+            : intakeChange > 0 ? `Kabar baik: volume intake naik ${fmtAngka(intakeChange, 2)} ton dari bulan berdata sebelumnya.`
+            : intakeChange < 0 ? `Kabar buruk: volume intake turun ${fmtAngka(Math.abs(intakeChange), 2)} ton dari bulan berdata sebelumnya.`
+            : "Volume intake sama dengan bulan berdata sebelumnya."}
         />
+        </div>
       </div>
       <p className="border-t border-[#EDEFF2] px-5 py-2 text-[11px] text-[#9AA0A6]">
         {t("Pada blok perubahan, SICOM dan OP Price adalah perubahan harga bulan itu (US¢/kg): SICOM naik menolong margin, OP Price naik menekan margin. Rincian angkanya ada di Margin Bridge pada kartu di bawah.")}
@@ -1455,30 +1575,58 @@ function PanelPerhatian({ ke }: { ke?: (tab: string) => void }) {
 /* ---------- halaman ---------- */
 export default function Ringkasan({ ke }: { ke?: (tab: string) => void }) {
   const { t } = useBahasa();
-  const tahunQ = useQuery({ queryKey: ["tahun"], queryFn: () => ambilJson("/api/tahun") });
+  const [ringkasanDiminta, setRingkasanDiminta] = useState(false);
+  const tahunQ = useQuery({ queryKey: ["tahun"], queryFn: () => ambilJson("/api/tahun"), enabled: ringkasanDiminta });
   const [tahun, setTahun] = useState<number | null>(null);
   const thn = tahun ?? (tahunQ.data ? tahunQ.data[tahunQ.data.length - 1] : null);
 
   const ringkas = useQuery({
     queryKey: ["ringkasan", thn],
     queryFn: () => ambilJson(`/api/ringkasan/${thn}`),
-    enabled: thn !== null,
+    enabled: ringkasanDiminta && thn !== null,
   });
+  const tahunKosong = ringkasanDiminta && !tahunQ.isLoading &&
+    Array.isArray(tahunQ.data) && tahunQ.data.length === 0;
+  const siapRingkasan = !!ringkas.data || !!ringkas.error || !!tahunQ.error || tahunKosong;
+  const galatRingkasan = ringkas.error ?? tahunQ.error;
   const [telusur, setTelusur] = useState<number | null>(null);
 
   const label = [
-    ["sicom", "SICOM", 4], ["op_price", "OP Price", 4], ["op_margin", "OP Margin", 4],
-    ["ton", "Ton (kering)", 3], ["target", "Target", 1],
-    ["pencapaian", "Pencapaian", 1], ["vs_target", "vs Target", 4],
+    ["sicom", "SICOM", 2], ["op_price", "OP Price", 2], ["op_margin", "OP Margin", 2],
+    ["ton", "Ton (kering)", 2], ["target", "Target", 2],
+    ["pencapaian", "Pencapaian", 2], ["vs_target", "vs Target", 2],
   ] as const;
 
   return (
     <div className="grid gap-6">
-      <StripAngkaKunci thn={thn} data={ringkas.data} ke={ke} />
+      <KartuMuatSaatDiminta
+        judul="Angka kunci Margin Performance"
+        keterangan="Indikator ringkas, margin, days of cover, dan perubahan harga."
+        siap={siapRingkasan}
+        setelahDiminta={() => setRingkasanDiminta(true)}
+        anak={galatRingkasan
+          ? <p className="rounded-sm border border-[#E4E5E8] bg-[#F8F8F8] p-3 text-sm text-[#64676C]">{pesanGalat(galatRingkasan)}</p>
+          : tahunKosong
+            ? <p className="rounded-sm border border-[#E4E5E8] bg-[#F8F8F8] p-3 text-sm text-[#64676C]">Belum ada data margin untuk ditampilkan.</p>
+            : <StripAngkaKunci thn={thn} data={ringkas.data} ke={ke} />}
+      />
 
-      <PanelPerhatian ke={ke} />
+      <KartuMuatSaatDiminta
+        judul="Perlu perhatian hari ini"
+        keterangan="Pemeriksaan alarm, kualitas data, dan rekomendasi harga dimuat saat diminta."
+        anak={<PanelPerhatian ke={ke} />}
+      />
 
-      <Kartu idMetrik="ringkasan" judul={`${t("OP Margin bulanan")} — ${thn ?? ""}`}
+      <KartuMuatSaatDiminta
+        judul="OP Margin bulanan"
+        keterangan="Tabel margin dan harga bulanan. Data baru dimuat setelah Anda meminta."
+        siap={siapRingkasan}
+        setelahDiminta={() => setRingkasanDiminta(true)}
+        anak={galatRingkasan
+          ? <p className="rounded-sm border border-[#E4E5E8] bg-[#F8F8F8] p-3 text-sm text-[#64676C]">{pesanGalat(galatRingkasan)}</p>
+          : tahunKosong
+            ? <p className="rounded-sm border border-[#E4E5E8] bg-[#F8F8F8] p-3 text-sm text-[#64676C]">Belum ada data margin untuk ditampilkan.</p>
+            : <Kartu idMetrik="ringkasan" judul={`${t("OP Margin bulanan")} — ${thn ?? ""}`}
              keterangan={t("US¢/kg, basis berat kering — meniru Excel lama. Klik angka OP Margin untuk menelusuri asal angkanya.")}
              urlEkspor={thn ? `/api/ringkasan/${thn}` : undefined}
              qsJelaskan={thn ? `?tahun=${thn}` : ""}
@@ -1503,11 +1651,11 @@ export default function Ringkasan({ ke }: { ke?: (tab: string) => void }) {
                     <th key={b.bulan} className="text-right px-1">{NAMA_BULAN[b.bulan]}</th>
                   ))}
                   <th className="text-right px-1 font-semibold">{t("Avg YTD")}</th>
-                  <th className="text-right px-1">{t("Tertimbang")}</th>
+                  <th className="text-right px-1" title="Rata-rata OP Margin dengan bobot tonase kering; bulan dengan tonase lebih besar lebih berpengaruh.">{t("Tertimbang (Margin)")}</th>
                 </tr>
               </thead>
               <tbody>
-                {label.map(([kunci, nama, des]) => (
+                {label.map(([kunci, nama]) => (
                   <tr key={kunci} className="border-b border-[#EDEFF2]">
                     <td className="py-1 pr-2 font-medium text-[#1D2434] whitespace-nowrap">{t(nama)}</td>
                     {ringkas.data?.bulan.map((b: any) => (
@@ -1518,15 +1666,17 @@ export default function Ringkasan({ ke }: { ke?: (tab: string) => void }) {
                           title={kunci === "op_margin" ? (b.catatan_koreksi ?? "klik untuk telusur") : undefined}
                           onClick={() => kunci === "op_margin" && setTelusur(b.bulan)}>
                         {kunci === "pencapaian"
-                          ? (b.pencapaian !== null ? fmtAngka(b.pencapaian * 100, 1) + "%" : "–")
-                          : fmtAngka(b[kunci], des)}
+                          ? (b.pencapaian !== null ? fmtAngka(b.pencapaian * 100, 2) + "%" : "–")
+                          : fmtAngka(b[kunci], 2)}
                       </td>
                     ))}
                     <td className="text-right px-1 font-mono font-semibold">
-                      {kunci === "op_margin" ? fmtAngka(ringkas.data?.avg_ytd_sederhana) : ""}
+                      {kunci === "sicom" ? fmtAngka(ringkas.data?.avg_ytd_sicom_sederhana, 2)
+                        : kunci === "op_price" ? fmtAngka(ringkas.data?.avg_ytd_op_price_sederhana, 2)
+                        : kunci === "op_margin" ? fmtAngka(ringkas.data?.avg_ytd_sederhana, 2) : ""}
                     </td>
                     <td className="text-right px-1 font-mono text-[#64676C]">
-                      {kunci === "op_margin" ? fmtAngka(ringkas.data?.avg_ytd_tertimbang) : ""}
+                      {kunci === "op_margin" ? fmtAngka(ringkas.data?.avg_ytd_tertimbang, 2) : ""}
                     </td>
                   </tr>
                 ))}
@@ -1539,14 +1689,22 @@ export default function Ringkasan({ ke }: { ke?: (tab: string) => void }) {
             </p>
           ))}
           <p className="mt-2 text-xs text-[#64676C]">
-            {t('Avg YTD = rata-rata sederhana bulan berdata (resmi, seperti Excel); kolom "Tertimbang" = rata-rata tertimbang tonase (informasi).')}
+            {t('Avg YTD = rata-rata sederhana dari bulan yang memiliki data, tersedia untuk SICOM, OP Price, dan OP Margin. Tertimbang (Margin) = Σ(OP Margin × ton kering) ÷ Σ(ton kering); bulan dengan tonase lebih besar memiliki pengaruh lebih besar.')}
           </p>
         </>
-      } />
+      } />} />
 
-      <KartuGrafikMargin />
+      <KartuMuatSaatDiminta
+        judul="Margin bulanan vs target"
+        keterangan="Grafik tren margin dan perbandingan antar tahun dimuat setelah Anda meminta."
+        anak={<KartuGrafikMargin />}
+      />
 
-      <KartuElemen />
+      <KartuMuatSaatDiminta
+        judul="RM Stock – Intake vs Pricing"
+        keterangan="Grafik stok, intake, dan harga dimuat setelah Anda meminta."
+        anak={<KartuElemen />}
+      />
 
       {telusur !== null && thn !== null && (
         <Telusur tahun={thn} bulan={telusur} tutup={() => setTelusur(null)} />

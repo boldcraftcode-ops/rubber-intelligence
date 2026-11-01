@@ -24,6 +24,13 @@ export function KartuDaftarCollector() {
   const q = useQuery({ queryKey: ["collector", url], queryFn: () => ambilJson(url) });
   const vendors = useQuery({ queryKey: ["vendor", "pilihan-collector"],
     queryFn: () => ambilJson("/api/vendor") });
+  const paramsWilayah = new URLSearchParams();
+  if (form.provinsi) paramsWilayah.set("provinsi", form.provinsi);
+  if (form.kabupaten_kota) paramsWilayah.set("kabupaten_kota", form.kabupaten_kota);
+  const wilayah = useQuery({
+    queryKey: ["collector-wilayah", paramsWilayah.toString()],
+    queryFn: () => ambilJson(`/api/collector/wilayah${paramsWilayah.toString() ? `?${paramsWilayah}` : ""}`),
+  });
   const segarkan = () => {
     qc.invalidateQueries({ queryKey: ["collector"] });
     qc.invalidateQueries({ queryKey: ["vendor"] });
@@ -56,7 +63,7 @@ export function KartuDaftarCollector() {
   };
 
   return <Kartu idMetrik="master_collector" judul="Daftar collector"
-    keterangan="Collector adalah perorangan yang terafiliasi ke satu vendor. Wilayah operasional dicatat bertingkat: Provinsi, Kabupaten/Kota, dan Desa."
+    keterangan="Collector adalah perorangan yang terafiliasi ke satu vendor. Kabupaten/Kota dan Desa dipilih dari SCDF; Provinsi hanya aktif jika referensi resmi menyediakan mapping provinsi."
     anak={<>
       <div className="mb-3 flex flex-wrap items-end gap-3">
         <div className="min-w-56 flex-1"><label className={kelasLabel}>Cari</label>
@@ -112,19 +119,41 @@ export function KartuDaftarCollector() {
             <option value="">Pilih vendor…</option>
             {(vendors.data?.baris ?? []).map((v: any) => <option key={v.kode} value={v.kode}>{v.kode} — {v.nama_baku}</option>)}
           </select></div>
-        <div><label className={kelasLabel}>Provinsi</label><input className={kelasInput} value={form.provinsi}
-          onChange={(e) => setForm({ ...form, provinsi: e.target.value })} placeholder="mis. Sumatera Utara" /></div>
-        <div><label className={kelasLabel}>Kabupaten/Kota</label><input className={kelasInput} value={form.kabupaten_kota}
-          onChange={(e) => setForm({ ...form, kabupaten_kota: e.target.value })} placeholder="mis. Kota Medan" /></div>
+        <div><label className={kelasLabel}>Provinsi</label>
+          <select className={kelasInput} value={form.provinsi}
+            disabled={!(wilayah.data?.provinsi?.length) && !form.provinsi}
+            onChange={(e) => setForm({ ...form, provinsi: e.target.value, kabupaten_kota: "", desa: "" })}>
+            <option value="">{wilayah.data?.provinsi?.length ? "Pilih provinsi…" : "Provinsi belum ada di SCDF"}</option>
+            {form.provinsi && !(wilayah.data?.provinsi ?? []).some((x: any) => x.value === form.provinsi)
+              && <option value={form.provinsi}>{form.provinsi} (nilai tersimpan lama)</option>}
+            {(wilayah.data?.provinsi ?? []).map((x: any) => <option key={x.value} value={x.value}>{x.label}</option>)}
+          </select>
+        </div>
+        <div><label className={kelasLabel}>Kabupaten/Kota</label>
+          <select className={kelasInput} value={form.kabupaten_kota}
+            onChange={(e) => setForm({ ...form, kabupaten_kota: e.target.value, desa: "" })}>
+            <option value="">Pilih kabupaten/kota…</option>
+            {form.kabupaten_kota && !(wilayah.data?.kabupaten_kota ?? []).some((x: any) => x.value === form.kabupaten_kota)
+              && <option value={form.kabupaten_kota}>{form.kabupaten_kota}</option>}
+            {(wilayah.data?.kabupaten_kota ?? []).map((x: any) => <option key={x.value} value={x.value}>{x.label}</option>)}
+          </select>
+        </div>
       </div>
       <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-4 items-end">
-        <div><label className={kelasLabel}>Desa</label><input className={kelasInput} value={form.desa}
-          onChange={(e) => setForm({ ...form, desa: e.target.value })} placeholder="nama desa/kelurahan" /></div>
+        <div><label className={kelasLabel}>Desa</label>
+          <select className={kelasInput} value={form.desa} disabled={!form.kabupaten_kota}
+            onChange={(e) => setForm({ ...form, desa: e.target.value })}>
+            <option value="">Pilih desa/kelurahan…</option>
+            {form.desa && !(wilayah.data?.desa ?? []).some((x: any) => x.value === form.desa)
+              && <option value={form.desa}>{form.desa}</option>}
+            {(wilayah.data?.desa ?? []).map((x: any) => <option key={x.value} value={x.value}>{x.label}</option>)}
+          </select>
+        </div>
         <button className={`${kelasTombol} sm:col-span-2`} disabled={simpan.isPending || !form.kode.trim() || !form.nama.trim() || !form.kode_vendor}
           onClick={() => { setInfo(null); simpan.mutate(); }}>{simpan.isPending ? "Menyimpan…" : ubahKode ? "Simpan perubahan" : "Tambah collector"}</button>
         {ubahKode && <button className={kelasTombolKecil} onClick={() => { setUbahKode(null); setForm({ ...KOSONG }); setInfo(null); }}>Batal ubah</button>}
       </div>
-      <p className="mt-2 text-[11px] text-[#64676C]">NIK boleh dikosongkan; bila diisi harus 16 angka dan tidak boleh dipakai collector lain. Afiliasi vendor wajib dipilih.</p>
+      <p className="mt-2 text-[11px] text-[#64676C]">NIK boleh dikosongkan; bila diisi harus 16 angka dan tidak boleh dipakai collector lain. Afiliasi vendor wajib dipilih. Kabupaten/Kota dan Desa mengikuti SCDF. File SCDF yang tersedia tidak memiliki kolom Provinsi, sehingga Provinsi dinonaktifkan—nilai dari intake tidak dipakai sebagai pengganti sumber resmi.</p>
       {info && <Pesan jenis={info.jenis} teks={info.teks} />}
     </>} />;
 }

@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
 from app.main import buat_app
-from app.models import Base, Vendor
+from app.models import Base, ReferensiWilayahTrace, Vendor
 
 
 def _engine():
@@ -20,6 +20,16 @@ def _engine():
     with Session(eng) as s:
         s.add_all([Vendor(kode="V001", nama_baku="PT Vendor Satu", status="aktif"),
                    Vendor(kode="V002", nama_baku="CV Vendor Dua", status="aktif")])
+        s.add_all([
+            ReferensiWilayahTrace(provinsi_norm=None, provinsi=None,
+                kabupaten_norm="DELI SERDANG", kecamatan_norm="BATANG KUIS",
+                desa_norm="TANJUNG MORAWA", kabupaten="Kabupaten Deli Serdang",
+                kecamatan="Batang Kuis", desa="Tanjung Morawa", code=None),
+            ReferensiWilayahTrace(provinsi_norm=None, provinsi=None,
+                kabupaten_norm="MEDAN", kecamatan_norm="MEDAN BARU",
+                desa_norm="MEDAN BARU", kabupaten="Kota Medan",
+                kecamatan="Medan Baru", desa="Medan Baru", code=None),
+        ])
         s.commit()
     return eng
 
@@ -34,7 +44,7 @@ def klien(monkeypatch):
 def _buat(klien, **ubah):
     data = {"kode": "K001", "nama": "Budi Santoso", "nik": "1203456789012345",
             "no_hp": "081234567890", "kode_vendor": "V001",
-            "provinsi": "Sumatera Utara", "kabupaten_kota": "Kabupaten Deli Serdang",
+            "provinsi": "", "kabupaten_kota": "Kabupaten Deli Serdang",
             "desa": "Tanjung Morawa", "pengisi": "tester"}
     data.update(ubah)
     return klien.post("/api/collector", json=data)
@@ -59,13 +69,13 @@ def test_crud_collector_dengan_affiliation_dan_wilayah(klien):
     c = r.json()["collector"]
     assert (c["kode"], c["nama"], c["nama_vendor"]) == (
         "K001", "Budi Santoso", "PT Vendor Satu")
-    assert c["provinsi"] == "Sumatera Utara"
+    assert c["provinsi"] is None
     assert c["kabupaten_kota"] == "Kabupaten Deli Serdang"
     assert c["desa"] == "Tanjung Morawa"
 
     u = klien.put("/api/collector/K001", json={
         "nama": "Budi Santoso Baru", "nik": "1203456789012345", "no_hp": "0812",
-        "kode_vendor": "v002", "provinsi": "Sumatera Utara",
+        "kode_vendor": "v002", "provinsi": "",
         "kabupaten_kota": "Kota Medan", "desa": "Medan Baru"})
     assert u.status_code == 200, u.text
     assert u.json()["collector"]["kode_vendor"] == "V002"
@@ -83,6 +93,17 @@ def test_kode_dan_vendor_wajib(klien):
     assert _buat(klien, kode="bad code").status_code == 422
     assert _buat(klien, kode_vendor="V999").status_code == 422
     assert _buat(klien, nama="  ").status_code == 422
+
+
+def test_lokasi_baru_harus_dicocokkan_ke_id_aux(klien):
+    # ID_AUX tidak mempunyai kolom Provinsi, maka nilai provinsi baru tidak
+    # boleh diambil diam-diam dari data intake.
+    prov = _buat(klien, provinsi="Sumatera Utara")
+    assert prov.status_code == 422
+    assert "referensi SCDF tidak menyediakan kolom Provinsi" in prov.json()["detail"]
+    kab = _buat(klien, kode="K002", provinsi="", kabupaten_kota="Kabupaten Contoh")
+    assert kab.status_code == 422
+    assert "tidak ditemukan pada referensi SCDF" in kab.json()["detail"]
 
 
 def test_nik_wajib_16_digit_jika_diisi(klien):
@@ -114,13 +135,14 @@ def test_template_collector_memiliki_header_dan_panduan(klien):
         "Kode_Kolektor", "Nama_Kolektor", "NIK", "No_HP", "Afiliasi_Vendor",
         "Provinsi", "Kabupaten_Kota", "Desa"]
     assert wb["Master_Collector"][2][4].value == "V001"
-    assert "NIK" in wb["Petunjuk"][6][0].value
+    assert any("NIK" in (row[0].value or "")
+               for row in wb["Petunjuk"].iter_rows(min_col=1, max_col=1))
 
 
 def test_impor_upsert_validasi_per_baris_dan_kolom_opsional(klien):
     assert _buat(klien, nik="", no_hp="0812").status_code == 200
     isi = _xlsx([
-        ["K001", "Budi diperbarui", "", "", "V002", "", "Kota Medan", ""],
+        ["K001", "Budi diperbarui", "", "", "V002", "", "Kota Medan", "Medan Baru"],
         ["K002", "Siti", "123", "0813", "V001", "Sumatera Utara", "Kota Medan", "Medan Baru"],
         ["K003", "Rani", "3201010101900002", "0814", "V999", "Sumatera Utara", "Kota Medan", "Medan Baru"],
     ])
@@ -139,7 +161,7 @@ def test_impor_upsert_validasi_per_baris_dan_kolom_opsional(klien):
 
 def test_impor_menambahkan_baris_dengan_vendor_valid(klien):
     isi = _xlsx([["K009", "Dewi", "3201010101900009", "081299", "V002",
-                  "Aceh", "Kota Banda Aceh", "Lampriet"]])
+                  "", "Kota Medan", "Medan Baru"]])
     r = klien.post("/api/collector/impor", files={"file": ("kolektor.xlsx", isi)})
     assert r.status_code == 200, r.text
     c = klien.get("/api/collector").json()["baris"][0]

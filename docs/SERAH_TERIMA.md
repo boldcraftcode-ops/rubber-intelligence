@@ -9,7 +9,7 @@ Kalau Anda hanya punya 15 menit, baca bagian **1 (Status)**, **3 (Cara
 menjalankan)**, dan **7 (Aturan yang tidak boleh dilanggar)**. Selebihnya bisa
 dibaca saat mengerjakan tugas pertama.
 
-Terakhir diperbarui: **2026-10-27**, versi kode **0.11.2**.
+Terakhir diperbarui: **2026-11-01**, versi kode **0.11.2**.
 
 ---
 
@@ -32,7 +32,7 @@ ini setiap hari untuk memutuskan **harga beli maksimum** yang masih aman.
 
 ---
 
-## 2. Status per 2026-10-27
+## 2. Status per 2026-11-01
 
 | Hal | Nilai |
 |---|---|
@@ -40,7 +40,7 @@ ini setiap hari untuk memutuskan **harga beli maksimum** yang masih aman.
 | Branch kerja | `arena/18670644-rubber-intelligence` |
 | Pull request | **#1 masih terbuka** — https://github.com/boldcraftcode-ops/rubber-intelligence/pull/1 |
 | Branch `main` | belum memuat pekerjaan v0.7.x–v0.8.x |
-| Unit test | **416 lulus** (`cd backend && .venv/bin/python -m pytest -q`) |
+| Unit test | **429 lulus**; 2 gagal hanya karena CRLF pada `ambil-bahan-offline.bat` dan `start-offline.bat` (`test_skrip_offline.py`) |
 | Build frontend | bersih, ±3,3 detik (`cd frontend && npm run build`) |
 | Database | SQLite `backend/opmargin.db` (tidak masuk Git) |
 
@@ -49,9 +49,42 @@ unggah Excel, rekonsiliasi, perencanaan tahun depan, alarm, kualitas data,
 master grade & harga per grade, analisa (5W1H, Margin Bridge, Days of Cover),
 tombol "Jelaskan ke saya", ekspor Excel, login username+sandi, tema korporat,
 dan halaman depan **Margin Performance** (strip angka kunci + panel "perlu
-perhatian").
+perhatian"). Ditambah **Traceability**: agregasi Dry dari database intake,
+filter tahun/periode/supplier/EUDR, opsi LATEX OP, tabel wilayah bertingkat,
+tab Supplier Actors, ekspor, dan unduhan baris belum termapping.
 
-Belum selesai: lihat **bagian 11**.
+Belum selesai: lihat **bagian 11** dan batasan referensi Provinsi di bawah.
+
+### Traceability (2026-11-01)
+
+- Sumber volume runtime adalah tabel `tiket_baris` (`TiketBaris`) pada database
+  aktif (`DATABASE_URL`, default SQLite `backend/opmargin.db`), **bukan** file
+  `sampel data.xlsx`. File sampel hanya dipakai pada database preview sementara;
+  data intake tidak dimuat otomatis ke database aplikasi.
+- `backend/data/ID_AUX.xlsx` adalah master wilayah resmi yang diberikan pemilik.
+  Referensi dimuat satu kali ke tabel `traceability_wilayah`; hasil deduplikasi
+  berisi 81.909 kombinasi Kabupaten/Kecamatan/Desa. File ini tidak memiliki
+  kolom kode administrasi maupun Provinsi. Karena itu Code Traceability tetap
+  kosong dan berstatus `belum termapping`.
+- API berada di `backend/app/api_traceability.py`; fungsi normalisasi, parsing
+  Asal Getah, periode, sidik baris, dan persentase ada di
+  `backend/app/core/traceability.py`. Total memakai Dry dari tiket tervalidasi;
+  baris hanya dideduplikasi bila sidik seluruh kolom sumber identik. Ticket No
+  berulang dengan isi berbeda tetap dipertahankan.
+- Sidebar: Analytics → **Traceability**, persis setelah Stock vs Margin.
+  Filter: tahun/periode/supplier/EUDR; LATEX OP opsional dan default mati.
+  Ekspor dan unduhan unmapped tersedia untuk semua pengguna yang bisa melihat
+  halaman. Vendor memiliki flag sementara `is_direct_producer`, default `false`.
+- Master Collector memakai dropdown Kabupaten/Kota dan Desa dari ID_AUX dan
+  menolak nilai baru yang tidak cocok. ID_AUX tidak memuat Provinsi, sehingga
+  dropdown Provinsi dinonaktifkan dan input Provinsi baru ditolak; **jangan**
+  mengambil provinsi dari intake sebagai pengganti. Untuk mengaktifkannya,
+  pemilik perlu menyediakan crosswalk Provinsi resmi yang terhubung ke ID_AUX.
+  Nilai lokasi lama tetap dipertahankan jika tidak diubah.
+- Verifikasi terakhir: tes terarah Traceability/Collector/skema **24 lulus**;
+  build frontend lulus. Suite penuh **429 lulus, 2 gagal** hanya pada pemeriksaan
+  CRLF untuk `ambil-bahan-offline.bat` dan `start-offline.bat`; jangan ubah line
+  ending skrip itu tanpa memeriksa kebijakan Windows di bagian 9.
 
 ---
 
@@ -104,7 +137,7 @@ Login awal: **`admin` / `admin123`** (dari `ADMIN_SANDI_AWAL` di
 
 ```bash
 cd backend
-.venv/bin/python -m pytest -q                                  # 416 tes
+.venv/bin/python -m pytest -q                                  # 431 total; 429 lulus
 .venv/bin/python -m app.cli diagnosa                            # laporan kesehatan
 .venv/bin/python -m app.cli reset-sandi admin                   # lupa sandi
 .venv/bin/python -m app.cli atur-login-lokal                    # pastikan mode login benar
@@ -133,12 +166,14 @@ rubber-intelligence/
 ├── backend/
 │   ├── app/
 │   │   ├── main.py             rakitan FastAPI, /api/health, SICOM & kurs
-│   │   ├── models.py           22 tabel: raw_*, mart_*, pengguna, alarm, dst.
+│   │   ├── models.py           24 tabel: raw_*, mart_*, pengguna, alarm, traceability, dst.
 │   │   ├── mart.py             pembentuk mart harian/bulanan dari data mentah
 │   │   ├── api_analisis.py     analisa, kartu, bridge, DoC, kualitas, ekspor
 │   │   ├── api_fase4.py        stok, aturan harga, simulasi, rencana, alarm
 │   │   ├── api_grade.py        master grade & harga per grade
 │   │   ├── api_vendor.py       master vendor: CRUD + template + impor massal
+│   │   ├── api_collector.py   master collector + dropdown wilayah ID_AUX
+│   │   ├── api_traceability.py agregasi wilayah, Supplier Actors, dan ekspor
 │   │   ├── api_unggah.py       unggah Excel lewat web
 │   │   ├── api_database.py     info/kosongkan/ekspor/impor database
 │   │   ├── api_jelaskan.py     penyusun teks "Jelaskan ke saya" (What/So what/Now what)
@@ -154,14 +189,16 @@ rubber-intelligence/
 │   │       ├── perencanaan.py  proyeksi tahun depan
 │   │       ├── rekonsiliasi.py pembanding tiket vs Excel lama
 │   │       ├── kualitas.py     deteksi data terlambat/aneh
-│   │       └── alarm.py        evaluasi alarm + audit
+│   │       ├── alarm.py        evaluasi alarm + audit
+│   │       └── traceability.py parsing Asal Getah + normalisasi wilayah
+│   ├── data/ID_AUX.xlsx        master resmi wilayah dari pemilik
 │   ├── semantic/metrics.yaml   definisi metrik (rujukan, dibaca fase API)
-│   ├── tests/                  416 tes, termasuk kasus emas Excel lama
+│   ├── tests/                  431 tes, termasuk Traceability dan kasus emas
 │   ├── unggahan/               berkas Excel yang diunggah lewat web
 │   └── .env.example            contoh setelan (JANGAN commit .env asli)
 └── frontend/
     ├── src/App.tsx             kerangka: sidebar, header, daftar menu (TAB)
-    ├── src/pages/*.tsx         17 halaman (termasuk MasterVendor.tsx)
+    ├── src/pages/*.tsx         18 halaman (termasuk Traceability.tsx)
     ├── src/bersama.tsx         gaya bersama: Kartu, tombol, input, modal, 5W1H
     ├── src/i18n.tsx            kamus ID→EN; teks di kode ditulis Bahasa Indonesia
     ├── src/index.css           tema (palet, .galaxy, .kartu-aksen, aturan Recharts)
@@ -1187,6 +1224,13 @@ itu data yang memang belum diisi.
 
 ## 11. Yang belum dikerjakan / kandidat lanjutan
 
+**Batasan Traceability yang harus dituntaskan bila sumber tersedia:** ID_AUX yang
+ada tidak memuat Provinsi atau kode administratif. Karena pemilik menetapkan
+ID_AUX sebagai referensi resmi, dropdown Provinsi pada Master Collector sengaja
+dinonaktifkan, dan Code Traceability tetap kosong. Jangan mengisi dari intake,
+`BIN`, atau `Location`. Tambahkan hanya setelah ada crosswalk resmi yang
+menghubungkan Provinsi/Kode ke kombinasi ID_AUX.
+
 Berurutan dari yang paling masuk akal:
 
 1. **Merge PR #1 ke `main`** setelah pemilik menerima hasilnya (lihat 12).
@@ -1263,6 +1307,7 @@ menjawab.
 | 2026-10-25 | **Login Cloudflare Access dihapus permanen** | pemilik tidak memakainya; satu jalur masuk lebih sederhana diaudit |
 | 2026-10-25 | Tema korporat merah–navy + logo Rubber Intelligence | mengikuti materi identitas dari pemilik |
 | 2026-10-25 | Halaman "Ringkasan" → **Margin Performance**; isi ditambah strip angka kunci + panel "perlu perhatian" | halaman depan harus menjawab "apa yang harus saya lakukan hari ini", bukan hanya "berapa angkanya" |
+| 2026-11-01 | Traceability memakai database intake + ID_AUX; Provinsi tidak boleh diambil dari intake | ID_AUX adalah referensi resmi, tetapi salinan yang ada belum memiliki kolom Provinsi atau kode administratif |
 
 ---
 

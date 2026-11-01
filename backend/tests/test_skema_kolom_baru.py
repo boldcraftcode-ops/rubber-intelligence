@@ -54,16 +54,16 @@ def test_kolom_hilang_terdeteksi():
     kurang = kolom_hilang(eng)
     assert set(kurang) == {"vendor"}
     assert [n for n, _ in kurang["vendor"]] == ["alamat", "kontak_person",
-                                               "klasifikasi"]
+                                               "klasifikasi", "is_direct_producer"]
 
 
 def test_kolom_baru_ditambahkan_dan_data_lama_utuh():
     eng = _engine_lama()
     tindakan = pastikan_kolom_baru(eng)
     assert tindakan == ["vendor.alamat", "vendor.kontak_person",
-                        "vendor.klasifikasi"]
+                        "vendor.klasifikasi", "vendor.is_direct_producer"]
     kolom = {k["name"] for k in inspect(eng).get_columns("vendor")}
-    assert {"alamat", "kontak_person", "klasifikasi"} <= kolom
+    assert {"alamat", "kontak_person", "klasifikasi", "is_direct_producer"} <= kolom
     with sessionmaker(bind=eng, future=True)() as s:
         v = s.get(Vendor, "V001")
         assert (v.nama_baku, v.kategori, v.status) == ("PT Alpha", "nasional", "aktif")
@@ -72,7 +72,7 @@ def test_kolom_baru_ditambahkan_dan_data_lama_utuh():
 
 def test_idempoten_dijalankan_dua_kali():
     eng = _engine_lama()
-    assert len(pastikan_kolom_baru(eng)) == 3
+    assert len(pastikan_kolom_baru(eng)) == 4
     assert pastikan_kolom_baru(eng) == []      # kedua kali: tidak ada perubahan
     kolom = [k["name"] for k in inspect(eng).get_columns("vendor")]
     assert len(kolom) == len(set(kolom))       # tidak ada kolom ganda

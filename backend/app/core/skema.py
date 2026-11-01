@@ -26,6 +26,18 @@ KOLOM_BARU: dict[str, list[tuple[str, str]]] = {
         ("alamat", "TEXT"),
         ("kontak_person", "VARCHAR(200)"),
         ("klasifikasi", "VARCHAR(30)"),
+        ("is_direct_producer", "BOOLEAN NOT NULL DEFAULT false"),
+    ],
+    "traceability_wilayah": [
+        ("provinsi_norm", "VARCHAR(120)"),
+        ("provinsi", "VARCHAR(120)"),
+    ],
+    "tiket_baris": [
+        ("kabupaten_norm", "VARCHAR(120)"),
+        ("kecamatan_norm", "VARCHAR(120)"),
+        ("desa_norm", "VARCHAR(120)"),
+        ("asal_getah_valid", "BOOLEAN"),
+        ("source_fingerprint", "VARCHAR(64)"),
     ],
 }
 
@@ -59,3 +71,42 @@ def pastikan_kolom_baru(engine: Engine) -> list[str]:
             "Skema disesuaikan (kolom baru ditambahkan): "
             + ", ".join(tindakan) + "\n")
     return tindakan
+
+
+def isi_kunci_traceability(engine: Engine) -> int:
+    """Backfill kunci wilayah ternormalisasi untuk tiket yang sudah ada.
+
+    Asal Getah menjadi sumber utama karena kolom pecahannya merupakan turunan.
+    Baris dengan format asal tidak sah tetap dicatat dengan flag False agar
+    tidak diam-diam masuk pembilang traceability.
+    """
+    from sqlalchemy import or_, select
+    from sqlalchemy.orm import Session
+
+    from ..core.traceability import (normalisasi_kabupaten,
+                                     normalisasi_teks_wilayah, parse_asal_getah)
+    from ..models import TiketBaris
+
+    jumlah = 0
+    with Session(engine) as session:
+        q = select(TiketBaris).where(or_(
+            TiketBaris.kabupaten_norm.is_(None),
+            TiketBaris.kecamatan_norm.is_(None),
+            TiketBaris.desa_norm.is_(None),
+            TiketBaris.asal_getah_valid.is_(None),
+        ))
+        for row in session.scalars(q):
+            bagian = parse_asal_getah(row.asal_getah)
+            if bagian:
+                _, kabupaten, kecamatan, desa = bagian
+                row.asal_getah_valid = True
+            else:
+                kabupaten, kecamatan, desa = row.kabupaten, row.kecamatan, row.desa
+                row.asal_getah_valid = False
+            row.kabupaten_norm = normalisasi_kabupaten(kabupaten)
+            row.kecamatan_norm = normalisasi_teks_wilayah(kecamatan)
+            row.desa_norm = normalisasi_teks_wilayah(desa)
+            jumlah += 1
+        if jumlah:
+            session.commit()
+    return jumlah

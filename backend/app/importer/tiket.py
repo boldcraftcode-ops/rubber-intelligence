@@ -26,6 +26,8 @@ from decimal import Decimal
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from ..core.traceability import (normalisasi_kabupaten, normalisasi_teks_wilayah,
+                                 parse_asal_getah, sidik_baris_sumber)
 from ..models import Grade, PeringatanData, TiketBaris, Vendor
 from .util import baris_kosong, ke_desimal, ke_float, ke_tanggal, ke_teks, kunci_header
 
@@ -51,7 +53,8 @@ def cari_header(ws) -> tuple[int, dict[str, int]] | None:
 
 
 def impor_sheet_tiket(ws, session: Session, unggahan_id: int | None,
-                      peringatan: list[str]) -> int:
+                      peringatan: list[str],
+                      fingerprint_global: set[str] | None = None) -> int:
     """Impor satu sheet tiket. Mengembalikan jumlah baris yang disimpan."""
     hasil = cari_header(ws)
     if hasil is None:
@@ -69,6 +72,9 @@ def impor_sheet_tiket(ws, session: Session, unggahan_id: int | None,
 
     urutan_tiket: dict[str, int] = defaultdict(int)
     tonase_per_tanggal: dict[dt.date, Decimal] = defaultdict(Decimal)
+    fingerprint_dilihat = fingerprint_global if fingerprint_global is not None else set(
+        session.scalars(select(TiketBaris.source_fingerprint).where(
+            TiketBaris.source_fingerprint.is_not(None))))
     jumlah = 0
 
     for baris in ws.iter_rows(min_row=baris_header + 1, values_only=False):
@@ -91,6 +97,16 @@ def impor_sheet_tiket(ws, session: Session, unggahan_id: int | None,
                       "Tidak perlu diperbaiki, hanya informasi.")
             continue
 
+        # Ticket No berulang boleh mewakili beberapa grade/baris timbang. Hanya
+        # baris identik pada seluruh 19 kolom sumber yang dibuang.
+        fingerprint = sidik_baris_sumber(tuple(ambil(nama) for nama in KOLOM))
+        if fingerprint in fingerprint_dilihat:
+            catat(nomor, "DUPLIKAT_IDENTIK",
+                  f"Tiket {ticket_no}: baris sama persis pada semua kolom sumber "
+                  "sudah ditemukan; salinan ini dibuang.")
+            continue
+        fingerprint_dilihat.add(fingerprint)
+
         tanggal = ke_tanggal(ambil("ticket date"))
         if tanggal is None:
             catat(nomor, "TANGGAL_KOSONG",
@@ -110,6 +126,29 @@ def impor_sheet_tiket(ws, session: Session, unggahan_id: int | None,
         asal_getah = ke_teks(ambil("asal getah"))
 
         tanda: list[str] = []
+        bagian_asal = parse_asal_getah(asal_getah)
+        if bagian_asal:
+            asal_provinsi, asal_kabupaten, asal_kecamatan, asal_desa = bagian_asal
+            pecahan_sheet = (provinsi, kabupaten, kecamatan, desa)
+            cocok = (
+                normalisasi_teks_wilayah(asal_provinsi) == normalisasi_teks_wilayah(pecahan_sheet[0])
+                and normalisasi_kabupaten(asal_kabupaten) == normalisasi_kabupaten(pecahan_sheet[1])
+                and normalisasi_teks_wilayah(asal_kecamatan) == normalisasi_teks_wilayah(pecahan_sheet[2])
+                and normalisasi_teks_wilayah(asal_desa) == normalisasi_teks_wilayah(pecahan_sheet[3])
+            )
+            if not cocok:
+                catat(nomor, "WILAYAH_BEDA_DARI_ASAL_GETAH",
+                      f"Tiket {ticket_no}: kolom wilayah pecahan berbeda dari Asal Getah. "
+                      "Traceability memakai empat bagian Asal Getah sebagai sumber utama.")
+                tanda.append("kolom wilayah beda dari Asal Getah")
+            kabupaten_trace, kecamatan_trace, desa_trace = (
+                asal_kabupaten, asal_kecamatan, asal_desa)
+        else:
+            catat(nomor, "ASAL_GETAH_TIDAK_VALID",
+                  f"Tiket {ticket_no}: Asal Getah tidak berisi tepat empat bagian. "
+                  "Wilayah tidak dihitung traceable sampai diperbaiki.")
+            tanda.append("Asal Getah tidak valid")
+            kabupaten_trace, kecamatan_trace, desa_trace = kabupaten, kecamatan, desa
 
         # Vendor
         v = vendor_map.get(kode_vendor)
@@ -158,21 +197,6 @@ def impor_sheet_tiket(ws, session: Session, unggahan_id: int | None,
                   f"Tiket {ticket_no}: Dry {dry} kg lebih besar dari Wet {wet} kg.")
             tanda.append("dry > wet")
 
-        # Wilayah
-        if not provinsi or not kabupaten:
-            catat(nomor, "WILAYAH_KOSONG",
-                  f"Tiket {ticket_no}: kolom Provinsi/Kabupaten kosong. "
-                  "Lengkapi wilayah di sumber data.")
-            tanda.append("wilayah kosong")
-        elif asal_getah:
-            pecahan = [x for x in (provinsi, kabupaten, kecamatan, desa) if x]
-            asal_u = asal_getah.upper()
-            if any(p.upper() not in asal_u for p in pecahan):
-                catat(nomor, "WILAYAH_BEDA",
-                      f"Tiket {ticket_no}: kolom wilayah berbeda dari teks Asal Getah. "
-                      "Perlu ditinjau, tidak diubah otomatis.")
-                tanda.append("wilayah beda dari asal getah")
-
         urutan_tiket[ticket_no] += 1
         line_seq = urutan_tiket[ticket_no]
 
@@ -198,6 +222,11 @@ def impor_sheet_tiket(ws, session: Session, unggahan_id: int | None,
         ada.kabupaten = kabupaten
         ada.kecamatan = kecamatan
         ada.desa = desa
+        ada.kabupaten_norm = normalisasi_kabupaten(kabupaten_trace)
+        ada.kecamatan_norm = normalisasi_teks_wilayah(kecamatan_trace)
+        ada.desa_norm = normalisasi_teks_wilayah(desa_trace)
+        ada.asal_getah_valid = bool(bagian_asal)
+        ada.source_fingerprint = fingerprint
         ada.bin = ke_teks(ambil("bin"))
         ada.location = ke_teks(ambil("location"))
         ada.tiket_nol = tiket_nol

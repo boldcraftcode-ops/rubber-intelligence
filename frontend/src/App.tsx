@@ -4,6 +4,7 @@ import Ringkasan from "./pages/Ringkasan";
 import Analisis from "./pages/Analisis";
 import Stok from "./pages/Stok";
 import StokMargin from "./pages/StokMargin";
+import Traceability from "./pages/Traceability";
 import AturanHarga from "./pages/AturanHarga";
 import Simulasi from "./pages/Simulasi";
 import Perencanaan from "./pages/Perencanaan";
@@ -40,6 +41,7 @@ const TAB = [
   { id: "analisis", label: "Intake Analisis", ikon: "◨", grup: "analitik" },
   { id: "stok", label: "Stok", ikon: "▤", grup: "analitik" },
   { id: "stokmargin", label: "Stok vs Margin", ikon: "▥", grup: "analitik" },
+  { id: "traceability", label: "Traceability", ikon: "⌖", grup: "analitik" },
   { id: "aturan", label: "Aturan Harga", ikon: "▦", grup: "harga" },
   { id: "simulasi", label: "Simulasi", ikon: "▧", grup: "harga" },
   { id: "rencana", label: "Perencanaan", ikon: "▩", grup: "harga" },
@@ -372,6 +374,7 @@ export default function App() {
           {tab === "analisis" && <Analisis />}
           {tab === "stok" && <Stok />}
           {tab === "stokmargin" && <StokMargin />}
+          {tab === "traceability" && <Traceability />}
           {tab === "aturan" && <AturanHarga />}
           {tab === "simulasi" && <Simulasi />}
           {tab === "rencana" && <Perencanaan />}

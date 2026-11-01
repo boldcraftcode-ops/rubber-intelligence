@@ -5,10 +5,11 @@ import {
   Tooltip, XAxis, YAxis,
 } from "recharts";
 import {
-  Kartu, NAMA_BULAN, Panel5W1H, PilihRentangBulan, akhirBulan,
+  Kartu, KartuMuatSaatDiminta, NAMA_BULAN, Panel5W1H, PilihRentangBulan, akhirBulan,
   KepalaPanel, ambilJson, fmtAngka, fmtTanggal, hitungJumlahBulan, kelasInput,
   kelasTombolAnalisa, kelasTombolKecil, pesanGalat,
 } from "../bersama";
+import PetaIntake from "./PetaIntake";
 
 /* Palet seri grafik bulanan. Navy & merah lebih dulu (identitas), lalu warna
    pembeda yang tetap kontras di layar proyektor pabrik. */
@@ -789,8 +790,9 @@ function KartuPenerimaan() {
   const [jejak, setJejak] = useState<{ dim: string; nilai: string }[]>([]);
   const [dari, setDari] = useState("");      // YYYY-MM
   const [sampai, setSampai] = useState("");
-  const [modeEudr, setModeEudr] = useState<"semua" | "eudr" | "biasa">("semua");
+  const modeEudr = "semua" as const;
   const [vendorFilter, setVendorFilter] = useState("");
+  const [provinsiFilter, setProvinsiFilter] = useState("");
   /* "bulan" = rincian bulan x dimensi; "total" = satu baris per dimensi.
      Otomatis "bulan" bila periode filter lebih dari satu bulan. */
   const [tampilan, setTampilan] = useState<"otomatis" | "bulan" | "total">("otomatis");
@@ -820,17 +822,24 @@ function KartuPenerimaan() {
   }
   if (dari) params.set("dari", `${dari}-01`);
   if (sampai) params.set("sampai", akhirBulan(sampai));
-  if (modeEudr !== "semua") params.set("eudr", modeEudr === "eudr" ? "true" : "false");
   if (vendorFilter && dimensi !== "vendor") params.set("vendor", vendorFilter);
+  if (provinsiFilter) params.set("provinsi", provinsiFilter);
   jejak.forEach((j) => params.set(j.dim, j.nilai));
   const url = `/api/kartu/penerimaan?${params.toString()}`;
 
   const q = useQuery({ queryKey: ["penerimaan", url], queryFn: () => ambilJson(url) });
-  // daftar vendor untuk dropdown (sesuai mode EUDR terpilih)
   const vendorQ = useQuery({
-    queryKey: ["penerimaan-vendor", modeEudr],
-    queryFn: () => ambilJson(`/api/kartu/penerimaan?dimensi=vendor${
-      modeEudr !== "semua" ? `&eudr=${modeEudr === "eudr"}` : ""}`),
+    queryKey: ["penerimaan-vendor"],
+    queryFn: () => ambilJson("/api/kartu/penerimaan?dimensi=vendor"),
+  });
+  const paramsProvinsi = new URLSearchParams({ dimensi: "provinsi" });
+  if (dari) paramsProvinsi.set("dari", `${dari}-01`);
+  if (sampai) paramsProvinsi.set("sampai", akhirBulan(sampai));
+  if (vendorFilter) paramsProvinsi.set("vendor", vendorFilter);
+  const provinsiQ = useQuery({
+    queryKey: ["penerimaan-provinsi", paramsProvinsi.toString()],
+    queryFn: () => ambilJson(`/api/kartu/penerimaan?${paramsProvinsi.toString()}`),
+    enabled: dimensi === "provinsi" && bolehBulan,
   });
 
   const drill = (b: any) => {
@@ -838,18 +847,21 @@ function KartuPenerimaan() {
     setJejak([...jejak, { dim: dimensi, nilai: b.kunci }]);
     setDimensi(q.data.drill_berikutnya);
   };
-  const mulaiUlang = (d: string) => { setJejak([]); setDimensi(d); };
+  const mulaiUlang = (d: string) => {
+    setJejak([]);
+    setDimensi(d);
+    setProvinsiFilter("");
+  };
 
   const dataGrafik = (q.data?.baris ?? []).slice(0, 10).map((b: any) => ({
     nama: b.label.length > 24 ? b.label.slice(0, 24) + "…" : b.label,
-    "Grade biasa (kg)": b.kg_biasa,
-    "Grade EUDR (kg)": b.kg_eudr,
+    "Penerimaan Karet (kg)": b.kg_total,
   }));
 
 
   return (
-    <Kartu idMetrik="penerimaan" judul="Penerimaan karet (kg) — biasa vs EUDR"
-           keterangan="Grafik penerimaan per vendor / provinsi / kabupaten / kecamatan / desa, dipisah grade biasa dan grade EUDR (TTSR). Klik baris wilayah untuk turun level."
+    <Kartu idMetrik="penerimaan" judul="Penerimaan Karet"
+           keterangan="Fokus pada total intake karet (kg kering) per vendor atau wilayah. Klik baris untuk melihat rincian bulan atau turun ke tingkat wilayah berikutnya. Bauran grade biasa dan EUDR dijelaskan pada kartu Bauran grade & porsi EUDR."
            urlEkspor={url}
            anak={
       <>
@@ -862,16 +874,7 @@ function KartuPenerimaan() {
               {d}
             </button>
           ))}
-          <span className="mx-2 border-l border-[#E4E5E8]" />
-          {([["semua", "Semua grade"], ["eudr", "Hanya EUDR"], ["biasa", "Hanya biasa"]] as const)
-            .map(([id, label]) => (
-            <button key={id}
-              className={`rounded-sm px-2.5 py-1 text-xs ${modeEudr === id
-                ? "bg-emerald-600 text-white" : "bg-[#F1F2F4] text-[#1D2434] hover:bg-[#E8E9EC]"}`}
-              onClick={() => setModeEudr(id)}>
-              {label}
-            </button>
-          ))}
+
         </div>
 
         <div className="flex flex-wrap items-end gap-3 mb-3 text-xs">
@@ -887,9 +890,7 @@ function KartuPenerimaan() {
           </div>
           {dimensi !== "vendor" && (
             <div>
-              <label className="block text-[#64676C] mb-1">
-                Vendor {modeEudr === "eudr" ? "(pemasok EUDR)" : ""}
-              </label>
+              <label className="block text-[#64676C] mb-1">Vendor</label>
               <select className={kelasInput + " max-w-56"} value={vendorFilter}
                       onChange={(e) => setVendorFilter(e.target.value)}>
                 <option value="">Semua vendor</option>
@@ -899,9 +900,21 @@ function KartuPenerimaan() {
               </select>
             </div>
           )}
-          {(dari || sampai || vendorFilter) && (
+          {dimensi === "provinsi" && bolehBulan && (
+            <div>
+              <label className="block text-[#64676C] mb-1">Provinsi</label>
+              <select className={kelasInput + " max-w-56"} value={provinsiFilter}
+                      onChange={(e) => setProvinsiFilter(e.target.value)}>
+                <option value="">Semua provinsi</option>
+                {provinsiQ.data?.baris.map((p: any) => (
+                  <option key={p.kunci} value={p.kunci}>{p.label}</option>
+                ))}
+              </select>
+            </div>
+          )}
+          {(dari || sampai || vendorFilter || provinsiFilter) && (
             <button className={kelasTombolKecil}
-                    onClick={() => { setDari(""); setSampai(""); setVendorFilter(""); }}>
+                    onClick={() => { setDari(""); setSampai(""); setVendorFilter(""); setProvinsiFilter(""); }}>
               hapus filter
             </button>
           )}
@@ -967,16 +980,15 @@ function KartuPenerimaan() {
             {dataGrafik.length > 0 ? (
               <div style={{ height: Math.max(180, dataGrafik.length * 36 + 60) }}>
                 <ResponsiveContainer>
-                  <BarChart data={dataGrafik} layout="vertical"
-                            margin={{ top: 5, right: 20, bottom: 5, left: 10 }}>
+                  <BarChart data={dataGrafik}
+                            margin={{ top: 5, right: 20, bottom: 45, left: 0 }}>
                     <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis type="number" fontSize={10}
+                    <XAxis type="category" dataKey="nama" fontSize={10}
+                           interval={0} angle={-30} textAnchor="end" height={60} />
+                    <YAxis type="number" fontSize={10}
                            tickFormatter={(v) => fmtAngka(v as number, 0)} />
-                    <YAxis type="category" dataKey="nama" width={170} fontSize={10} />
-                    <Tooltip formatter={(v: any, nama: any) => [fmtAngka(v as number, 0) + " kg", nama]} />
-                    <Legend />
-                    <Bar dataKey="Grade biasa (kg)" stackId="kg" fill="#1D2434" />
-                    <Bar dataKey="Grade EUDR (kg)" stackId="kg" fill="#FF1313" />
+                    <Tooltip formatter={(v: any) => [fmtAngka(v as number, 0) + " kg", "Penerimaan Karet"]} />
+                    <Bar dataKey="Penerimaan Karet (kg)" fill="#1D2434" />
                   </BarChart>
                 </ResponsiveContainer>
               </div>
@@ -994,9 +1006,7 @@ function KartuPenerimaan() {
                     <thead>
                       <tr className="text-left text-[#64676C] border-b">
                         <th className="py-1">{dimensi}</th>
-                        <th className="text-right">Kg biasa</th>
-                        <th className="text-right">Kg EUDR</th>
-                        <th className="text-right">Kg total</th>
+                        <th className="text-right">Penerimaan (kg)</th>
                         <th className="text-right">Porsi</th>
                         <th className="text-right">Tiket</th>
                       </tr>
@@ -1008,8 +1018,6 @@ function KartuPenerimaan() {
                               ? "cursor-pointer hover:bg-[#FFF1F1]" : ""}`}
                             onClick={() => drill(b)}>
                           <td className="py-1">{b.label}</td>
-                          <td className="text-right font-mono">{fmtAngka(b.kg_biasa, 0)}</td>
-                          <td className="text-right font-mono text-[#15803D]">{fmtAngka(b.kg_eudr, 0)}</td>
                           <td className="text-right font-mono font-semibold">{fmtAngka(b.kg_total, 0)}</td>
                           <td className="text-right font-mono">
                             {b.porsi !== null ? fmtAngka(b.porsi * 100, 1) + "%" : "–"}
@@ -1021,10 +1029,7 @@ function KartuPenerimaan() {
                   </table>
                 </div>
                 <p className="mt-2 text-xs text-[#64676C]">
-                  Total {fmtAngka(q.data.total_kg, 0)} kg — biasa{" "}
-                  {fmtAngka(q.data.total_kg_biasa, 0)} kg · EUDR{" "}
-                  <span className="text-[#15803D]">{fmtAngka(q.data.total_kg_eudr, 0)} kg
-                  ({q.data.total_kg ? fmtAngka(q.data.total_kg_eudr / q.data.total_kg * 100, 1) : 0}%)</span>
+                  Total penerimaan periode ini: <b>{fmtAngka(q.data.total_kg, 0)} kg</b>
                   {" "}· sumber: {q.data.sumber}
                 </p>
                 {q.data.wilayah?.digabung?.length > 0 && (
@@ -1249,6 +1254,10 @@ function KartuGrade() {
   const [tahun, setTahun] = useState<number | "">("");
   const url = `/api/kartu/bauran-grade${tahun ? `?tahun=${tahun}` : ""}`;
   const q = useQuery({ queryKey: ["grade", url], queryFn: () => ambilJson(url) });
+  const grades: any[] = q.data?.baris ?? [];
+  const totalTon = grades.reduce((sum, b) => sum + (b.ton ?? 0), 0);
+  const eudrTon = grades.filter((b) => b.eudr).reduce((sum, b) => sum + (b.ton ?? 0), 0);
+  const biasaTon = totalTon - eudrTon;
 
   return (
     <Kartu idMetrik="bauran_grade" judul="Bauran grade & porsi EUDR" urlEkspor={url}
@@ -1258,7 +1267,7 @@ function KartuGrade() {
         <table className="w-full text-xs">
           <thead>
             <tr className="text-left text-[#64676C] border-b">
-              <th className="py-1">Grade</th><th>EUDR</th>
+              <th className="py-1">Grade</th><th>Klasifikasi</th>
               <th className="text-right">Ton</th><th className="text-right">Porsi</th>
             </tr>
           </thead>
@@ -1268,7 +1277,7 @@ function KartuGrade() {
                 <td className="py-1">{b.kunci}</td>
                 <td>{b.eudr
                   ? <span className="rounded bg-[#DCFCE7] text-[#15803D] px-1.5 py-0.5">EUDR</span>
-                  : "–"}</td>
+                  : <span className="rounded bg-[#F1F2F4] text-[#475467] px-1.5 py-0.5">Biasa</span>}</td>
                 <td className="text-right font-mono">{fmtAngka(b.ton, 3)}</td>
                 <td className="text-right font-mono">{fmtAngka((b.porsi ?? 0) * 100, 1)}%</td>
               </tr>
@@ -1276,9 +1285,25 @@ function KartuGrade() {
           </tbody>
         </table>
         {q.data && (
-          <p className="mt-2 text-xs text-[#64676C]">
-            Porsi EUDR (TTSR): <b>{fmtAngka(q.data.porsi_eudr * 100, 1)}%</b>
-          </p>
+          <>
+            <div className="mt-3 grid gap-2 sm:grid-cols-2">
+              <div className="rounded-sm border border-[#BBF7D0] bg-[#F0FDF4] p-3 text-xs">
+                <div className="font-semibold text-[#15803D]">Total grade EUDR</div>
+                <div className="mt-1 font-mono text-base font-bold text-[#1D2434]">
+                  {fmtAngka(eudrTon, 3)} ton · {fmtAngka(totalTon ? eudrTon / totalTon * 100 : 0, 1)}%
+                </div>
+              </div>
+              <div className="rounded-sm border border-[#E4E5E8] bg-[#F8F8F8] p-3 text-xs">
+                <div className="font-semibold text-[#475467]">Total grade biasa</div>
+                <div className="mt-1 font-mono text-base font-bold text-[#1D2434]">
+                  {fmtAngka(biasaTon, 3)} ton · {fmtAngka(totalTon ? biasaTon / totalTon * 100 : 0, 1)}%
+                </div>
+              </div>
+            </div>
+            <p className="mt-2 text-[11px] text-[#64676C]">
+              EUDR = grade ber-flag EUDR di master grade; jika kode belum terdaftar, kode yang memuat TTSR dikenali sebagai EUDR. Biasa = grade lainnya yang tidak termasuk klasifikasi EUDR.
+            </p>
+          </>
         )}
       </>
     } />
@@ -1700,14 +1725,27 @@ export default function Analisis() {
                    url={`/api/analisis/analisa${paramsA.size ? "?" + paramsA.toString() : ""}`}
                    tutup={() => setBukaAnalisa(false)} />
       )}
-      <div className="lg:col-span-2"><KartuPenerimaan /></div>
-      <KartuTonase />
-      <KartuKonsentrasi />
-      <KartuGrade />
-      <KartuReject />
-      <KartuMarginHarian />
-      <KartuMarginPer />
-      <div className="lg:col-span-2"><KartuIntakeTerakhir /></div>
+      <div className="lg:col-span-2"><KartuMuatSaatDiminta
+        judul="Penerimaan Karet"
+        keterangan="Memuat grafik dan rincian penerimaan hanya setelah Anda meminta."
+        anak={<KartuPenerimaan />}
+      /></div>
+      <div className="lg:col-span-2"><KartuMuatSaatDiminta
+        judul="Sebaran Intake per Provinsi Indonesia"
+        keterangan="Peta choropleth total intake Dry per provinsi. Pilih periode; nilai agregat dihitung dari kolom provinsi yang tercatat pada tiket."
+        anak={<PetaIntake />}
+      /></div>
+      <KartuMuatSaatDiminta judul="Tonase (drill-down)" keterangan="Memuat rincian tonase hanya setelah Anda meminta." anak={<KartuTonase />} />
+      <KartuMuatSaatDiminta judul="Konsentrasi vendor" keterangan="Memuat konsentrasi pemasok hanya setelah Anda meminta." anak={<KartuKonsentrasi />} />
+      <KartuMuatSaatDiminta judul="Bauran grade & porsi EUDR" keterangan="Memuat komposisi grade hanya setelah Anda meminta." anak={<KartuGrade />} />
+      <KartuMuatSaatDiminta judul="KPI Reject %" keterangan="Memuat indikator reject hanya setelah Anda meminta." anak={<KartuReject />} />
+      <KartuMuatSaatDiminta judul="Margin harian" keterangan="Memuat margin harian hanya setelah Anda meminta." anak={<KartuMarginHarian />} />
+      <KartuMuatSaatDiminta judul="Margin per grade / vendor" keterangan="Memuat perincian margin hanya setelah Anda meminta." anak={<KartuMarginPer />} />
+      <div className="lg:col-span-2"><KartuMuatSaatDiminta
+        judul="Daftar intake terakhir"
+        keterangan="Memuat daftar tiket terakhir hanya setelah Anda meminta."
+        anak={<KartuIntakeTerakhir />}
+      /></div>
       <p className="lg:col-span-2 text-xs text-[#64676C]">
         Kartu tonase/grade/reject memakai data tiket; data tiket historis penuh belum
         diunggah (template hanya berisi contoh), jadi angka akan terisi setelah ekspor
