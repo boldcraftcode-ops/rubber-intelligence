@@ -108,6 +108,8 @@ Rumus: `Dry (MT) = Σ dry_kg / 1.000` untuk satu `kode_vendor` pada satu
 `YYYY-MM`, memakai baris intake yang lolos `_filter_base` (tiket valid, Wet/DRC
 konsisten, bukan LATEX OP, mengikuti filter tahun/periode/EUDR). Perbandingan
 memakai nilai **sebelum dibulatkan** supaya 1.499,9996 MT tidak naik menjadi
-SS hanya karena tampil sebagai 1.500,000 MT. Kpi detail memakai **kelas
-tertinggi** dalam periode; ringkasan di halaman menghitung jumlah
-*supplier-bulan* per kelas hanya untuk kode yang punya baris Master Vendor.
+SS hanya karena tampil sebagai 1.500,000 MT. Detail Supplier Actors hanya
+menampilkan **satu nilai kelas tertinggi** dalam periode, tanpa tabel bulanan;
+ringkasan jumlah *supplier-bulan* per kelas berada di menu **Master Vendor**
+(dengan tahun terbaru otomatis) dan hanya menghitung kode yang punya baris
+Master Vendor.

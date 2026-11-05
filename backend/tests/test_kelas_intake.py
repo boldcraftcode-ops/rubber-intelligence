@@ -129,6 +129,16 @@ def test_kelas_mengikuti_filter_periode(klien):
     assert kosong["class_by_month"] == []
 
 
+
+def test_tanpa_parameter_tahun_memakai_tahun_intake_terbaru(klien):
+    """Kartu di Master Vendor memanggil endpoint tanpa `tahun`."""
+    eksplisit = klien.get("/api/traceability/kelas-intake",
+                          params={"tahun": 2026}).json()
+    bawaan = klien.get("/api/traceability/kelas-intake").json()
+    assert bawaan["filters"]["year"] == 2026
+    assert bawaan["distribusi"] == eksplisit["distribusi"]
+    assert bawaan["total_supplier_bulan"] == eksplisit["total_supplier_bulan"]
+
 def test_kode_tanpa_master_tetap_punya_kelas_di_detail(klien):
     detail = klien.get("/api/traceability/actors/V9",
                        params={"tahun": 2026}).json()

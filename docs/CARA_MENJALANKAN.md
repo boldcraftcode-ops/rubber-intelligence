@@ -325,9 +325,11 @@ pilihan yang sah.
 detail Supplier Actors bukan lagi berasal dari master: kelasnya dihitung dari
 **Dry (MT) per supplier per bulan** dengan batas **≥ 1.500 = SS, ≥ 1.000 = S,
 ≥ 500 = A, ≥ 250 = B, ≥ 100 = C, < 100 = D**. Kotak Kpi menampilkan **kelas
-tertinggi** yang dicapai pada periode terpilih; di bawahnya ada tabel kelas
-tiap bulan. Di atas tabel Supplier Actors ada ringkasan jumlah *supplier-bulan*
-per kelas. Ringkasan hanya menghitung kode yang terdaftar di Master Vendor —
+tertinggi** yang dicapai pada periode terpilih (tanpa tabel kelas tiap
+bulan). Ringkasan jumlah *supplier-bulan* per kelas **tidak ditampilkan di
+Traceability**, melainkan sebagai kartu paling atas pada menu **Master
+Vendor**; kartu itu otomatis memakai tahun intake terbaru. Ringkasan hanya
+menghitung kode yang terdaftar di Master Vendor —
 kode yang hanya muncul di tiket intake tetap punya kelas pada detailnya, dan
 jumlahnya ditampilkan terpisah agar tidak hilang. Kelas dihitung dari nilai
 sebelum dibulatkan, tidak disimpan, dan tidak bisa diisi manual.
