@@ -1310,6 +1310,7 @@ menjawab.
 | 2026-11-01 | Traceability memakai database intake + ID_AUX; Provinsi tidak boleh diambil dari intake | ID_AUX adalah referensi resmi, tetapi salinan yang ada belum memiliki kolom Provinsi atau kode administratif |
 | 2026-11-05 | **Fitur Kartu Traceability dihapus**: endpoint `GET /api/traceability/cards`, kartu pabrik, tombol "Kartu rantai", komponen kartu dan tesnya | pemilik tidak memakainya; tab Regional Traceability, Supplier Actors, ekspor, koreksi wilayah, serta tabel database tetap dipertahankan |
 | 2026-11-05 | Kartu **RM Stock – Intake vs Pricing** menyediakan tonase dalam **MT dan kg**: `GET /api/ringkasan-elemen` menambah `*_kg` di samping `*_ton`, ekspor Excel memuat kolom kedua satuan, layar ada tombol MT/kg dan sel tabel menampilkan satuan pasangannya | operator pabrik membaca stok/intake dalam kg, sedangkan laporan & rumus memakai MT; 1 MT = 1.000 kg, harga tetap US¢/kg |
+| 2026-11-05 | Tab **Supplier Actors** menambah kolom **Collector** (kode + nama) di samping Tier, dan detail supplier memuat kode/nama kolektor; catatan kaki menjelaskan T2 = kolektor berafiliasi dengan desa Asal Getah yang sama, tetap **satu baris per vendor** | konsep "desa + kolektor + vendor = satu rantai supplier actor" harus terbaca langsung di tabel tanpa mengembalikan fitur kartu rantai yang sudah dihapus; rantai ditandai sebagai inferensi intake, bukan catatan transaksi |
 
 ---
 

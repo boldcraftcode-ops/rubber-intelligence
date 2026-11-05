@@ -328,10 +328,10 @@ export default function Traceability() {
         ) : (
           <div className="max-h-[580px] overflow-auto">
             {actors.error && <p className="m-4 rounded-sm border border-[#FECACA] bg-[#FEF2F2] px-3 py-2 text-xs text-[#B91C1C]">{(actors.error as Error).message}</p>}
-            <table className="w-full min-w-[1050px] text-xs">
+            <table className="w-full min-w-[1180px] text-xs">
               <thead className="sticky top-0 z-10 bg-[#F8F8F8] text-left text-[10px] uppercase tracking-wide text-[#64676C]">
                 <tr>
-                  <th className="py-2 pl-4">ID</th><th className="px-2">Name</th><th className="px-2">Tier</th>
+                  <th className="py-2 pl-4">ID</th><th className="px-2">Name</th><th className="px-2">Tier</th><th className="px-2">Collector</th>
                   <th className="px-2">Type</th><th className="px-2">Terminal</th><th className="px-2">Period turnover</th>
                   <th className="px-2">Sourcing types</th><th className="px-2">Country</th><th className="px-2">Regency</th>
                   <th className="px-2">District</th><th className="px-2">Source from</th><th className="px-2 pr-4">Sell to</th>
@@ -347,6 +347,9 @@ export default function Traceability() {
                       <button className="text-left font-semibold text-[#1D2434] underline decoration-dotted underline-offset-2 hover:text-[#B91C1C]" onClick={() => setSelectedActor(a.supplier_code)}>{a.supplier}</button>
                     </td>
                     <td className="px-2">{a.tier ? <span className="rounded-sm border border-[#E4E5E8] bg-[#F8F8F8] px-1.5 py-0.5 font-mono text-[10px] text-[#1D2434]">{a.tier}</span> : "—"}</td>
+                    <td className="px-2">{a.collector_code
+                      ? <><span className="font-mono text-[#1D2434]">{a.collector_code}</span><span className="block text-[10px] text-[#64676C]">{a.collector_name || "—"}</span></>
+                      : <span className="text-[#9AA0A6]">—</span>}</td>
                     <td className="px-2">{a.activity_type || "—"}</td>
                     <td className="px-2 text-[#9AA0A6]">{a.terminal_status || "—"}</td>
                     <td className="px-2"><div className="min-w-[115px]"><div className="flex justify-between gap-2 font-mono"><span>{fmtAngka(a.period_turnover_mt, 3)} MT</span><span className="text-[#9AA0A6]">{fmtAngka(a.tickets, 0)} tk</span></div><div className="mt-1 h-1.5 rounded bg-[#EDEFF2]"><div className="h-1.5 rounded bg-[#FF1313]" style={{ width: `${barWidth}%` }} /></div></div></td>
@@ -356,10 +359,10 @@ export default function Traceability() {
                   </tr>
                   </Fragment>;
                 })}
-                {!actors.isLoading && !(actors.data?.baris?.length) && <tr><td colSpan={12} className="px-4 py-8 text-center text-[#9AA0A6]">Tidak ada aktor untuk filter ini.</td></tr>}
+                {!actors.isLoading && !(actors.data?.baris?.length) && <tr><td colSpan={13} className="px-4 py-8 text-center text-[#9AA0A6]">Tidak ada aktor untuk filter ini.</td></tr>}
               </tbody>
             </table>
-            <p className="px-4 py-2 text-[10px] text-[#9AA0A6]">Tier T1 dipakai untuk vendor; T2 dipakai untuk vendor yang memiliki kolektor. Terminal dan tujuan penjualan tidak tercatat di intake/master. Klik nama supplier untuk melihat rincian Asal Getah. * Flag produsen langsung bersifat sementara.</p>
+            <p className="px-4 py-2 text-[10px] leading-relaxed text-[#9AA0A6]">Tier T1 dipakai untuk vendor; T2 dipakai saat ada kolektor berafiliasi ke vendor itu yang desanya cocok dengan desa Asal Getah. Kolektor tidak dibuat baris terpisah: desa, kolektor, dan vendor dihitung sebagai satu supplier actor (satu rantai). Rantai ini inferensi dari data intake, bukan catatan transaksi jual-beli. Terminal dan tujuan penjualan tidak tercatat di intake/master. Klik nama supplier untuk melihat rincian Asal Getah. * Flag produsen langsung bersifat sementara.</p>
           </div>
         )}
       </div>
@@ -441,6 +444,7 @@ export default function Traceability() {
                       <div><p className="text-[#9AA0A6]">Coordinates</p><p className="mt-1 text-[#64676C]">{detail.coordinates_note}</p></div>
                       <div><p className="text-[#9AA0A6]">Direct producer flag</p><p className="mt-1 text-[#1D2434]">{detail.is_direct_producer ? "Yes — provisional" : "No (default)"}</p></div>
                       <div><p className="text-[#9AA0A6]">Collector affiliation</p><p className="mt-1 text-[#1D2434]">{detail.is_collector ? "Yes" : "No"}</p></div>
+                      <div><p className="text-[#9AA0A6]">Collector (T2)</p><p className="mt-1 font-mono text-[11px] text-[#1D2434]">{detail.collector_code || "Not registered"}</p>{detail.collector_name && <p className="mt-0.5 text-[10px] text-[#64676C]">{detail.collector_name}</p>}</div>
                       <div><p className="text-[#9AA0A6]">Sourcing type source</p><p className="mt-1 text-[#1D2434]">{detail.sourcing_type_source}</p></div>
                       <div><p className="text-[#9AA0A6]">Sell to</p><p className="mt-1 text-[#64676C]">Not recorded in intake</p></div>
                     </div>
