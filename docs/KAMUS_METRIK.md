@@ -87,3 +87,27 @@ Aturan: angka dibulatkan ("sekitar 2 sen"), tidak ada empat desimal, tanpa kata
 *variance*, *bridge*, atau *MoM*. Bila target berubah di tengah periode, narasi
 menyebutkannya beserta sumbernya (tabel target margin), supaya pertanyaan
 "kenapa target bulan itu X?" tidak menggantung.
+
+## Supplier class berbasis intake (Traceability)
+
+Kelas supplier **bukan** klasifikasi master (Small holder / Small estate /
+Rubber trader) dan **bukan** sourcing type (Direct/Indirect Smallholder, Own
+Plantation). Kelas dihitung murni dari volume intake, tidak disimpan dan tidak
+bisa diisi manual.
+
+| Kelas | Dry per supplier per bulan | Catatan |
+|-------|---------------------------|---------|
+| SS | ≥ 1.500 MT | batas tertinggi |
+| S | ≥ 1.000 MT | |
+| A | ≥ 500 MT | |
+| B | ≥ 250 MT | |
+| C | ≥ 100 MT | |
+| D | < 100 MT | termasuk bulan tanpa intake bila tidak ada baris |
+
+Rumus: `Dry (MT) = Σ dry_kg / 1.000` untuk satu `kode_vendor` pada satu
+`YYYY-MM`, memakai baris intake yang lolos `_filter_base` (tiket valid, Wet/DRC
+konsisten, bukan LATEX OP, mengikuti filter tahun/periode/EUDR). Perbandingan
+memakai nilai **sebelum dibulatkan** supaya 1.499,9996 MT tidak naik menjadi
+SS hanya karena tampil sebagai 1.500,000 MT. Kpi detail memakai **kelas
+tertinggi** dalam periode; ringkasan di halaman menghitung jumlah
+*supplier-bulan* per kelas hanya untuk kode yang punya baris Master Vendor.

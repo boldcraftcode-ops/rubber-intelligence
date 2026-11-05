@@ -66,7 +66,7 @@ function paramsFilter(f: Filter) {
 }
 
 function Kpi({ title, value, unit, note, onClick, active = false }: {
-  title: string; value: number | null; unit: string; note?: string;
+  title: string; value: number | string | null; unit: string; note?: string;
   onClick?: () => void; active?: boolean;
 }) {
   const className = `min-w-0 rounded-sm border ${active ? "border-[#F79009] bg-[#FFFAEB]" : "border-[#E4E5E8] bg-white"} border-l-2 ${onClick ? "border-l-[#F79009] hover:bg-[#FFFAEB] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#175CD3]" : "border-l-[#FF1313]"} px-4 py-3 text-left`;
@@ -74,7 +74,8 @@ function Kpi({ title, value, unit, note, onClick, active = false }: {
     <>
       <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-[#64676C]">{title}</p>
       <p className="mt-1 text-xl font-bold tabular-nums text-[#1D2434]">
-        {value == null ? "—" : fmtAngka(value, unit === "%" ? 2 : unit === "MT" ? 3 : 0)}
+        {value == null ? "—" : typeof value === "string" ? value
+          : fmtAngka(value, unit === "%" ? 2 : unit === "MT" ? 3 : 0)}
         <span className="ml-1 text-xs font-medium text-[#64676C]">{unit}</span>
       </p>
       {note && <p className="mt-1 text-[10px] text-[#9AA0A6]">{note}</p>}
@@ -106,6 +107,11 @@ export default function Traceability() {
   const actors = useQuery({
     queryKey: ["traceability-actors", query],
     queryFn: () => ambilJson(`/api/traceability/actors?${query}`),
+    enabled: tab === "actors",
+  });
+  const kelasIntake = useQuery({
+    queryKey: ["traceability-kelas-intake", query],
+    queryFn: () => ambilJson(`/api/traceability/kelas-intake?${query}`),
     enabled: tab === "actors",
   });
   const actorDetail = useQuery({
@@ -352,7 +358,44 @@ export default function Traceability() {
             </table>
           </div>
         ) : (
-          <div className="max-h-[580px] overflow-auto">
+          <>
+            {kelasIntake.data && (() => {
+              const ki = kelasIntake.data;
+              const dist = ki.distribusi ?? [];
+              const batas = ki.batas ?? [];
+              const maks = Math.max(1, ...dist.map((x: any) => x.jumlah));
+              const warna: Record<string, string> = {
+                SS: "bg-[#1D2434] text-white", S: "bg-[#175CD3] text-white",
+                A: "bg-[#027A48] text-white", B: "bg-[#B54708] text-white",
+                C: "bg-[#B45309] text-white", D: "bg-[#E4E5E8] text-[#374151]",
+              };
+              const bulan = ki.bulan_tersedia ?? [];
+              return <div className="mb-3 rounded-sm border border-[#E4E5E8] bg-white p-3">
+                <div className="mb-2 flex flex-wrap items-end justify-between gap-2">
+                  <div>
+                    <h4 className="text-xs font-bold uppercase tracking-wide text-[#374151]">Supplier class berbasis intake · Dry (MT) per supplier per bulan</h4>
+                    <p className="mt-1 text-[10px] text-[#9AA0A6]">Tanda ≥ berlaku di setiap batas. Ringkasan: <b>{fmtAngka(ki.total_supplier_bulan, 0)} supplier-bulan</b> · {bulan.length} bulan ({bulan[0] || "—"} s.d. {bulan[bulan.length - 1] || "—"}) · total {fmtAngka(ki.total_dry_mt, 3)} MT.</p>
+                  </div>
+                  <span className="text-[10px] text-[#64676C]">Hanya vendor terdaftar di Master Vendor</span>
+                </div>
+                <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
+                  {dist.map((x: any) => {
+                    const b = batas.find((t: any) => t.kelas === x.kelas);
+                    return <div key={x.kelas} className="rounded-sm border border-[#E4E5E8] p-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className={`rounded-sm px-1.5 py-0.5 font-mono text-[11px] font-bold ${warna[x.kelas] ?? warna.D}`}>{x.kelas}</span>
+                        <span className="font-mono text-sm font-bold tabular-nums text-[#1D2434]">{fmtAngka(x.jumlah, 0)}</span>
+                      </div>
+                      <p className="mt-1 text-[9px] text-[#64676C]">{b ? (b.batas_mt === null ? "< 100 MT" : `≥ ${fmtAngka(b.batas_mt, 0)} MT`) : "—"}</p>
+                      <div className="mt-1.5 h-1.5 rounded bg-[#EDEFF2]"><div className="h-1.5 rounded bg-[#FF1313]" style={{ width: `${Math.max(2, x.jumlah / maks * 100)}%` }} /></div>
+                    </div>;
+                  })}
+                </div>
+                {ki.supplier_bulan_tanpa_master > 0 && <p className="mt-2 text-[10px] text-[#9AA0A6]">{ki.supplier_bulan_tanpa_master} supplier-bulan dari kode tanpa Master Vendor ({ki.kode_tanpa_master.join(", ")}) tidak masuk ringkasan, tetapi tetap punya kelas di detail supplier.</p>}
+                <p className="mt-1 text-[10px] leading-relaxed text-[#9AA0A6]">{ki.catatan}</p>
+              </div>;
+            })()}
+            <div className="max-h-[580px] overflow-auto">
             {actors.error && <p className="m-4 rounded-sm border border-[#FECACA] bg-[#FEF2F2] px-3 py-2 text-xs text-[#B91C1C]">{(actors.error as Error).message}</p>}
             {simpanSourcing.error && <p className="m-4 rounded-sm border border-[#FECACA] bg-[#FEF2F2] px-3 py-2 text-xs text-[#B91C1C]">Gagal menyimpan sourcing type: {(simpanSourcing.error as Error).message}</p>}
             <table className="w-full min-w-[1180px] text-xs">
@@ -403,8 +446,9 @@ export default function Traceability() {
                 {!actors.isLoading && !(actors.data?.baris?.length) && <tr><td colSpan={13} className="px-4 py-8 text-center text-[#9AA0A6]">Tidak ada aktor untuk filter ini.</td></tr>}
               </tbody>
             </table>
-            <p className="px-4 py-2 text-[10px] leading-relaxed text-[#9AA0A6]">Tier T1 dipakai untuk vendor; T2 dipakai saat ada kolektor berafiliasi ke vendor itu yang desanya cocok dengan desa Asal Getah. Kolektor tidak dibuat baris terpisah: desa, kolektor, dan vendor dihitung sebagai satu supplier actor (satu rantai). Rantai ini inferensi dari data intake, bukan catatan transaksi jual-beli. Terminal dan tujuan penjualan tidak tercatat di intake/master. Klik nama supplier untuk melihat rincian Asal Getah. Sourcing types diisi langsung dari dropdown (Direct Smallholder / Indirect Smallholder / Own Plantation); bila belum diisi, klasifikasi Master Vendor dipakai sebagai fallback. * Flag produsen langsung bersifat sementara.</p>
-          </div>
+            <p className="px-4 py-2 text-[10px] leading-relaxed text-[#9AA0A6]">Tier T1 dipakai untuk vendor; T2 dipakai saat ada kolektor berafiliasi ke vendor itu yang desanya cocok dengan desa Asal Getah. Kolektor tidak dibuat baris terpisah: desa, kolektor, dan vendor dihitung sebagai satu supplier actor (satu rantai). Rantai ini inferensi dari data intake, bukan catatan transaksi jual-beli. Terminal dan tujuan penjualan tidak tercatat di intake/master. Klik nama supplier untuk melihat rincian Asal Getah. Sourcing types diisi langsung dari dropdown (Direct Smallholder / Indirect Smallholder / Own Plantation); bila belum diisi, klasifikasi Master Vendor dipakai sebagai fallback. Supplier class dihitung dari Dry (MT) per supplier per bulan: SS ≥1.500, S ≥1.000, A ≥500, B ≥250, C ≥100, D &lt;100 MT; ringkasan hanya untuk vendor yang terdaftar di Master Vendor. * Flag produsen langsung bersifat sementara.</p>
+            </div>
+          </>
         )}
       </div>
       {gapLevel && (
@@ -472,9 +516,45 @@ export default function Traceability() {
                   <div className="grid grid-cols-2 gap-2 md:grid-cols-4">
                     <Kpi title="Filtered Dry turnover" value={detail.period_turnover_mt} unit="MT" />
                     <Kpi title="Intake tickets" value={detail.tickets} unit="tickets" />
-                    <Kpi title="Supplier class" value={null} unit="" note={detail.classification || "Belum diklasifikasi di master"} />
+                    <Kpi title="Supplier class" value={detail.supplier_class || null} unit=""
+                      note={detail.supplier_class ? "Kelas tertinggi pada periode ini · basis Dry (MT) per bulan" : "Belum ada intake pada periode ini"} />
                     <Kpi title="Top sourcing regency" value={null} unit="" note={detail.top_geography?.regency || "Tidak tersedia"} />
                   </div>
+                  {detail.class_by_month && (() => {
+                    const bulanKelas: any[] = detail.class_by_month ?? [];
+                    const ambang: any[] = detail.class_thresholds ?? [];
+                    return <div>
+                      <div className="mb-2 flex flex-wrap items-end justify-between gap-2">
+                        <div>
+                          <h4 className="text-xs font-bold uppercase tracking-wide text-[#374151]">Supplier class per bulan</h4>
+                          <p className="mt-1 text-[10px] text-[#9AA0A6]">{detail.class_basis}</p>
+                        </div>
+                        <span className="text-[10px] text-[#64676C]">{bulanKelas.length} bulan · tertinggi <b className="font-mono text-[#1D2434]">{detail.supplier_class || "—"}</b></span>
+                      </div>
+                      <div className="max-h-[220px] overflow-auto rounded-sm border border-[#E4E5E8]">
+                        <table className="w-full min-w-[420px] text-xs">
+                          <thead className="sticky top-0 bg-[#F8F8F8] text-left text-[10px] uppercase tracking-wide text-[#64676C]">
+                            <tr><th className="py-2 pl-3">Bulan</th><th className="px-2 text-right">Dry (MT)</th><th className="px-2">Kelas</th><th className="px-2 pr-3">Batas</th></tr>
+                          </thead>
+                          <tbody>
+                            {bulanKelas.map((b: any) => {
+                              const amb = ambang.find((t: any) => t.kelas === b.kelas);
+                              return <tr key={b.bulan} className={`border-t border-[#EDEFF2] ${b.kelas === detail.supplier_class ? "bg-[#FFFAEB]" : "hover:bg-[#FAFAFA]"}`}>
+                                <td className="py-2 pl-3 font-mono text-[#1D2434]">{b.bulan}</td>
+                                <td className="px-2 text-right font-mono tabular-nums">{fmtAngka(b.dry_mt, 3)}</td>
+                                <td className="px-2"><span className="rounded-sm border border-[#E4E5E8] bg-white px-1.5 py-0.5 font-mono text-[10px] font-bold text-[#1D2434]">{b.kelas}</span></td>
+                                <td className="px-2 pr-3 text-[10px] text-[#64676C]">{amb ? (amb.batas_mt === null ? "< 100 MT" : `≥ ${fmtAngka(amb.batas_mt, 0)} MT`) : "—"}</td>
+                              </tr>;
+                            })}
+                            {!bulanKelas.length && <tr><td colSpan={4} className="py-8 text-center text-[#9AA0A6]">Tidak ada intake pada periode ini.</td></tr>}
+                          </tbody>
+                        </table>
+                      </div>
+                      <div className="mt-2 flex flex-wrap gap-1.5">
+                        {ambang.map((t: any) => <span key={t.kelas} className="rounded-sm border border-[#E4E5E8] bg-[#F8F8F8] px-1.5 py-0.5 text-[10px] text-[#64676C]"><b className="font-mono text-[#1D2434]">{t.kelas}</b> {t.batas_mt === null ? "< 100 MT" : `≥ ${fmtAngka(t.batas_mt, 0)} MT`}</span>)}
+                      </div>
+                    </div>;
+                  })()}
                   <div>
                     <h4 className="mb-2 text-xs font-bold uppercase tracking-wide text-[#374151]">Supplier details</h4>
                     <div className="grid grid-cols-2 gap-x-5 gap-y-3 rounded-sm border border-[#E4E5E8] p-4 text-xs sm:grid-cols-4">

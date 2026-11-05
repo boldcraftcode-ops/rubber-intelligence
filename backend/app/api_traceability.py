@@ -14,6 +14,9 @@ from sqlalchemy.orm import Session, aliased
 
 from .auth_lokal import info_pengguna, wajib_admin
 from .core.alarm import catat_audit
+from .core.kelas_intake import (KELAS_URUTAN, batas_untuk_layar,
+                                 distribusi as distribusi_kelas,
+                                 kelas as kelas_intake, kelas_tertinggi)
 from .core.klasifikasi_vendor import label as label_klasifikasi
 from .core.sourcing_type import (bakukan as bakukan_sourcing,
                                  daftar_untuk_layar as daftar_sourcing,
@@ -141,6 +144,34 @@ def _filter_base(session: Session, tahun: int | None, periode: str,
     if not include_latex:
         q = q.where(func.upper(func.trim(TiketBaris.item_code)) != "LATEX OP")
     return q.subquery()
+
+
+def _supplier_bulan(session: Session, base,
+                    supplier_code: str | None = None) -> list[dict]:
+    """Agregat Dry per (bulan, supplier) dari baris intake terfilter.
+
+    SQL mengelompokkan per tanggal + vendor, lalu bulan dirangkum di Python.
+    Ini sengaja tidak memakai ``strftime`` agar tetap jalan di SQLite maupun
+    PostgreSQL. Klasifikasi memakai MT sebelum dibulatkan.
+    """
+    T = TiketBaris
+    q = (select(T.ticket_date.label("tanggal"), T.kode_vendor,
+                func.sum(T.dry_kg).label("dry"))
+         .select_from(T).join(base, base.c.id == T.id)
+         .group_by(T.ticket_date, T.kode_vendor))
+    if supplier_code:
+        q = q.where(T.kode_vendor == supplier_code)
+    kumpul: dict[tuple[str, str], float] = {}
+    for r in session.execute(q):
+        bulan = str(r.tanggal)[:7]
+        kunci = (bulan, r.kode_vendor)
+        kumpul[kunci] = kumpul.get(kunci, 0.0) + float(r.dry or 0)
+    hasil = []
+    for (bulan, kode), kg in sorted(kumpul.items()):
+        mt = kg / 1000.0
+        hasil.append({"bulan": bulan, "supplier_code": kode,
+                      "dry_mt": round(mt, 3), "kelas": kelas_intake(mt)})
+    return hasil
 
 
 def _koreksi_kunci(T, K):
@@ -542,6 +573,44 @@ def pasang_router_traceability(app, ambil_session):
             return _buat_xlsx(data, actors(session, base_for_actors))
         return data
 
+    @router.get("/kelas-intake")
+    def kelas_intake_supplier(tahun: int | None = None, periode: str = "ALL",
+                              supplier: str | None = None,
+                              eudr: str = Query("all", pattern="^(all|eudr|non_eudr)$"),
+                              include_latex: bool = False, session: Session = dep):
+        """Distribusi kelas supplier dari Dry (MT) per supplier per bulan.
+
+        Ringkasan hanya menghitung kode supplier yang punya baris Master
+        Vendor; kode yang hanya ada di intake tetap mendapat kelas pada detail
+        supplier, dan jumlahnya dilaporkan terpisah agar tidak tersembunyi.
+        """
+        years, effective_year, base = filter_data(
+            session, tahun, periode, supplier, eudr, include_latex)
+        semua = _supplier_bulan(session, base, supplier)
+        kode_master = set(session.scalars(select(Vendor.kode)))
+        terdaftar = [b for b in semua if b["supplier_code"] in kode_master]
+        tanpa_master = sorted({b["supplier_code"] for b in semua
+                               if b["supplier_code"] not in kode_master})
+        return {
+            "batas": batas_untuk_layar(),
+            "urutan": KELAS_URUTAN,
+            "distribusi": distribusi_kelas(b["kelas"] for b in terdaftar),
+            "total_supplier_bulan": len(terdaftar),
+            "total_dry_mt": round(sum(b["dry_mt"] for b in terdaftar), 3),
+            "bulan_tersedia": sorted({b["bulan"] for b in terdaftar}),
+            "supplier_bulan_tanpa_master": len(semua) - len(terdaftar),
+            "kode_tanpa_master": tanpa_master,
+            "catatan": (
+                "Kelas dihitung dari Dry (MT) per supplier per bulan dengan tanda ≥ "
+                "pada setiap batas. Distribusi hanya menghitung kode supplier yang "
+                "terdaftar di Master Vendor; kode yang hanya ada pada tiket intake "
+                "tetap mendapat kelas di detail supplier tetapi tidak masuk ringkasan."
+            ),
+            "filters": {"year": effective_year, "period": periode.upper(),
+                        "eudr": eudr, "include_latex": include_latex},
+            "years": years,
+        }
+
     @router.get("/actors")
     def supplier_actors(tahun: int | None = None, periode: str = "ALL",
                         supplier: str | None = None,
@@ -735,6 +804,8 @@ def pasang_router_traceability(app, ambil_session):
         has_collector = matched_collector is not None
         rantai = _supply_chain_lanes(session, supplier_code, origins)
         rantai["tier"] = "T2" if has_collector else "T1"
+        bulan_kelas = _supplier_bulan(session, base, supplier_code)
+        supplier_class = kelas_tertinggi([b["kelas"] for b in bulan_kelas])
         return {
             "supplier_code": supplier_code,
             "supplier": (vendor.nama_baku if vendor else None) or nama_intake or supplier_code,
@@ -752,6 +823,14 @@ def pasang_router_traceability(app, ambil_session):
             "top_geography": origins[0] if origins else None,
             "origins": origins,
             "supply_chain": rantai,
+            "supplier_class": supplier_class,
+            "class_by_month": bulan_kelas,
+            "class_thresholds": batas_untuk_layar(),
+            "class_basis": (
+                "Kelas tertinggi yang dicapai pada periode terpilih, dihitung dari "
+                "Dry (MT) per supplier per bulan dengan tanda ≥ pada setiap batas. "
+                "Bukan klasifikasi Master Vendor dan bukan sourcing type."
+            ),
             "classification": classification,
             "is_direct_producer": direct,
             "sourcing_type_code": kode_sourcing,

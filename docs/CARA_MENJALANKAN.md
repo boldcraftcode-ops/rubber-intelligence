@@ -321,6 +321,17 @@ bila sourcing type dikosongkan, kolom kembali memakai klasifikasi lama sebagai
 fallback. Nilai di luar ketiga pilihan ditolak dengan pesan yang menyebut
 pilihan yang sah.
 
+**Supplier class berbasis intake (sejak v0.11.2).** Kotak **Supplier class** di
+detail Supplier Actors bukan lagi berasal dari master: kelasnya dihitung dari
+**Dry (MT) per supplier per bulan** dengan batas **≥ 1.500 = SS, ≥ 1.000 = S,
+≥ 500 = A, ≥ 250 = B, ≥ 100 = C, < 100 = D**. Kotak Kpi menampilkan **kelas
+tertinggi** yang dicapai pada periode terpilih; di bawahnya ada tabel kelas
+tiap bulan. Di atas tabel Supplier Actors ada ringkasan jumlah *supplier-bulan*
+per kelas. Ringkasan hanya menghitung kode yang terdaftar di Master Vendor —
+kode yang hanya muncul di tiket intake tetap punya kelas pada detailnya, dan
+jumlahnya ditampilkan terpisah agar tidak hilang. Kelas dihitung dari nilai
+sebelum dibulatkan, tidak disimpan, dan tidak bisa diisi manual.
+
 Di Excel, tiga kolom baru ada di kanan: `Alamat`, `Kontak_Person`,
 `Klasifikasi`. Mengosongkan selnya berarti **tidak diubah** (bukan dihapus) —
 sama seperti Kategori — supaya file yang hanya berisi kode + nama tidak
