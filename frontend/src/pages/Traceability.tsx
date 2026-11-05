@@ -449,6 +449,76 @@ export default function Traceability() {
                       <div><p className="text-[#9AA0A6]">Sell to</p><p className="mt-1 text-[#64676C]">Not recorded in intake</p></div>
                     </div>
                   </div>
+                  {detail.supply_chain && (() => {
+                    const rantai = detail.supply_chain;
+                    const semuaLane: any[] = rantai.lanes ?? [];
+                    // Lintasan berkolektor ditaruh di atas agar tidak tenggelam
+                    // ketika satu vendor punya ratusan lokasi sumber.
+                    const lanes = [...semuaLane].sort((a, b) =>
+                      (a.mode === "T2" ? 0 : 1) - (b.mode === "T2" ? 0 : 1)
+                      || (b.dry_mt - a.dry_mt));
+                    const viaKolektor = semuaLane.filter((l: any) => l.mode === "T2").length;
+                    return <div>
+                      <div className="mb-2 flex flex-wrap items-end justify-between gap-2">
+                        <div>
+                          <h4 className="text-xs font-bold uppercase tracking-wide text-[#374151]">Supply chain lanes · Asal Getah → Collector (T2) → Vendor (T1)</h4>
+                          <p className="mt-1 text-[10px] text-[#9AA0A6]">Satu baris Supplier Actors = satu rantai. Kolektor tidak dibuat baris terpisah; simpul pabrik tidak ditampilkan karena tidak tercatat di data.</p>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-2 text-[10px] text-[#64676C]">
+                          <span className="rounded-sm border border-[#E4E5E8] bg-[#F8F8F8] px-1.5 py-0.5 font-mono font-semibold text-[#1D2434]">{detail.tier}</span>
+                          <span>{rantai.lane_count} lintasan</span>
+                          <span>{viaKolektor} via kolektor · {semuaLane.length - viaKolektor} langsung</span>
+                          <span className="font-mono">{fmtAngka(rantai.total_dry_mt, 3)} MT</span>
+                          <span className="font-mono">{fmtAngka(detail.tickets, 0)} tiket unik</span>
+                          {rantai.ambiguous_lane_count > 0 && <span className="rounded-sm bg-[#FFFAEB] px-1.5 py-0.5 font-semibold text-[#B54708]">⚠ {rantai.ambiguous_lane_count} perlu ditinjau</span>}
+                        </div>
+                      </div>
+                      <div className="max-h-[260px] overflow-auto rounded-sm border border-[#E4E5E8]">
+                        <table className="w-full min-w-[940px] text-xs">
+                          <thead className="sticky top-0 bg-[#F8F8F8] text-left text-[10px] uppercase tracking-wide text-[#64676C]">
+                            <tr>
+                              <th className="py-2 pl-3">Asal Getah (desa / kecamatan / kabupaten)</th>
+                              <th className="px-2">Collector (T2)</th>
+                              <th className="px-2">Vendor (T1)</th>
+                              <th className="px-2 text-right">Dry (MT)</th>
+                              <th className="px-2 text-right">Tiket</th>
+                              <th className="px-2 text-right">Traceable (MT)</th>
+                              <th className="px-2 pr-3">SCDF</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {lanes.map((lane: any, i: number) => {
+                              const o = lane.origin ?? {};
+                              return <tr key={`${JSON.stringify(o.source_key)}-${i}`} className="border-t border-[#EDEFF2] hover:bg-[#FAFAFA]">
+                                <td className="py-2 pl-3">
+                                  <span className="font-medium text-[#1D2434]">{o.sub_district || "Unknown"}</span>
+                                  <span className="block text-[10px] text-[#64676C]">{o.district || "—"} · {o.regency || "—"}</span>
+                                  {o.manual_correction && <span className="block text-[9px] text-[#9AA0A6]">Input: {o.source_sub_district || "—"}</span>}
+                                </td>
+                                <td className="px-2">
+                                  {lane.collector ? <>
+                                    <span className="font-mono text-[#1D2434]">{lane.collector.kode}</span>
+                                    <span className="block text-[10px] text-[#64676C]">{lane.collector.nama}</span>
+                                    {lane.ambiguous && <span className="mt-0.5 block text-[9px] font-semibold text-[#B54708]">⚠ {lane.collectors.length} kandidat: {lane.collectors.map((c: any) => c.kode).join(", ")}</span>}
+                                  </> : <span className="text-[#9AA0A6]">Langsung (T1)</span>}
+                                </td>
+                                <td className="px-2"><span className="font-mono text-[#64676C]">{detail.supplier_code}</span><span className="block text-[10px] text-[#9AA0A6]">{detail.supplier}</span></td>
+                                <td className="px-2 text-right font-mono tabular-nums">{fmtAngka(lane.dry_mt, 3)}</td>
+                                <td className="px-2 text-right font-mono tabular-nums">{fmtAngka(lane.tickets, 0)}</td>
+                                <td className="px-2 text-right font-mono tabular-nums">{fmtAngka(lane.traceable_mt, 3)}</td>
+                                <td className="px-2 pr-3"><span className={`rounded-sm px-1.5 py-0.5 text-[10px] ${o.matched_to_id_aux ? "bg-[#ECFDF3] text-[#027A48]" : "bg-[#FFFAEB] text-[#B54708]"}`}>{o.manual_correction ? "Manual match" : o.matched_to_id_aux ? "Matched" : "Unmatched"}</span></td>
+                              </tr>;
+                            })}
+                            {!lanes.length && <tr><td colSpan={7} className="py-8 text-center text-[#9AA0A6]">Tidak ada lintasan lokasi untuk filter ini.</td></tr>}
+                          </tbody>
+                        </table>
+                      </div>
+                      <div className="mt-2 grid gap-2 text-[10px] leading-relaxed text-[#64676C] md:grid-cols-2">
+                        <p className="rounded-sm bg-[#F8F8F8] p-2">{rantai.note}</p>
+                        <p className="rounded-sm bg-[#F8F8F8] p-2">{rantai.ticket_note}</p>
+                      </div>
+                    </div>;
+                  })()}
                   <div>
                     <div className="mb-2 flex flex-wrap items-end justify-between gap-2"><div><h4 className="text-xs font-bold uppercase tracking-wide text-[#374151]">Sourcing locations from Asal Getah</h4><p className="mt-1 text-[10px] text-[#9AA0A6]">Dry volume and share are calculated from filtered intake rows. Klik Edit untuk memilih District dan Sub-district SCDF; koreksi tidak menimpa intake asli dan berlaku untuk semua tiket dengan kombinasi lokasi sumber yang sama.</p></div><span className="text-[10px] text-[#64676C]">{origins.length} location groups</span></div>
                     <div className="max-h-[320px] overflow-auto rounded-sm border border-[#E4E5E8]">

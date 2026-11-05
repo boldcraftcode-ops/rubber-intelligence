@@ -596,6 +596,78 @@ def pasang_router_traceability(app, ambil_session):
             })
         return origins
 
+    def _supply_chain_lanes(session: Session, supplier_code: str,
+                            origins: list[dict]) -> dict:
+        """Lintasan rantai: Asal Getah -> Kolektor (T2) -> Vendor (T1).
+
+        Kolektor bukan aktor terpisah. Satu lintasan = satu kelompok lokasi
+        sumber dari ``_actor_origins``; kolektor dicocokkan lewat afiliasi
+        vendor yang sama dan kesamaan desa (nama asli maupun hasil koreksi
+        SCDF). Kolektor tanpa desa berlaku untuk semua desa. Volume diambil
+        langsung dari kelompok lokasi, sehingga tidak dihitung berulang
+        ketika beberapa kolektor cocok.
+        """
+        terdaftar = list(session.scalars(
+            select(Collector).where(Collector.kode_vendor == supplier_code)
+            .order_by(Collector.kode)))
+        lanes: list[dict] = []
+        kode_cocok: set[str] = set()
+        for origin in origins:
+            kunci = origin.get("source_key") or {}
+            desa_sumber = {
+                _desa_norm(origin.get("source_sub_district")),
+                _desa_norm(origin.get("sub_district")),
+                _desa_norm(origin.get("target_subdistrict_norm")),
+                _desa_norm(kunci.get("desa_norm")),
+            }
+            desa_sumber.discard("")
+            cocok: list[dict] = []
+            for c in terdaftar:
+                c_desa = _desa_norm(c.desa)
+                if c_desa and c_desa not in desa_sumber:
+                    continue
+                cocok.append({
+                    "kode": c.kode,
+                    "nama": c.nama,
+                    "desa": c.desa,
+                    "match": "desa" if c_desa else "semua_desa",
+                })
+                kode_cocok.add(c.kode)
+            # Kolektor dengan desa spesifik didahulukan daripada wildcard.
+            cocok.sort(key=lambda x: (x["match"] == "semua_desa", x["kode"]))
+            lanes.append({
+                "origin": origin,
+                "mode": "T2" if cocok else "T1",
+                "collector": cocok[0] if cocok else None,
+                "collectors": cocok,
+                "ambiguous": len(cocok) > 1,
+                "dry_mt": origin["dry_mt"],
+                "tickets": origin["tickets"],
+                "traceable_mt": origin["traceable_mt"],
+            })
+        return {
+            "nodes": ["Asal Getah", "Kolektor (T2)", "Vendor (T1)"],
+            "lane_count": len(lanes),
+            "lanes": lanes,
+            "ambiguous_lane_count": sum(1 for l in lanes if l["ambiguous"]),
+            "registered_collectors": len(terdaftar),
+            "matched_collectors": sorted(kode_cocok),
+            "collector_count": len(kode_cocok),
+            "total_dry_mt": round(sum(l["dry_mt"] for l in lanes), 3),
+            "note": (
+                "Satu baris Supplier Actors = satu rantai. Lintasan disusun dari "
+                "kesamaan desa Asal Getah dan afiliasi kolektor ke vendor; ini "
+                "inferensi dari data intake, bukan catatan transaksi jual-beli. "
+                "Pabrik/titik terima tidak tercatat pada data sehingga tidak "
+                "ditampilkan sebagai simpul."
+            ),
+            "ticket_note": (
+                "Tiket dihitung per kelompok lokasi sumber. Satu tiket yang "
+                "memuat beberapa desa dapat muncul di lebih dari satu lintasan; "
+                "pakai total tiket unik pada ringkasan untuk angka keseluruhan."
+            ),
+        }
+
     @router.get("/actors/{supplier_code}")
     def detail_supplier_actor(supplier_code: str, tahun: int | None = None,
                               periode: str = "ALL", eudr: str = "all",
@@ -632,6 +704,8 @@ def pasang_router_traceability(app, ambil_session):
                 .order_by(Collector.kode))
              if _desa_norm(c.desa) in origin_desas or not _desa_norm(c.desa)), None)
         has_collector = matched_collector is not None
+        rantai = _supply_chain_lanes(session, supplier_code, origins)
+        rantai["tier"] = "T2" if has_collector else "T1"
         return {
             "supplier_code": supplier_code,
             "supplier": (vendor.nama_baku if vendor else None) or nama_intake or supplier_code,
@@ -648,6 +722,7 @@ def pasang_router_traceability(app, ambil_session):
             "country": "Indonesia" if origins else None,
             "top_geography": origins[0] if origins else None,
             "origins": origins,
+            "supply_chain": rantai,
             "classification": classification,
             "is_direct_producer": direct,
             "sourcing_type_label": ("Direct producer (provisional)" if direct
