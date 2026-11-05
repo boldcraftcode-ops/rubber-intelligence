@@ -1321,6 +1321,12 @@ function KartuGrade() {
 const umurDalamKata = (hari: number) =>
   hari <= 0 ? "hari ini" : hari === 1 ? "kemarin" : `${hari} hari lalu`;
 
+/* Satu gaya sel untuk kedua tabel: padding kiri/kanan + garis pemisah kolom,
+   supaya nilai panjang (nama vendor, wilayah) tidak menyatu dengan kolom
+   sebelahnya. `last:` membuang garis di kolom paling kanan. */
+const selIntake = "border-r border-[#EDEFF2] px-3 py-2 last:border-r-0";
+const selKepala = `${selIntake} whitespace-nowrap bg-[#F8F8F8] text-left text-[10px] font-semibold uppercase tracking-wide text-[#64676C]`;
+
 export function KartuIntakeTerakhir() {
   const [limit, setLimit] = useState(20);
   const url = `/api/kartu/intake-terakhir?limit=${limit}`;
@@ -1334,47 +1340,56 @@ export function KartuIntakeTerakhir() {
            anak={
       <>
         {t ? (
-          <div className="mb-3 rounded-sm border border-[#E4E5E8] bg-[#F8F8F8] p-3">
-            <div className="flex flex-wrap items-baseline gap-x-6 gap-y-2">
-              <div>
-                <p className="text-xs text-[#64676C]">Intake terakhir masuk</p>
-                <p className="text-lg font-semibold text-[#1D2434]">
-                  {fmtTanggal(t.tanggal)}
-                  <span className={`ml-2 rounded-sm px-2 py-0.5 text-xs font-semibold ${
-                    t.umur_hari > 7
-                      ? "bg-[#FEF2F2] text-[#B91C1C] border border-[#FECACA]"
-                      : "bg-[#ECFDF5] text-[#166534] border border-[#A7F3D0]"}`}>
-                    {umurDalamKata(t.umur_hari)}
-                  </span>
-                </p>
-              </div>
-              <div>
-                <p className="text-xs text-[#64676C]">Tiket</p>
-                <p className="text-sm font-mono text-[#1D2434]">{t.ticket_no}</p>
-              </div>
-              <div>
-                <p className="text-xs text-[#64676C]">Vendor</p>
-                <p className="text-sm text-[#1D2434]">{t.label_vendor}</p>
-              </div>
-              <div>
-                <p className="text-xs text-[#64676C]">Grade · ton kering</p>
-                <p className="text-sm text-[#1D2434]">
-                  {t.grade ?? "–"} · {fmtAngka(t.dry_ton, 3)} t
-                </p>
-              </div>
-              <div>
-                <p className="text-xs text-[#64676C]">Sehari itu</p>
-                <p className="text-sm text-[#1D2434]">
-                  {t.jumlah_tiket_hari_itu} tiket · {fmtAngka(t.dry_ton_hari_itu, 3)} t
-                </p>
-              </div>
-            </div>
-            {t.umur_hari > 7 && (
-              <p className="mt-2 text-xs text-[#B45309]">
-                Data intake terakhir sudah {t.umur_hari} hari. Bila seharusnya sudah ada
-                tiket baru, unggah ekspor “Master Data” terbaru di menu Unggah Data.
-              </p>
-            )}
+          <div className="mb-3 overflow-hidden rounded-sm border border-[#E4E5E8]">
+            <table className="w-full text-xs">
+              <caption className="sr-only">Ringkasan tiket intake terakhir</caption>
+              <tbody>
+                <tr className="border-b border-[#EDEFF2]">
+                  <th scope="row" className={`${selIntake} w-48 whitespace-nowrap bg-[#F8F8F8] text-left font-medium text-[#64676C]`}>
+                    Intake terakhir masuk
+                  </th>
+                  <td className={`${selIntake} font-semibold text-[#1D2434]`}>
+                    {fmtTanggal(t.tanggal)}
+                    <span className={`ml-2 rounded-sm px-2 py-0.5 text-xs font-semibold ${
+                      t.umur_hari > 7
+                        ? "bg-[#FEF2F2] text-[#B91C1C] border border-[#FECACA]"
+                        : "bg-[#ECFDF5] text-[#166534] border border-[#A7F3D0]"}`}>
+                      {umurDalamKata(t.umur_hari)}
+                    </span>
+                  </td>
+                </tr>
+                <tr className="border-b border-[#EDEFF2]">
+                  <th scope="row" className={`${selIntake} whitespace-nowrap bg-[#F8F8F8] text-left font-medium text-[#64676C]`}>No tiket</th>
+                  <td className={`${selIntake} font-mono text-[#1D2434]`}>{t.ticket_no}</td>
+                </tr>
+                <tr className="border-b border-[#EDEFF2]">
+                  <th scope="row" className={`${selIntake} whitespace-nowrap bg-[#F8F8F8] text-left font-medium text-[#64676C]`}>Vendor</th>
+                  <td className={`${selIntake} text-[#1D2434]`}>{t.label_vendor}</td>
+                </tr>
+                <tr className="border-b border-[#EDEFF2]">
+                  <th scope="row" className={`${selIntake} whitespace-nowrap bg-[#F8F8F8] text-left font-medium text-[#64676C]`}>Grade</th>
+                  <td className={`${selIntake} text-[#1D2434]`}>{t.grade ?? "–"}</td>
+                </tr>
+                <tr className="border-b border-[#EDEFF2]">
+                  <th scope="row" className={`${selIntake} whitespace-nowrap bg-[#F8F8F8] text-left font-medium text-[#64676C]`}>Ton kering</th>
+                  <td className={`${selIntake} font-mono tabular-nums text-[#1D2434]`}>{fmtAngka(t.dry_ton, 3)} t</td>
+                </tr>
+                <tr>
+                  <th scope="row" className={`${selIntake} whitespace-nowrap bg-[#F8F8F8] text-left font-medium text-[#64676C]`}>Sehari itu</th>
+                  <td className={`${selIntake} font-mono tabular-nums text-[#1D2434]`}>
+                    {t.jumlah_tiket_hari_itu} tiket · {fmtAngka(t.dry_ton_hari_itu, 3)} t
+                  </td>
+                </tr>
+                {t.umur_hari > 7 && (
+                  <tr className="border-t border-[#FECDCA] bg-[#FFFAEB]">
+                    <td colSpan={2} className="px-3 py-2 text-xs text-[#B45309]">
+                      Data intake terakhir sudah {t.umur_hari} hari. Bila seharusnya sudah ada
+                      tiket baru, unggah ekspor “Master Data” terbaru di menu Unggah Data.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
           </div>
         ) : (
           <p className="mb-3 text-sm text-[#64676C]">
@@ -1399,35 +1414,44 @@ export function KartuIntakeTerakhir() {
           )}
         </div>
 
-        <div className="max-h-96 overflow-y-auto">
-          <table className="w-full text-xs">
-            <thead className="sticky top-0 bg-white">
-              <tr className="text-left text-[#64676C] border-b">
-                <th className="py-1">Tanggal</th>
-                <th>No tiket</th>
-                <th>Vendor</th>
-                <th>Grade</th>
-                <th className="text-right">Wet ton</th>
-                <th className="text-right">Dry ton</th>
-                <th className="text-right">Reject ton</th>
-                <th>Wilayah</th>
+        <div className="max-h-96 overflow-auto rounded-sm border border-[#E4E5E8]">
+          <table className="w-full min-w-[1040px] text-xs">
+            <thead className="sticky top-0 z-10">
+              <tr className="border-b border-[#E4E5E8]">
+                <th scope="col" className={selKepala}>Tanggal</th>
+                <th scope="col" className={selKepala}>No tiket</th>
+                <th scope="col" className={selKepala}>Vendor</th>
+                <th scope="col" className={selKepala}>Grade</th>
+                <th scope="col" className={`${selKepala} text-right`}>Wet (t)</th>
+                <th scope="col" className={`${selKepala} text-right`}>Dry (t)</th>
+                <th scope="col" className={`${selKepala} text-right`}>Reject (t)</th>
+                <th scope="col" className={selKepala}>Wilayah</th>
               </tr>
             </thead>
             <tbody>
-              {q.data?.baris.map((b: any) => (
-                <tr key={`${b.tanggal}-${b.ticket_no}`} className="border-b border-[#EDEFF2]">
-                  <td className="py-1 whitespace-nowrap">{fmtTanggal(b.tanggal)}</td>
-                  <td className="font-mono">{b.ticket_no}</td>
-                  <td>{b.label_vendor}</td>
-                  <td>{b.grade ?? "–"}</td>
-                  <td className="text-right font-mono">{fmtAngka(b.wet_ton, 3)}</td>
-                  <td className="text-right font-mono">{fmtAngka(b.dry_ton, 3)}</td>
-                  <td className="text-right font-mono">{fmtAngka(b.reject_ton, 3)}</td>
-                  <td>{[b.kabupaten, b.provinsi].filter(Boolean).join(", ") || "–"}</td>
-                </tr>
-              ))}
+              {q.data?.baris.map((b: any) => {
+                const wilayah = [b.kabupaten, b.provinsi].filter(Boolean).join(", ") || "–";
+                return (
+                  <tr key={`${b.tanggal}-${b.ticket_no}`}
+                      className="border-b border-[#EDEFF2] even:bg-[#FAFAFA] hover:bg-[#FFFAEB]">
+                    <td className={`${selIntake} whitespace-nowrap text-[#1D2434]`}>{fmtTanggal(b.tanggal)}</td>
+                    <td className={`${selIntake} whitespace-nowrap font-mono text-[#1D2434]`}>{b.ticket_no}</td>
+                    <td className={`${selIntake} whitespace-nowrap text-[#374151]`} title={b.label_vendor}>{b.label_vendor}</td>
+                    <td className={`${selIntake} whitespace-nowrap text-[#374151]`}>{b.grade ?? "–"}</td>
+                    <td className={`${selIntake} whitespace-nowrap text-right font-mono tabular-nums`}>{fmtAngka(b.wet_ton, 3)}</td>
+                    <td className={`${selIntake} whitespace-nowrap text-right font-mono tabular-nums`}>{fmtAngka(b.dry_ton, 3)}</td>
+                    <td className={`${selIntake} whitespace-nowrap text-right font-mono tabular-nums`}>{fmtAngka(b.reject_ton, 3)}</td>
+                    <td className={`${selIntake} whitespace-nowrap text-[#374151]`} title={wilayah}>{wilayah}</td>
+                  </tr>
+                );
+              })}
+              {!q.data && (
+                <tr><td colSpan={8} className="px-3 py-6 text-center text-[#9AA0A6]">
+                  Memuat daftar tiket… Tekan Refresh pada kartu ini bila belum muncul.
+                </td></tr>
+              )}
               {q.data?.baris.length === 0 && (
-                <tr><td colSpan={8} className="py-2 text-[#64676C]">Belum ada tiket intake.</td></tr>
+                <tr><td colSpan={8} className="px-3 py-6 text-center text-[#9AA0A6]">Belum ada tiket intake.</td></tr>
               )}
             </tbody>
           </table>
