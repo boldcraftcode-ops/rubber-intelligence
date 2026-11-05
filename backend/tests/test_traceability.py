@@ -415,58 +415,20 @@ def test_vendor_dan_collector_dari_desa_sama_satu_baris_tier():
     assert detail["collector_code"] == "C1"
 
 
-def test_kartu_traceability_per_entitas_dari_desa_ke_pabrik():
-    import datetime as dt
-
+def test_rute_kartu_traceability_sudah_dihapus():
+    """Fitur Kartu Traceability dihapus: /cards tidak terdaftar, API utama tetap jalan."""
     from fastapi.testclient import TestClient
     from sqlalchemy import create_engine
-    from sqlalchemy.orm import Session
     from sqlalchemy.pool import StaticPool
 
     from app.main import buat_app
-    from app.models import (Base, Collector, ReferensiWilayahTrace,
-                            TiketBaris, Vendor)
+    from app.models import Base
 
     eng = create_engine("sqlite://", connect_args={"check_same_thread": False},
                         poolclass=StaticPool)
     Base.metadata.create_all(eng)
-    with Session(eng) as session:
-        session.add(Vendor(kode="V1", nama_baku="Supplier One", status="aktif"))
-        session.add(Collector(kode="C1", nama="Collector One",
-                              kode_vendor="V1", desa="Babura"))
-        session.add(ReferensiWilayahTrace(
-            kabupaten_norm="MEDAN", kecamatan_norm="MEDAN BARU", desa_norm="BABURA",
-            kabupaten="Kota Medan", kecamatan="Medan Baru", desa="Babura",
-            code=None))
-        session.add(TiketBaris(
-            ticket_no="T1", line_seq=1, ticket_date=dt.date(2026, 2, 1),
-            kode_vendor="V1", item_code="SIR20", wet_kg=1000, drc_pct=50,
-            dry_kg=500, asal_getah="Sumatera Utara, Kota Medan, Medan Baru, Babura",
-            kabupaten_norm="MEDAN", kecamatan_norm="MEDAN BARU", desa_norm="BABURA",
-            asal_getah_valid=True, source_fingerprint="a" * 64, tiket_nol=False))
-        session.commit()
-
     client = TestClient(buat_app(eng))
-    payload = client.get("/api/traceability/cards", params={"tahun": 2026}).json()
-    assert payload["factory"]["code"] == "PT. BSRE"
-
-    vendor_card = payload["vendor_cards"][0]
-    assert vendor_card["entity_code"] == "V1"
-    assert vendor_card["tier"] == "T2"
-    assert vendor_card["total_dry_mt"] == 0.5
-    # Rantai desa → kecamatan → kabupaten → kolektor → vendor → pabrik
-    steps = [step["step"] for step in vendor_card["chain_summary"]]
-    assert steps == ["desa", "kecamatan", "kabupaten", "kolektor", "vendor", "factory"]
-    factory_step = vendor_card["chain_summary"][-1]
-    assert factory_step["code"] == "PT. BSRE"
-    assert vendor_card["collectors"][0]["code"] == "C1"
-
-    collector_card = payload["collector_cards"][0]
-    assert collector_card["entity_code"] == "C1"
-    assert collector_card["desa"] == "Babura"
-    assert collector_card["vendor_code"] == "V1"
-
-    factory_card = payload["factory_card"]
-    assert factory_card["entity_code"] == "PT. BSRE"
-    assert factory_card["total_dry_mt"] == 0.5
-    assert factory_card["by_vendor"][0]["vendor_code"] == "V1"
+    assert client.get("/api/traceability/cards",
+                      params={"tahun": 2026}).status_code == 404
+    assert client.get("/api/traceability",
+                      params={"tahun": 2026}).status_code == 200

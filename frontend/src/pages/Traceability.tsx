@@ -75,110 +75,11 @@ function Kpi({ title, value, unit, note, onClick, active = false }: {
   ) : <div className={className}>{content}</div>;
 }
 
-type Langkah = { step: string; level: string; name: string; code: string | null };
-
-const KOMISI_STEP: Record<string, string> = {
-  desa: "bg-[#ECFDF3] text-[#027A48] border-[#A6F4C5]",
-  kecamatan: "bg-[#EFF8FF] text-[#175CD3] border-[#B2DDFF]",
-  kabupaten: "bg-[#FFF6F3] text-[#B54708] border-[#FECDCA]",
-  kolektor: "bg-[#F4F3FF] text-[#5925DC] border-[#DBD6FE]",
-  vendor: "bg-[#F8F8F8] text-[#344054] border-[#E4E5E8]",
-  factory: "bg-[#1D2434] text-[#FFFFFF] border-[#1D2434]",
-};
-
-function TraceabilityCard({ entity, factory }: { entity: any; factory: any }) {
-  const chain = entity.chain_summary ?? [];
-  const lines = entity.lines ?? [];
-  return (
-    <div className="space-y-3">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div>
-          <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#9AA0A6]">
-            {entity.entity_type === "vendor" ? "Kartu Traceability · Vendor (T1)" :
-              entity.entity_type === "collector" ? "Kartu Traceability · Kolektor (T2)" :
-              "Kartu Traceability · Pabrik"}
-          </p>
-          <h4 className="mt-0.5 text-sm font-bold text-[#1D2434]">{entity.entity_name}</h4>
-          <p className="font-mono text-[10px] text-[#64676C]">
-            {entity.entity_code} · {fmtAngka(entity.total_dry_mt, 3)} MT · {entity.tickets} tiket
-          </p>
-        </div>
-        <span className="rounded-sm border border-[#1D2434] bg-[#1D2434] px-2 py-1 text-[10px] font-semibold text-white">
-          {factory?.code || "PT. BSRE"}
-        </span>
-      </div>
-
-      <div>
-        <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-[#64676C]">
-          Rantai asal usul · desa → pabrik
-        </p>
-        <div className="flex flex-wrap items-stretch gap-1 overflow-x-auto pb-1">
-          {chain.map((step: Langkah, index: number) => (
-            <Fragment key={index}>
-              <div className={`min-w-[120px] rounded-sm border px-2 py-1.5 text-[10px] ${KOMISI_STEP[step.step] || "bg-[#F8F8F8] text-[#344054] border-[#E4E5E8]"}`}>
-                <p className="text-[8px] uppercase tracking-wide opacity-80">{step.level}</p>
-                <p className="truncate font-semibold">{step.name || "Unknown"}</p>
-                {step.code && <p className="truncate font-mono text-[8px] opacity-70">{step.code}</p>}
-              </div>
-              {index < chain.length - 1 && <span className="self-center text-[#9AA0A6]">→</span>}
-            </Fragment>
-          ))}
-        </div>
-      </div>
-
-      <div>
-        <div className="flex items-center justify-between">
-          <p className="text-[10px] font-semibold uppercase tracking-wide text-[#64676C]">
-            Rincian per tiket intake
-          </p>
-          <span className="text-[10px] text-[#9AA0A6]">{lines.length} baris</span>
-        </div>
-        <div className="mt-1 max-h-[260px] overflow-auto rounded-sm border border-[#E4E5E8]">
-          <table className="w-full min-w-[820px] text-[10px]">
-            <thead className="sticky top-0 bg-[#F8F8F8] text-left uppercase tracking-wide text-[#64676C]">
-              <tr>
-                <th className="py-1.5 pl-2 font-medium">Tiket</th>
-                <th className="px-2 font-medium">Tanggal</th>
-                <th className="px-2 font-medium">Item</th>
-                <th className="px-2 text-right font-medium">Dry</th>
-                <th className="px-2 font-medium">Desa</th>
-                <th className="px-2 font-medium">District</th>
-                <th className="px-2 font-medium">Regency</th>
-                <th className="px-2 font-medium">Kolektor</th>
-                <th className="pr-2 font-medium">Pabrik</th>
-              </tr>
-            </thead>
-            <tbody>
-              {lines.map((line: any, index: number) => (
-                <tr key={`${line.ticket_no}-${line.line_seq}-${index}`} className="border-t border-[#EDEFF2]">
-                  <td className="py-1.5 pl-2 font-mono text-[#1D2434]">{line.ticket_no}</td>
-                  <td className="px-2 text-[#64676C]">{line.date || "—"}</td>
-                  <td className="px-2 font-mono text-[#64676C]">{line.item_code || "—"}</td>
-                  <td className="px-2 text-right font-mono">{fmtAngka(line.dry_mt, 3)} MT</td>
-                  <td className="px-2 text-[#374151]">{line.desa || "—"}</td>
-                  <td className="px-2 text-[#374151]">{line.kecamatan || "—"}</td>
-                  <td className="px-2 text-[#374151]">{line.kabupaten || "—"}</td>
-                  <td className="px-2 text-[#374151]">{line.collector_code ? (line.collector_name || line.collector_code) : "—"}</td>
-                  <td className="px-2 text-[#1D2434] font-semibold">{factory?.code || "PT. BSRE"}</td>
-                </tr>
-              ))}
-              {!lines.length && (
-                <tr><td colSpan={9} className="py-6 text-center text-[#9AA0A6]">Tidak ada baris tiket.</td></tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 export default function Traceability() {
   const [filters, setFilters] = useState<Filter>({ year: "", period: "ALL", supplier: "", eudr: "all", includeLatex: false });
   const [tab, setTab] = useState<"regions" | "actors">("regions");
   const [open, setOpen] = useState<Set<string>>(() => new Set());
   const [selectedActor, setSelectedActor] = useState<string | null>(null);
-  const [expandedActor, setExpandedActor] = useState<string | null>(null);
   const [gapLevel, setGapLevel] = useState<TingkatGap | null>(null);
   const [editingOrigin, setEditingOrigin] = useState<any | null>(null);
   const [targetDistrict, setTargetDistrict] = useState("");
@@ -199,12 +100,6 @@ export default function Traceability() {
     queryFn: () => ambilJson(`/api/traceability/actors/${encodeURIComponent(selectedActor!)}?${query}`),
     enabled: Boolean(selectedActor),
   });
-  const cards = useQuery({
-    queryKey: ["traceability-cards", query],
-    queryFn: () => ambilJson(`/api/traceability/cards?${query}`),
-  });
-  const expandedCard = expandedActor ? cards.data?.vendor_cards?.find(
-    (c: any) => c.entity_code === expandedActor) : null;
   const districtOptions = useQuery({
     queryKey: ["traceability-district-options", editingOrigin?.source_key?.kabupaten_norm],
     queryFn: () => {
@@ -433,26 +328,6 @@ export default function Traceability() {
         ) : (
           <div className="max-h-[580px] overflow-auto">
             {actors.error && <p className="m-4 rounded-sm border border-[#FECACA] bg-[#FEF2F2] px-3 py-2 text-xs text-[#B91C1C]">{(actors.error as Error).message}</p>}
-            {cards.data?.factory_card && (
-              <div className="m-3 rounded-sm border border-[#E4E5E8] bg-[#FFFAEB] p-3">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div>
-                    <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#B54708]">Kartu Traceability · Pabrik tujuan akhir</p>
-                    <p className="mt-0.5 text-sm font-bold text-[#1D2434]">{cards.data.factory_card.entity_name}</p>
-                    <p className="font-mono text-[10px] text-[#64676C]">
-                      {cards.data.factory_card.entity_code} · {fmtAngka(cards.data.factory_card.total_dry_mt, 3)} MT · {cards.data.factory_card.tickets} tiket
-                    </p>
-                  </div>
-                  <div className="flex flex-wrap gap-x-4 gap-y-1 text-[10px]">
-                    {cards.data.factory_card.by_vendor.map((v: any) => (
-                      <span key={v.vendor_code} className="font-mono text-[#374151]">
-                        {v.vendor_code}: <b className="text-[#1D2434]">{fmtAngka(v.dry_mt, 3)} MT</b> · {v.tickets} tk
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            )}
             <table className="w-full min-w-[1050px] text-xs">
               <thead className="sticky top-0 z-10 bg-[#F8F8F8] text-left text-[10px] uppercase tracking-wide text-[#64676C]">
                 <tr>
@@ -465,15 +340,11 @@ export default function Traceability() {
               <tbody>
                 {actorRows.map((a: any) => {
                   const barWidth = maxActorDry > 0 ? Math.max(3, Number(a.period_turnover_mt) / maxActorDry * 100) : 0;
-                  const expanded = expandedActor === a.supplier_code;
                   return <Fragment key={a.supplier_code}>
-                  <tr className={`border-b border-[#EDEFF2] hover:bg-[#FAFAFA] ${expanded ? "bg-[#FFFAEB]" : ""}`}>
+                  <tr className="border-b border-[#EDEFF2] hover:bg-[#FAFAFA]">
                     <td className="py-3 pl-4 font-mono text-[#64676C]">{a.supplier_code}</td>
                     <td className="px-2">
                       <button className="text-left font-semibold text-[#1D2434] underline decoration-dotted underline-offset-2 hover:text-[#B91C1C]" onClick={() => setSelectedActor(a.supplier_code)}>{a.supplier}</button>
-                      <button className="ml-2 text-[10px] font-semibold text-[#B54708] underline decoration-dotted underline-offset-2 hover:text-[#B91C1C]" onClick={() => setExpandedActor(expanded ? null : a.supplier_code)}>
-                        {expanded ? "Sembunyikan kartu" : "Kartu rantai"}
-                      </button>
                     </td>
                     <td className="px-2">{a.tier ? <span className="rounded-sm border border-[#E4E5E8] bg-[#F8F8F8] px-1.5 py-0.5 font-mono text-[10px] text-[#1D2434]">{a.tier}</span> : "—"}</td>
                     <td className="px-2">{a.activity_type || "—"}</td>
@@ -483,19 +354,12 @@ export default function Traceability() {
                     <td className="px-2">{a.country || "—"}</td><td className="px-2">{a.regency || "—"}</td><td className="px-2">{a.district || "—"}</td>
                     <td className="px-2">{a.source_from ? `${a.source_from} lokasi` : "—"}</td><td className="px-2 pr-4 text-[#9AA0A6]">Tidak tercatat</td>
                   </tr>
-                  {expanded && expandedCard && (
-                    <tr className="border-b border-[#EDEFF2] bg-[#FFFAEB]">
-                      <td colSpan={12} className="py-4 pl-4 pr-4">
-                        <TraceabilityCard entity={expandedCard} factory={cards.data?.factory} />
-                      </td>
-                    </tr>
-                  )}
                   </Fragment>;
                 })}
                 {!actors.isLoading && !(actors.data?.baris?.length) && <tr><td colSpan={12} className="px-4 py-8 text-center text-[#9AA0A6]">Tidak ada aktor untuk filter ini.</td></tr>}
               </tbody>
             </table>
-            <p className="px-4 py-2 text-[10px] text-[#9AA0A6]">Tier T1 dipakai untuk vendor; T2 dipakai untuk vendor yang memiliki kolektor. Terminal dan tujuan penjualan tidak tercatat di intake/master. Klik nama supplier untuk melihat rincian Asal Getah, atau <b>Kartu rantai</b> untuk melihat asal usul intake dari desa sampai ke pabrik PT. BSRE. * Flag produsen langsung bersifat sementara.</p>
+            <p className="px-4 py-2 text-[10px] text-[#9AA0A6]">Tier T1 dipakai untuk vendor; T2 dipakai untuk vendor yang memiliki kolektor. Terminal dan tujuan penjualan tidak tercatat di intake/master. Klik nama supplier untuk melihat rincian Asal Getah. * Flag produsen langsung bersifat sementara.</p>
           </div>
         )}
       </div>

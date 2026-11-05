@@ -1308,6 +1308,7 @@ menjawab.
 | 2026-10-25 | Tema korporat merah–navy + logo Rubber Intelligence | mengikuti materi identitas dari pemilik |
 | 2026-10-25 | Halaman "Ringkasan" → **Margin Performance**; isi ditambah strip angka kunci + panel "perlu perhatian" | halaman depan harus menjawab "apa yang harus saya lakukan hari ini", bukan hanya "berapa angkanya" |
 | 2026-11-01 | Traceability memakai database intake + ID_AUX; Provinsi tidak boleh diambil dari intake | ID_AUX adalah referensi resmi, tetapi salinan yang ada belum memiliki kolom Provinsi atau kode administratif |
+| 2026-11-05 | **Fitur Kartu Traceability dihapus**: endpoint `GET /api/traceability/cards`, kartu pabrik, tombol "Kartu rantai", komponen kartu dan tesnya | pemilik tidak memakainya; tab Regional Traceability, Supplier Actors, ekspor, koreksi wilayah, serta tabel database tetap dipertahankan |
 
 ---
 
