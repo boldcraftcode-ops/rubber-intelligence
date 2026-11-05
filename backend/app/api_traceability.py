@@ -15,6 +15,9 @@ from sqlalchemy.orm import Session, aliased
 from .auth_lokal import info_pengguna, wajib_admin
 from .core.alarm import catat_audit
 from .core.klasifikasi_vendor import label as label_klasifikasi
+from .core.sourcing_type import (bakukan as bakukan_sourcing,
+                                 daftar_untuk_layar as daftar_sourcing,
+                                 label as label_sourcing)
 from .core.traceability import (normalisasi_kabupaten, normalisasi_teks_wilayah,
                                 persen_traceable, rentang_periode)
 from .models import (Collector, KoreksiWilayahTrace, PengaturanTraceability,
@@ -73,6 +76,12 @@ def muat_referensi_bawaan(session: Session, path: Path | None = None) -> int:
         return jumlah
     finally:
         wb.close()
+
+
+class SourcingTypeMasuk(BaseModel):
+    """Pilihan sourcing type yang diisi dari tabel Supplier Actors."""
+    sourcing_type: str | None = None
+    pengisi: str = "?"
 
 
 class PengaturanMasuk(BaseModel):
@@ -283,10 +292,12 @@ def _buat_xlsx(utama: dict, aktor: list[dict], unmapped: list[dict] | None = Non
     tambah(utama["wilayah"])
     wa = wb.create_sheet("Supplier Actors")
     wa.append(["Supplier Code", "Supplier", "Direct Producer", "Tickets", "Dry (MT)",
-               "Regencies", "Traceable Dry (MT)"])
+               "Regencies", "Traceable Dry (MT)", "Sourcing type",
+               "Sourcing type source"])
     for a in aktor:
         wa.append([a["supplier_code"], a["supplier"], "Yes" if a["is_direct_producer"] else "No",
-                   a["tickets"], a["dry_mt"], a["regencies"], a["traceable_mt"]])
+                   a["tickets"], a["dry_mt"], a["regencies"], a["traceable_mt"],
+                   a.get("sourcing_type"), a.get("sourcing_type_source")])
     if unmapped is not None:
         wu = wb.create_sheet("Unmapped Records")
         wu.append(["Ticket No", "Date", "Supplier Code", "Supplier", "Item Code",
@@ -361,7 +372,7 @@ def pasang_router_traceability(app, ambil_session):
         trace_ok = and_(or_(K.id.is_not(None), T.asal_getah_valid.is_(True)), reg_ok)
         q = (select(T.kode_vendor, C.kode.label("collector_code"),
                     Vendor.nama_baku, Vendor.klasifikasi,
-                    Vendor.is_direct_producer,
+                    Vendor.is_direct_producer, Vendor.sourcing_type,
                     func.min(T.nama_vendor_asli).label("nama_intake"),
                     func.min(C.nama).label("collector_name"),
                     func.count(distinct(T.ticket_no)).label("tickets"),
@@ -383,7 +394,7 @@ def pasang_router_traceability(app, ambil_session):
                                                             "_", " ")) == func.coalesce(target.desa_norm, ""))))
              .outerjoin(reg, reg.c.kabupaten_norm == kab_eff)
              .group_by(T.kode_vendor, C.kode, Vendor.nama_baku, Vendor.klasifikasi,
-                       Vendor.is_direct_producer)
+                       Vendor.is_direct_producer, Vendor.sourcing_type)
              .order_by(func.sum(T.dry_kg).desc(), T.kode_vendor, C.kode))
         result: dict[str, dict] = {}
         for r in session.execute(q).mappings():
@@ -391,6 +402,20 @@ def pasang_router_traceability(app, ambil_session):
             collector_code = r["collector_code"]
             direct = bool(r["is_direct_producer"])
             klasifikasi = label_klasifikasi(r["klasifikasi"])
+            kode_sourcing = r["sourcing_type"]
+            label_s = label_sourcing(kode_sourcing)
+            if label_s:
+                sourcing = label_s
+                sumber_sourcing = "Supplier Actors"
+            elif direct:
+                sourcing = "Direct producer (provisional)"
+                sumber_sourcing = "Master Vendor"
+            elif klasifikasi:
+                sourcing = klasifikasi
+                sumber_sourcing = "Master Vendor"
+            else:
+                sourcing = "Belum diklasifikasi"
+                sumber_sourcing = "Belum tersedia pada data intake/master"
             actor = result.setdefault(code, {
                 "supplier_code": code,
                 "supplier": r["nama_baku"] or r["nama_intake"] or code,
@@ -402,8 +427,9 @@ def pasang_router_traceability(app, ambil_session):
                 "tier": "T1",
                 "activity_type": klasifikasi,
                 "terminal_status": None,
-                "sourcing_type": ("Direct producer (provisional)" if direct
-                                  else (klasifikasi or "Belum diklasifikasi")),
+                "sourcing_type": sourcing,
+                "sourcing_type_code": kode_sourcing,
+                "sourcing_type_source": sumber_sourcing,
                 "tickets": 0,
                 "dry_mt": 0.0,
                 "period_turnover_mt": 0.0,
@@ -522,7 +548,8 @@ def pasang_router_traceability(app, ambil_session):
                         eudr: str = Query("all", pattern="^(all|eudr|non_eudr)$"),
                         include_latex: bool = False, session: Session = dep):
         _, _, base = filter_data(session, tahun, periode, supplier, eudr, include_latex)
-        return {"baris": actors(session, base)}
+        return {"baris": actors(session, base),
+                "sourcing_type_options": daftar_sourcing()}
 
     def _actor_origins(session: Session, base, supplier_code: str) -> list[dict]:
         T = TiketBaris
@@ -692,6 +719,8 @@ def pasang_router_traceability(app, ambil_session):
         ) or 0
         classification = label_klasifikasi(vendor.klasifikasi) if vendor else None
         direct = bool(vendor.is_direct_producer) if vendor else False
+        kode_sourcing = vendor.sourcing_type if vendor else None
+        label_s = label_sourcing(kode_sourcing)
         has_collector = bool(session.scalar(
             select(Collector.kode).where(Collector.kode_vendor == supplier_code)
             .limit(1)))
@@ -725,10 +754,14 @@ def pasang_router_traceability(app, ambil_session):
             "supply_chain": rantai,
             "classification": classification,
             "is_direct_producer": direct,
-            "sourcing_type_label": ("Direct producer (provisional)" if direct
-                                    else (classification or "Belum diklasifikasi")),
-            "sourcing_type_source": ("Master Vendor" if classification or direct
-                                     else "Belum tersedia pada data intake/master"),
+            "sourcing_type_code": kode_sourcing,
+            "sourcing_type_label": (label_s or
+                                    ("Direct producer (provisional)" if direct
+                                     else (classification or "Belum diklasifikasi"))),
+            "sourcing_type_source": ("Supplier Actors" if label_s
+                                     else ("Master Vendor" if classification or direct
+                                           else "Belum tersedia pada data intake/master")),
+            "sourcing_type_options": daftar_sourcing(),
             "coordinates": None,
             "coordinates_note": "Koordinat tidak tersedia pada referensi SCDF atau data intake.",
             "source_from": origins,
@@ -738,6 +771,46 @@ def pasang_router_traceability(app, ambil_session):
                         "eudr": eudr, "include_latex": include_latex},
             "years": years,
         }
+
+    @router.put("/actors/{supplier_code}/sourcing-type")
+    def ubah_sourcing_type(supplier_code: str, data: SourcingTypeMasuk,
+                           request: Request, session: Session = dep):
+        """Simpan sourcing type yang dipilih langsung di tabel Supplier Actors.
+
+        Field `klasifikasi` Master Vendor sengaja tidak disentuh. Bila kode
+        supplier hanya ada di intake (belum punya baris master), baris master
+        minimal disiapkan memakai nama vendor asli dari tiket.
+        """
+        kode = (supplier_code or "").strip().upper()
+        try:
+            baru = bakukan_sourcing(data.sourcing_type)
+        except ValueError as exc:
+            raise HTTPException(422, str(exc))
+        vendor = session.get(Vendor, kode)
+        if vendor is None:
+            nama = session.scalar(
+                select(func.min(TiketBaris.nama_vendor_asli))
+                .where(TiketBaris.kode_vendor == kode))
+            if not nama:
+                raise HTTPException(
+                    404, f"Supplier '{kode}' tidak ditemukan pada intake/master.")
+            vendor = Vendor(kode=kode, nama_baku=nama, status="aktif")
+            session.add(vendor)
+        lama = vendor.sourcing_type
+        vendor.sourcing_type = baru
+        pengguna = info_pengguna(request) or {}
+        catat_audit(session, pengguna.get("sub") or data.pengisi or "?",
+                    "ubah", "vendor", {
+                        "kode": kode, "field": "sourcing_type",
+                        "lama": lama, "baru": baru,
+                        "catatan": "Diisi dari form Supplier Actors; klasifikasi tidak diubah"})
+        session.commit()
+        return {"status": "tersimpan",
+                "pesan": f"Sourcing type {kode}: "
+                         f"{label_sourcing(baru) or 'Belum diisi'}.",
+                "supplier_code": kode,
+                "sourcing_type_code": baru,
+                "sourcing_type_label": label_sourcing(baru)}
 
     @router.get("/locations/districts")
     def pilihan_district(kabupaten_norm: str, session: Session = dep):

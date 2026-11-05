@@ -27,6 +27,7 @@ KOLOM_BARU: dict[str, list[tuple[str, str]]] = {
         ("kontak_person", "VARCHAR(200)"),
         ("klasifikasi", "VARCHAR(30)"),
         ("is_direct_producer", "BOOLEAN NOT NULL DEFAULT false"),
+        ("sourcing_type", "VARCHAR(30)"),
     ],
     "traceability_wilayah": [
         ("provinsi_norm", "VARCHAR(120)"),

@@ -84,6 +84,9 @@ class Vendor(Base):
     klasifikasi: Mapped[str | None] = mapped_column(String(30), nullable=True)
     is_direct_producer: Mapped[bool] = mapped_column(
         Boolean, default=False, server_default="false", nullable=False)
+    #: Sourcing type Supplier Actors (core/sourcing_type.py). Terpisah dari
+    #: `klasifikasi` agar aturan Master Vendor lama tidak berubah.
+    sourcing_type: Mapped[str | None] = mapped_column(String(30), nullable=True)
 
 
 class Collector(Base):

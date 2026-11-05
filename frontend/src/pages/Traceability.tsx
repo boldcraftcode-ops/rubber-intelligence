@@ -42,6 +42,19 @@ const PERIODE = [
   ...Array.from({ length: 12 }, (_, i) => [`${i + 1}`.padStart(2, "0"), `Bulan ${`${i + 1}`.padStart(2, "0")}`]),
 ];
 
+/* Tiga pilihan sourcing type yang diisi langsung dari tabel Supplier Actors.
+   Kode dipakai API; daftar resmi juga dikirim backend sebagai
+   `sourcing_type_options`. */
+const PILIHAN_SOURCING = [
+  { kode: "direct_smallholder", label: "Direct Smallholder" },
+  { kode: "indirect_smallholder", label: "Indirect Smallholder" },
+  { kode: "own_plantation", label: "Own Plantation" },
+];
+
+const pengisi = () => {
+  try { return localStorage.getItem("op-margin.pengisi") || "?"; } catch { return "?"; }
+};
+
 function paramsFilter(f: Filter) {
   const p = new URLSearchParams();
   if (f.year) p.set("tahun", f.year);
@@ -160,6 +173,19 @@ export default function Traceability() {
     onSuccess: async () => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["traceability"] }),
+        queryClient.invalidateQueries({ queryKey: ["traceability-actors"] }),
+        queryClient.invalidateQueries({ queryKey: ["traceability-actor-detail"] }),
+      ]);
+    },
+  });
+  const simpanSourcing = useMutation({
+    mutationFn: ({ kode, nilai }: { kode: string; nilai: string }) =>
+      ambilJson(`/api/traceability/actors/${encodeURIComponent(kode)}/sourcing-type`, {
+        method: "PUT", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sourcing_type: nilai, pengisi: pengisi() }),
+      }),
+    onSuccess: async () => {
+      await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["traceability-actors"] }),
         queryClient.invalidateQueries({ queryKey: ["traceability-actor-detail"] }),
       ]);
@@ -328,6 +354,7 @@ export default function Traceability() {
         ) : (
           <div className="max-h-[580px] overflow-auto">
             {actors.error && <p className="m-4 rounded-sm border border-[#FECACA] bg-[#FEF2F2] px-3 py-2 text-xs text-[#B91C1C]">{(actors.error as Error).message}</p>}
+            {simpanSourcing.error && <p className="m-4 rounded-sm border border-[#FECACA] bg-[#FEF2F2] px-3 py-2 text-xs text-[#B91C1C]">Gagal menyimpan sourcing type: {(simpanSourcing.error as Error).message}</p>}
             <table className="w-full min-w-[1180px] text-xs">
               <thead className="sticky top-0 z-10 bg-[#F8F8F8] text-left text-[10px] uppercase tracking-wide text-[#64676C]">
                 <tr>
@@ -353,7 +380,21 @@ export default function Traceability() {
                     <td className="px-2">{a.activity_type || "—"}</td>
                     <td className="px-2 text-[#9AA0A6]">{a.terminal_status || "—"}</td>
                     <td className="px-2"><div className="min-w-[115px]"><div className="flex justify-between gap-2 font-mono"><span>{fmtAngka(a.period_turnover_mt, 3)} MT</span><span className="text-[#9AA0A6]">{fmtAngka(a.tickets, 0)} tk</span></div><div className="mt-1 h-1.5 rounded bg-[#EDEFF2]"><div className="h-1.5 rounded bg-[#FF1313]" style={{ width: `${barWidth}%` }} /></div></div></td>
-                    <td className="px-2">{a.sourcing_type || "Belum diklasifikasi"}{a.is_direct_producer && <span className="ml-1 text-[9px] text-[#9AA0A6]">*</span>}</td>
+                    <td className="px-2">
+                      <select
+                        className="w-full min-w-[160px] rounded-sm border border-[#D1D5DB] bg-white px-1.5 py-1 text-[11px] text-[#1D2434] disabled:opacity-60"
+                        value={a.sourcing_type_code || ""}
+                        disabled={simpanSourcing.isPending}
+                        onChange={(e) => simpanSourcing.mutate({ kode: a.supplier_code, nilai: e.target.value })}
+                        aria-label={`Sourcing type ${a.supplier_code}`}>
+                        <option value="">Belum diisi</option>
+                        {(actors.data?.sourcing_type_options ?? PILIHAN_SOURCING).map(
+                          (o: { kode: string; label: string }) =>
+                            <option key={o.kode} value={o.kode}>{o.label}</option>)}
+                      </select>
+                      {!a.sourcing_type_code && a.sourcing_type !== "Belum diklasifikasi" && <span className="mt-0.5 block text-[9px] text-[#9AA0A6]">Master Vendor: {a.sourcing_type}</span>}
+                      {a.is_direct_producer && <span className="ml-1 text-[9px] text-[#9AA0A6]">*</span>}
+                    </td>
                     <td className="px-2">{a.country || "—"}</td><td className="px-2">{a.regency || "—"}</td><td className="px-2">{a.district || "—"}</td>
                     <td className="px-2">{a.source_from ? `${a.source_from} lokasi` : "—"}</td><td className="px-2 pr-4 text-[#9AA0A6]">Tidak tercatat</td>
                   </tr>
@@ -362,7 +403,7 @@ export default function Traceability() {
                 {!actors.isLoading && !(actors.data?.baris?.length) && <tr><td colSpan={13} className="px-4 py-8 text-center text-[#9AA0A6]">Tidak ada aktor untuk filter ini.</td></tr>}
               </tbody>
             </table>
-            <p className="px-4 py-2 text-[10px] leading-relaxed text-[#9AA0A6]">Tier T1 dipakai untuk vendor; T2 dipakai saat ada kolektor berafiliasi ke vendor itu yang desanya cocok dengan desa Asal Getah. Kolektor tidak dibuat baris terpisah: desa, kolektor, dan vendor dihitung sebagai satu supplier actor (satu rantai). Rantai ini inferensi dari data intake, bukan catatan transaksi jual-beli. Terminal dan tujuan penjualan tidak tercatat di intake/master. Klik nama supplier untuk melihat rincian Asal Getah. * Flag produsen langsung bersifat sementara.</p>
+            <p className="px-4 py-2 text-[10px] leading-relaxed text-[#9AA0A6]">Tier T1 dipakai untuk vendor; T2 dipakai saat ada kolektor berafiliasi ke vendor itu yang desanya cocok dengan desa Asal Getah. Kolektor tidak dibuat baris terpisah: desa, kolektor, dan vendor dihitung sebagai satu supplier actor (satu rantai). Rantai ini inferensi dari data intake, bukan catatan transaksi jual-beli. Terminal dan tujuan penjualan tidak tercatat di intake/master. Klik nama supplier untuk melihat rincian Asal Getah. Sourcing types diisi langsung dari dropdown (Direct Smallholder / Indirect Smallholder / Own Plantation); bila belum diisi, klasifikasi Master Vendor dipakai sebagai fallback. * Flag produsen langsung bersifat sementara.</p>
           </div>
         )}
       </div>
@@ -445,6 +486,7 @@ export default function Traceability() {
                       <div><p className="text-[#9AA0A6]">Direct producer flag</p><p className="mt-1 text-[#1D2434]">{detail.is_direct_producer ? "Yes — provisional" : "No (default)"}</p></div>
                       <div><p className="text-[#9AA0A6]">Collector affiliation</p><p className="mt-1 text-[#1D2434]">{detail.is_collector ? "Yes" : "No"}</p></div>
                       <div><p className="text-[#9AA0A6]">Collector (T2)</p><p className="mt-1 font-mono text-[11px] text-[#1D2434]">{detail.collector_code || "Not registered"}</p>{detail.collector_name && <p className="mt-0.5 text-[10px] text-[#64676C]">{detail.collector_name}</p>}</div>
+                      <div><p className="text-[#9AA0A6]">Sourcing type</p><p className="mt-1 text-[#1D2434]">{detail.sourcing_type_label || "Belum diisi"}</p></div>
                       <div><p className="text-[#9AA0A6]">Sourcing type source</p><p className="mt-1 text-[#1D2434]">{detail.sourcing_type_source}</p></div>
                       <div><p className="text-[#9AA0A6]">Sell to</p><p className="mt-1 text-[#64676C]">Not recorded in intake</p></div>
                     </div>

@@ -310,6 +310,17 @@ diisi) dan saringan **Klasifikasi**, sehingga bisa langsung dilihat berapa
 banyak pemasok tiap jenis. Kotak **Cari** sekarang juga menelusuri alamat,
 contact person, dan klasifikasi.
 
+**Sourcing type di Supplier Actors (sejak v0.11.2).** Kolom **Sourcing types**
+pada tab Supplier Actors (menu Traceability) diisi langsung lewat dropdown di
+setiap baris: **Direct Smallholder**, **Indirect Smallholder**, atau **Own
+Plantation**. Pilihan tersimpan begitu dipilih, tercatat di audit log, dan
+muncul di detail supplier serta sheet `Supplier Actors` pada ekspor Excel.
+Ini **field terpisah** dari Klasifikasi Master Vendor di atas — mengisi
+sourcing type tidak mengubah Small holder / Small estate / Rubber trader, dan
+bila sourcing type dikosongkan, kolom kembali memakai klasifikasi lama sebagai
+fallback. Nilai di luar ketiga pilihan ditolak dengan pesan yang menyebut
+pilihan yang sah.
+
 Di Excel, tiga kolom baru ada di kanan: `Alamat`, `Kontak_Person`,
 `Klasifikasi`. Mengosongkan selnya berarti **tidak diubah** (bukan dihapus) —
 sama seperti Kategori — supaya file yang hanya berisi kode + nama tidak
