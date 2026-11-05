@@ -7,6 +7,7 @@ import {
   Kartu, KartuMuatSaatDiminta, NAMA_BULAN, Panel5W1H, PilihRentangBulan, akhirBulan,
   KepalaPanel, ambilJson, fmtAngka, fmtTanggal, hitungJumlahBulan, kelasInput,
   kelasTombolAnalisa, kelasTombolKecil, pesanGalat, useQueryKartu,
+  TombolRefreshKartu,
 } from "../bersama";
 import PetaIntake from "./PetaIntake";
 
@@ -105,9 +106,9 @@ export function TabelBulanan({ data, dimensi, nilaiKey, desimal, satuan,
   );
 }
 
-function PilihPeriode({ tahun, setTahun, bulan, setBulan }: any) {
+function PilihPeriode({ tahun, setTahun, bulan, setBulan, aksi }: any) {
   return (
-    <div className="flex gap-2 mb-3">
+    <div className="flex flex-wrap items-center gap-2 mb-3">
       <select className={kelasInput + " max-w-32"} value={tahun}
               onChange={(e) => setTahun(e.target.value ? Number(e.target.value) : "")}>
         {TAHUN_SEMUA.map((t) => (
@@ -123,6 +124,7 @@ function PilihPeriode({ tahun, setTahun, bulan, setBulan }: any) {
           ))}
         </select>
       )}
+      {aksi}
     </div>
   );
 }
@@ -887,7 +889,8 @@ function KartuPenerimaan() {
         <div className="flex flex-wrap items-end gap-3 mb-3 text-xs">
           <PilihRentangBulan dari={dari} sampai={sampai}
                              setDari={setDari} setSampai={setSampai}
-                             labelKosong="tampilkan semua periode" />
+                             labelKosong="tampilkan semua periode"
+                             aksi={<TombolRefreshKartu />} />
           {dimensi !== "vendor" && (
             <div>
               <label className="block text-[#64676C] mb-1">Vendor</label>
@@ -1116,7 +1119,8 @@ function KartuTonase() {
         </div>
         <div className="mb-3 flex flex-wrap items-end gap-3">
           <PilihRentangBulan dari={dari} sampai={sampai}
-                             setDari={setDari} setSampai={setSampai} />
+                             setDari={setDari} setSampai={setSampai}
+                             aksi={<TombolRefreshKartu />} />
           {modeBulan && (
             <label className="flex items-center gap-1.5 text-xs text-[#64676C]">
               Tampilkan
@@ -1225,7 +1229,7 @@ function KartuKonsentrasi() {
                 ? "bg-[#FF1313] text-white" : "bg-[#F1F2F4] text-[#1D2434]"}`}
               onClick={() => setTop(n)}>Top {n}</button>
           ))}
-          <PilihPeriode tahun={tahun} setTahun={setTahun} />
+          <PilihPeriode tahun={tahun} setTahun={setTahun} aksi={<TombolRefreshKartu />} />
         </div>
         <table className="w-full text-xs">
           <thead>
@@ -1269,7 +1273,7 @@ function KartuGrade() {
     <Kartu idMetrik="bauran_grade" judul="Bauran grade & porsi EUDR" urlEkspor={url}
            anak={
       <>
-        <PilihPeriode tahun={tahun} setTahun={setTahun} />
+        <PilihPeriode tahun={tahun} setTahun={setTahun} aksi={<TombolRefreshKartu />} />
         <table className="w-full text-xs">
           <thead>
             <tr className="text-left text-[#64676C] border-b">
@@ -1447,7 +1451,7 @@ export function KartuIntakeTerakhir() {
               })}
               {!q.data && (
                 <tr><td colSpan={8} className="px-3 py-6 text-center text-[#9AA0A6]">
-                  Memuat daftar tiket… Tekan Refresh pada kartu ini bila belum muncul.
+                  Memuat daftar tiket… Tekan Refresh di header kartu ini bila belum muncul.
                 </td></tr>
               )}
               {q.data?.baris.length === 0 && (
@@ -1481,7 +1485,7 @@ export function KartuReject() {
            anak={
       <>
         <div className="flex flex-wrap items-end gap-2">
-          <PilihPeriode tahun={tahun} setTahun={setTahun} />
+          <PilihPeriode tahun={tahun} setTahun={setTahun} aksi={<TombolRefreshKartu />} />
           <label className="mb-3 flex items-center gap-1.5 text-xs text-[#64676C]">
             Tampilkan
             <select className={kelasInput + " max-w-44"}
@@ -1562,6 +1566,7 @@ function KartuMarginHarian() {
             {NAMA_BULAN.slice(1).map((n, i) => (
               <option key={n} value={i + 1}>{n}</option>))}
           </select>
+          <TombolRefreshKartu />
         </div>
         <div className="max-h-72 overflow-y-auto">
           <table className="w-full text-xs">
@@ -1638,7 +1643,8 @@ function KartuMarginPer() {
               onClick={() => setDimensi(d)}>per {d}</button>
           ))}
           <PilihRentangBulan dari={dari} sampai={sampai}
-                             setDari={setDari} setSampai={setSampai} />
+                             setDari={setDari} setSampai={setSampai}
+                             aksi={<TombolRefreshKartu />} />
           {modeBulan && (
             <label className="flex items-center gap-1.5 text-xs text-[#64676C]">
               Tampilkan
@@ -1748,21 +1754,23 @@ export default function Analisis() {
                    tutup={() => setBukaAnalisa(false)} />
       )}
       <div className="lg:col-span-2"><KartuMuatSaatDiminta
+        letakRefresh="filter"
         judul="Penerimaan Karet"
         keterangan="Memuat grafik dan rincian penerimaan hanya setelah Anda meminta."
         anak={<KartuPenerimaan />}
       /></div>
       <div className="lg:col-span-2"><KartuMuatSaatDiminta
+        letakRefresh="filter"
         judul="Sebaran Intake per Provinsi Indonesia"
         keterangan="Peta intake Dry per provinsi atau lapisan sentra produksi karet kering; rata-rata intake wilayah dihitung dari tiket internal. Data penjualan pasar per provinsi belum tersedia pada sumber resmi."
         anak={<PetaIntake />}
       /></div>
-      <KartuMuatSaatDiminta judul="Tonase (drill-down)" keterangan="Memuat rincian tonase hanya setelah Anda meminta." anak={<KartuTonase />} />
-      <KartuMuatSaatDiminta judul="Konsentrasi vendor" keterangan="Memuat konsentrasi pemasok hanya setelah Anda meminta." anak={<KartuKonsentrasi />} />
-      <KartuMuatSaatDiminta judul="Bauran grade & porsi EUDR" keterangan="Memuat komposisi grade hanya setelah Anda meminta." anak={<KartuGrade />} />
-      <KartuMuatSaatDiminta judul="KPI Reject %" keterangan="Memuat indikator reject hanya setelah Anda meminta." anak={<KartuReject />} />
-      <KartuMuatSaatDiminta judul="Margin harian" keterangan="Memuat margin harian hanya setelah Anda meminta." anak={<KartuMarginHarian />} />
-      <KartuMuatSaatDiminta judul="Margin per grade / vendor" keterangan="Memuat perincian margin hanya setelah Anda meminta." anak={<KartuMarginPer />} />
+      <KartuMuatSaatDiminta letakRefresh="filter" judul="Tonase (drill-down)" keterangan="Memuat rincian tonase hanya setelah Anda meminta." anak={<KartuTonase />} />
+      <KartuMuatSaatDiminta letakRefresh="filter" judul="Konsentrasi vendor" keterangan="Memuat konsentrasi pemasok hanya setelah Anda meminta." anak={<KartuKonsentrasi />} />
+      <KartuMuatSaatDiminta letakRefresh="filter" judul="Bauran grade & porsi EUDR" keterangan="Memuat komposisi grade hanya setelah Anda meminta." anak={<KartuGrade />} />
+      <KartuMuatSaatDiminta letakRefresh="filter" judul="KPI Reject %" keterangan="Memuat indikator reject hanya setelah Anda meminta." anak={<KartuReject />} />
+      <KartuMuatSaatDiminta letakRefresh="filter" judul="Margin harian" keterangan="Memuat margin harian hanya setelah Anda meminta." anak={<KartuMarginHarian />} />
+      <KartuMuatSaatDiminta letakRefresh="filter" judul="Margin per grade / vendor" keterangan="Memuat perincian margin hanya setelah Anda meminta." anak={<KartuMarginPer />} />
       <div className="lg:col-span-2"><KartuMuatSaatDiminta
         judul="Daftar intake terakhir"
         keterangan="Memuat daftar tiket terakhir hanya setelah Anda meminta."

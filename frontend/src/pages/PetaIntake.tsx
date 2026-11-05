@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Kartu, PilihRentangBulan, ambilJson, fmtAngka, useQueryKartu } from "../bersama";
+import { Kartu, PilihRentangBulan, TombolRefreshKartu, ambilJson, fmtAngka, useQueryKartu } from "../bersama";
 
 const akhirBulan = (ym: string) => {
   const [tahun, bulan] = ym.split("-").map(Number);
@@ -169,10 +169,16 @@ export default function PetaIntake() {
               <>
                 <PilihRentangBulan dari={dari} sampai={sampai}
                                    setDari={setDari} setSampai={setSampai}
-                                   labelKosong="Hapus periode" />
+                                   labelKosong="Hapus periode"
+                                   aksi={<TombolRefreshKartu />} />
                 <span className="ml-auto text-[#64676C]">Periode intake: <b>{period}</b></span>
               </>
-            ) : <span className="ml-auto text-[#64676C]">Produksi karet kering: <b>{potensi.data?.tahun_produksi ?? "—"}</b></span>}
+            ) : (
+              <>
+                <span className="ml-auto text-[#64676C]">Produksi karet kering: <b>{potensi.data?.tahun_produksi ?? "—"}</b></span>
+                <TombolRefreshKartu />
+              </>
+            )}
           </div>
 
           {(geo.isLoading || (mode === "intake" && intake.isLoading) || (mode === "potensi" && potensi.isLoading)) &&

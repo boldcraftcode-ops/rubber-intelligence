@@ -62,6 +62,15 @@ Performance), grupnya otomatis terbuka sehingga menu tidak terlihat kosong.
 Di layar Bahasa Inggris nama grupnya: *Analytics, Pricing & Planning,
 Monitoring & Control, Master Data, Data Entry, Administration*.
 
+**Tombol Refresh pada kartu berperiode.** Di **Intake Analisis** dan
+**Margin Performance**, tombol **Refresh periode ini** berada tepat di samping
+kontrol periode kartu itu (Dari/Sampai bulan, pilihan tahun, atau tombol tahun),
+bukan lagi di kanan header kartu. Jadi tombol yang ditekan jelas memuat ulang
+data untuk periode yang baru dipilih pada kartu yang sama. Kartu yang memang
+tidak punya kontrol periode tetap memakai tombol **Refresh** di headernya.
+Mengubah periode tidak otomatis memanggil API; tekan Refresh di sampingnya
+untuk mengambil data terbaru.
+
 ## 3c. Membaca menu Stok vs Margin
 
 Isi halaman ini **informasi, bukan aturan**: setiap titik = satu bulan.

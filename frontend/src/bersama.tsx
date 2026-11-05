@@ -337,6 +337,9 @@ export const KUNCI_CACHE_PREVIEW_KARTU = new Set([
 
 type KonteksKueriKartu = {
   daftarKueri: Map<string, () => Promise<unknown>>;
+  /** "filter" = tombol Refresh dirender di baris periode, bukan di header. */
+  letakRefresh: "header" | "filter";
+  refresh: { jalankan: () => void; sedang: boolean; judul: string };
 };
 const konteksKueriKartu = createContext<KonteksKueriKartu | null>(null);
 
@@ -362,7 +365,8 @@ export function useQueryKartu<TData = any>(opsi: any) {
 }
 
 export function KartuMuatSaatDiminta({ judul, anak, siap = true,
-                                      setelahDiminta, kunciRefreshTambahan = [] }: {
+                                      setelahDiminta, kunciRefreshTambahan = [],
+                                      letakRefresh = "header" }: {
   judul: string;
   keterangan?: string;
   anak: ReactNode;
@@ -371,6 +375,9 @@ export function KartuMuatSaatDiminta({ judul, anak, siap = true,
   setelahDiminta?: () => void;
   /** Query induk yang ikut dimuat ulang oleh tombol kartu ini. */
   kunciRefreshTambahan?: unknown[][];
+  /** "filter" memindahkan Refresh ke baris periode memakai
+   *  <TombolRefreshKartu />; bawaan tetap di kanan header. */
+  letakRefresh?: "header" | "filter";
 }) {
   const { t } = useBahasa();
   const queryClient = useQueryClient();
@@ -410,7 +417,11 @@ export function KartuMuatSaatDiminta({ judul, anak, siap = true,
     setelahDiminta?.();
     setNomorRefresh((sebelumnya) => sebelumnya + 1);
   };
-  const konteks = { daftarKueri: daftarKueri.current };
+  const konteks: KonteksKueriKartu = {
+    daftarKueri: daftarKueri.current,
+    letakRefresh,
+    refresh: { jalankan: refresh, sedang: sedangRefresh, judul },
+  };
 
   return (
     <div className="space-y-2">
@@ -418,16 +429,43 @@ export function KartuMuatSaatDiminta({ judul, anak, siap = true,
         <div className="min-w-0">
           <p className="text-sm font-semibold text-[#1D2434]">{t(judul)}</p>
           <p className="text-xs text-[#64676C]">
-            {siap ? t("Preview lokal bila tersedia · pilih periode, lalu tekan Refresh pada kartu ini") : t("Menampilkan preview · data utama menunggu dimuat ulang")}
+            {siap
+              ? t(letakRefresh === "filter"
+                  ? "Preview lokal bila tersedia · pilih periode, lalu tekan Refresh di sampingnya"
+                  : "Preview lokal bila tersedia · pilih periode, lalu tekan Refresh pada kartu ini")
+              : t("Menampilkan preview · data utama menunggu dimuat ulang")}
           </p>
         </div>
-        <button type="button" className={kelasTombolAnalisa} onClick={refresh} disabled={sedangRefresh}
-                aria-label={`${t("Refresh")} ${t(judul)}`}>
-          {sedangRefresh ? `⏳ ${t("Memuat…")}` : `↻ ${t("Refresh")}`}
-        </button>
+        {letakRefresh === "header" && (
+          <button type="button" className={kelasTombolAnalisa} onClick={refresh} disabled={sedangRefresh}
+                  aria-label={`${t("Refresh")} ${t(judul)}`}>
+            {sedangRefresh ? `⏳ ${t("Memuat…")}` : `↻ ${t("Refresh")}`}
+          </button>
+        )}
       </div>
       <konteksKueriKartu.Provider value={konteks}>{anak}</konteksKueriKartu.Provider>
     </div>
+  );
+}
+
+/** Refresh untuk kartu yang menaruh tombolnya di baris filter periode.
+ *  Aksi diambil dari KartuMuatSaatDiminta terdekat, sehingga tombol yang
+ *  berada persis di samping input periode hanya menyegarkan kartu itu. */
+export function TombolRefreshKartu({ className = "" }: { className?: string }) {
+  const { t } = useBahasa();
+  const konteks = useContext(konteksKueriKartu);
+  if (!konteks || konteks.letakRefresh !== "filter") return null;
+  const { jalankan, sedang, judul } = konteks.refresh;
+  const keterangan = `${t("Refresh")} ${t(judul)} ${t("sesuai periode")}`;
+  return (
+    <button type="button"
+            className={`${kelasTombolAnalisa} whitespace-nowrap disabled:cursor-wait disabled:opacity-60 ${className}`}
+            onClick={jalankan}
+            disabled={sedang}
+            aria-label={keterangan}
+            title={keterangan}>
+      {sedang ? `⏳ ${t("Memuat…")}` : `↻ ${t("Refresh periode ini")}`}
+    </button>
   );
 }
 
@@ -617,12 +655,14 @@ export const labelRentangBulan = (dari: string, sampai: string) => {
 /* Dua kotak bulan + tombol penghapus filter. Nilai state berupa "YYYY-MM";
    kosong berarti tanpa batas (seluruh data). */
 export function PilihRentangBulan({ dari, sampai, setDari, setSampai,
-                                    labelKosong = "hapus filter" }: {
+                                    labelKosong = "hapus filter", aksi }: {
   dari: string;
   sampai: string;
   setDari: (v: string) => void;
   setSampai: (v: string) => void;
   labelKosong?: string;
+  /** Slot di ujung baris, mis. Refresh yang mengikuti periode ini. */
+  aksi?: ReactNode;
 }) {
   const pilihCepat = (event: { currentTarget: HTMLSelectElement }) => {
     const pilihan = event.currentTarget.value;
@@ -671,6 +711,7 @@ export function PilihRentangBulan({ dari, sampai, setDari, setSampai,
           {labelKosong}
         </button>
       )}
+      {aksi}
     </div>
   );
 }

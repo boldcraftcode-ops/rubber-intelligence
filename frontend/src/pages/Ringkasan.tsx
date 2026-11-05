@@ -4,7 +4,9 @@ import {
   Bar, BarChart, CartesianGrid, Cell, ComposedChart, LabelList, Legend, Line,
   LineChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from "recharts";
-import { Kartu, KartuMuatSaatDiminta, KepalaPanel, NAMA_BULAN, Panel5W1H, PilihRentangBulan, ambilJson, fmtAngka, fmtTanggal, kelasTombolAnalisa, kelasTombolKecil, pesanGalat, urlApi, useQueryKartu } from "../bersama";
+import { Kartu, KartuMuatSaatDiminta, KepalaPanel, NAMA_BULAN, Panel5W1H,
+  PilihRentangBulan, TombolRefreshKartu, ambilJson, fmtAngka, fmtTanggal,
+  kelasTombolAnalisa, kelasTombolKecil, pesanGalat, urlApi, useQueryKartu } from "../bersama";
 import { useBahasa } from "../i18n";
 
 import { AlatGrafik } from "../GrafikTools";
@@ -301,7 +303,8 @@ function KartuElemen() {
         <div className="flex flex-wrap items-end gap-3 mb-3 text-xs">
           <PilihRentangBulan dari={dari} sampai={sampai}
                              setDari={setDari} setSampai={setSampai}
-                             labelKosong={t("tampilkan semua periode")} />
+                             labelKosong={t("tampilkan semua periode")}
+                             aksi={<TombolRefreshKartu />} />
           <span className="text-[#64676C]">
             {q.data ? `${q.data.baris.length} ${t("bulan ditampilkan")}` : ""}
           </span>
@@ -619,7 +622,8 @@ function KartuGrafikMargin() {
         <div className="flex flex-wrap items-end gap-3 mb-3 text-xs">
           <PilihRentangBulan dari={dari} sampai={sampai}
                              setDari={setDari} setSampai={setSampai}
-                             labelKosong={t("tampilkan semua periode")} />
+                             labelKosong={t("tampilkan semua periode")}
+                             aksi={<TombolRefreshKartu />} />
           <div>
             <label className="block text-[#64676C] mb-1">{t("Satuan")}</label>
             <div className="flex rounded-sm overflow-hidden border border-[#E4E5E8]">
@@ -1646,15 +1650,16 @@ export default function Ringkasan({ ke }: { ke?: (tab: string) => void }) {
       />
 
       <KartuMuatSaatDiminta
+        letakRefresh="filter"
         judul="OP Margin bulanan"
         keterangan="Tabel margin dan harga bulanan. Data baru dimuat setelah Anda meminta."
         siap={siapRingkasan}
         setelahDiminta={() => setRingkasanDiminta(true)}
         kunciRefreshTambahan={[["tahun"], ["ringkasan", thn]]}
         anak={galatRingkasan
-          ? <p className="rounded-sm border border-[#E4E5E8] bg-[#F8F8F8] p-3 text-sm text-[#64676C]">{pesanGalat(galatRingkasan)}</p>
+          ? <><p className="rounded-sm border border-[#E4E5E8] bg-[#F8F8F8] p-3 text-sm text-[#64676C]">{pesanGalat(galatRingkasan)}</p><TombolRefreshKartu className="mt-2" /></>
           : tahunKosong
-            ? <p className="rounded-sm border border-[#E4E5E8] bg-[#F8F8F8] p-3 text-sm text-[#64676C]">Belum ada data margin untuk ditampilkan.</p>
+            ? <><p className="rounded-sm border border-[#E4E5E8] bg-[#F8F8F8] p-3 text-sm text-[#64676C]">Belum ada data margin untuk ditampilkan.</p><TombolRefreshKartu className="mt-2" /></>
             : <Kartu idMetrik="ringkasan" judul={`${t("OP Margin bulanan")} — ${thn ?? ""}`}
              keterangan={t("US¢/kg, basis berat kering — meniru Excel lama. Klik angka OP Margin untuk menelusuri asal angkanya.")}
              urlEkspor={thn ? `/api/ringkasan/${thn}` : undefined}
@@ -1670,6 +1675,7 @@ export default function Ringkasan({ ke }: { ke?: (tab: string) => void }) {
                 {th}
               </button>
             ))}
+            <TombolRefreshKartu className="ml-auto" />
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-xs">
@@ -1724,12 +1730,14 @@ export default function Ringkasan({ ke }: { ke?: (tab: string) => void }) {
       } />} />
 
       <KartuMuatSaatDiminta
+        letakRefresh="filter"
         judul="Margin bulanan vs target"
         keterangan="Grafik tren margin dan perbandingan antar tahun dimuat setelah Anda meminta."
         anak={<KartuGrafikMargin />}
       />
 
       <KartuMuatSaatDiminta
+        letakRefresh="filter"
         judul="RM Stock – Intake vs Pricing"
         keterangan="Grafik stok, intake, dan harga dimuat setelah Anda meminta."
         anak={<KartuElemen />}

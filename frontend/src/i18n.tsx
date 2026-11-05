@@ -372,6 +372,15 @@ const KAMUS: Record<string, string> = {
   "Margin awal": "Opening margin",
   "Margin akhir": "Closing margin",
   "Memuat…": "Loading…",
+  "Refresh": "Refresh",
+  "Refresh periode ini": "Refresh this period",
+  "sesuai periode": "for the selected period",
+  "Preview lokal bila tersedia · pilih periode, lalu tekan Refresh pada kartu ini":
+    "Local preview when available · choose a period, then press Refresh on this card",
+  "Preview lokal bila tersedia · pilih periode, lalu tekan Refresh di sampingnya":
+    "Local preview when available · choose a period, then press Refresh beside it",
+  "Menampilkan preview · data utama menunggu dimuat ulang":
+    "Showing preview · main data is waiting to be reloaded",
   "Harga beli (Rp/kg)": "Purchase price (Rp/kg)",
   "Kurs efektif": "Effective FX rate",
   "Qty kering (ton)": "Dry qty (tonnes)",
