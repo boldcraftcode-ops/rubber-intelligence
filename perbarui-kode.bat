@@ -1,100 +1,155 @@
 @echo off
 rem ============================================================
-rem  OP Margin - perbarui-kode.bat
+rem  Rubber Intelligence - perbarui-kode.bat
 rem
-rem  Mengunduh kode TERBARU dari branch resmi, lalu menaruhnya di
-rem  folder baru di sebelah folder ini. Dipakai bila folder Anda
-rem  adalah hasil UNDUHAN ZIP (bukan git clone) sehingga tidak bisa
-rem  "git pull".
+rem  Mengunduh seluruh isi repository (kode + file data/referensi)
+rem  dari branch GitHub lalu menaruhnya di folder baru. Aman untuk
+rem  folder hasil ZIP; folder lama tidak dihapus atau ditimpa.
 rem
-rem  Tidak menghapus folder lama: database dan .env di folder lama
-rem  tetap aman. Setelah selesai, jalankan start-web.bat di folder
-rem  baru (skrip itu menyiapkan Python/library sendiri).
+rem  Pemakaian:
+rem    perbarui-kode.bat                         (branch main)
+rem    perbarui-kode.bat nama-branch             (branch pilihan)
 rem
-rem  ASCII saja, tanpa blok "( ... )" berlapis, tanpa "for /f".
+rem  Database lokal backend\opmargin.db dicadangkan ke folder baru
+rem  menggunakan SQLite backup API, sehingga data lama tetap tersedia.
+rem  backend\.env tidak disalin.
 rem ============================================================
 setlocal
 chcp 65001 >nul 2>nul
 cd /d "%~dp0"
 
-set "CABANG=arena/18670644-rubber-intelligence"
-set "URL=https://github.com/boldcraftcode-ops/rubber-intelligence/archive/refs/heads/%CABANG%.zip"
-set "ZIP=%TEMP%\opmargin-terbaru.zip"
+set "PEMILIK=boldcraftcode-ops"
+set "REPO=rubber-intelligence"
+set "CABANG=%~1"
+if not defined CABANG set "CABANG=main"
+set "URL=https://codeload.github.com/%PEMILIK%/%REPO%/zip/refs/heads/%CABANG%"
+set "ZIP=%TEMP%\rubber-intelligence-%RANDOM%-%RANDOM%.zip"
 set "TUJUAN=%~dp0..\rubber-intelligence-terbaru"
+set "KODE_KELUAR=0"
+set "PY="
 
 echo ============================================================
-echo  Memperbarui kode OP Margin
+echo  Memperbarui Rubber Intelligence
 echo ============================================================
+echo  Branch : %CABANG%
 echo  Sumber : %URL%
-echo  Hasil  : %TUJUAN%
+echo  Tujuan : %TUJUAN%
+echo.
+echo  File kode dan file data/referensi dari branch akan diunduh.
+echo  Database lokal akan dicadangkan ke folder baru bila tersedia.
+echo  Tutup aplikasi sebelum menjalankan agar salinan data paling baru.
 echo.
 
 rem ------------------------------------------------------------
-echo [1/3] Mengunduh berkas kode terbaru
-if exist "%ZIP%" del "%ZIP%" >nul 2>nul
-powershell -NoProfile -ExecutionPolicy Bypass -Command "$ProgressPreference='SilentlyContinue'; try { Invoke-WebRequest -UseBasicParsing -Uri '%URL%' -OutFile '%ZIP%'; exit 0 } catch { Write-Host ('GAGAL mengunduh: ' + $_.Exception.Message); exit 1 }"
+echo [1/4] Mengunduh paket lengkap dari GitHub
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$ProgressPreference='SilentlyContinue'; $ErrorActionPreference='Stop'; try { Invoke-WebRequest -UseBasicParsing -Uri '%URL%' -OutFile '%ZIP%'; if ((Get-Item -LiteralPath '%ZIP%').Length -lt 1024) { throw 'Berkas unduhan terlalu kecil atau bukan ZIP branch.' }; exit 0 } catch { Write-Host ('GAGAL mengunduh: ' + $_.Exception.Message); exit 1 }"
 if errorlevel 1 goto :gagal_unduh
 
 rem ------------------------------------------------------------
-echo [2/3] Membuka isi berkas
+echo [2/4] Mengekstrak ke folder baru
 if not exist "%TUJUAN%" goto :buat_tujuan
-echo  Folder tujuan sudah ada. Memakai nama baru agar folder lama tidak tertimpa.
+echo  Folder tujuan sudah ada; memilih nama baru agar tidak tertimpa.
 set "TUJUAN=%~dp0..\rubber-intelligence-terbaru-%RANDOM%"
 
 :buat_tujuan
 mkdir "%TUJUAN%" >nul 2>nul
-powershell -NoProfile -ExecutionPolicy Bypass -Command "$ProgressPreference='SilentlyContinue'; try { Expand-Archive -LiteralPath '%ZIP%' -DestinationPath '%TUJUAN%' -Force; exit 0 } catch { Write-Host ('GAGAL membuka ZIP: ' + $_.Exception.Message); exit 1 }"
+if errorlevel 1 goto :gagal_folder
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$ProgressPreference='SilentlyContinue'; $ErrorActionPreference='Stop'; try { Expand-Archive -LiteralPath '%ZIP%' -DestinationPath '%TUJUAN%' -Force; $sub = Get-ChildItem -LiteralPath '%TUJUAN%' -Directory | Select-Object -First 1; if (-not $sub) { throw 'Struktur ZIP tidak dikenal.' }; Get-ChildItem -LiteralPath $sub.FullName -Force | Move-Item -Destination '%TUJUAN%' -Force; Remove-Item -LiteralPath $sub.FullName -Recurse -Force; exit 0 } catch { Write-Host ('GAGAL mengekstrak: ' + $_.Exception.Message); exit 1 }"
 if errorlevel 1 goto :gagal_buka
 
-rem  Isi ZIP berada di satu subfolder; pindahkan isinya ke folder tujuan.
-echo [3/3] Merapikan folder
-powershell -NoProfile -ExecutionPolicy Bypass -Command "$ProgressPreference='SilentlyContinue'; $sub = Get-ChildItem -LiteralPath '%TUJUAN%' -Directory | Select-Object -First 1; if ($sub) { Get-ChildItem -LiteralPath $sub.FullName -Force | Move-Item -Destination '%TUJUAN%' -Force; Remove-Item -LiteralPath $sub.FullName -Recurse -Force }"
+rem ------------------------------------------------------------
+echo [3/4] Memindahkan database lokal (jika ada)
+if not exist "backend\opmargin.db" goto :tanpa_db
+if not exist "%TUJUAN%\backend" mkdir "%TUJUAN%\backend" >nul 2>nul
+set "OPMARGIN_DB_SRC=%~dp0backend\opmargin.db"
+set "OPMARGIN_DB_DST=%TUJUAN%\backend\opmargin.db"
+if exist "backend\.venv\Scripts\python.exe" goto :pakai_venv
+where py >nul 2>nul
+if not errorlevel 1 goto :pakai_py
+where python >nul 2>nul
+if errorlevel 1 goto :tanpa_python_db
+set "PY=python"
+goto :cadangkan_db
 
+:pakai_venv
+set "PY=backend\.venv\Scripts\python.exe"
+goto :cadangkan_db
+
+:pakai_py
+set "PY=py -3"
+
+:cadangkan_db
+%PY% -c "import os,sqlite3; src=sqlite3.connect(os.environ['OPMARGIN_DB_SRC'],timeout=30); dst=sqlite3.connect(os.environ['OPMARGIN_DB_DST'],timeout=30); src.backup(dst); dst.close(); src.close()"
+if errorlevel 1 goto :gagal_db
+echo  Database lokal berhasil dicadangkan ke folder baru.
+goto :lanjut_db
+
+:tanpa_db
+echo  Tidak ada database lokal; folder baru siap memakai database aplikasi.
+goto :lanjut_db
+
+:tanpa_python_db
+echo  Python tidak ditemukan untuk mencadangkan database.
+echo  Database lama tidak diubah. Salin backend\opmargin.db secara manual
+set "KODE_KELUAR=1"
+goto :akhir
+
+:gagal_db
+echo  GAGAL mencadangkan database. Pastikan file tidak rusak, lalu coba lagi.
+echo  Folder lama tetap aman; database lama tidak diubah.
+set "KODE_KELUAR=1"
+goto :akhir
+
+:lanjut_db
 echo.
-echo ============================================================
-echo  SELESAI. Kode terbaru ada di:
-echo  %TUJUAN%
-echo ============================================================
-if exist "%TUJUAN%\VERSI.txt" goto :cetak_versi
-goto :lanjut
-
-:cetak_versi
-echo  Versi kode: 
+echo [4/4] Pemeriksaan versi dan langkah berikutnya
+if not exist "%TUJUAN%\VERSI.txt" goto :tanpa_versi
+echo  Versi kode yang diunduh:
 type "%TUJUAN%\VERSI.txt"
+goto :tampil_langkah
 
-:lanjut
+:tanpa_versi
+echo  Peringatan: VERSI.txt tidak ditemukan di hasil unduhan.
+
+:tampil_langkah
 echo.
-echo  Langkah berikutnya:
-echo   1. Buka folder di atas (Windows Explorer akan dibuka).
-echo   2. Klik dua kali start-web.bat di folder itu.
-echo      (Pertama kali agak lama: skrip memasang Python/library sendiri.)
-echo   3. Bila ingin memakai DATA lama, salin file berikut dari folder
-echo      lama ke folder baru SEBELUM menjalankan start-web.bat:
-echo        backend\opmargin.db      (database)
-echo        backend\.env             (setelan login) - opsional
-echo   4. Setelah aplikasi terbuka, Ctrl+F5 di browser.
+echo  Seluruh file dari branch, termasuk file data/referensi yang ada di
+echo  repository, sudah tersedia di folder baru:
+echo   %TUJUAN%
 echo.
-echo  Folder lama tidak diubah/dihapus. Anda bisa menghapusnya nanti
-echo  setelah folder baru berjalan normal.
-echo ============================================================
+echo  Berikutnya:
+echo   1. Buka folder baru dan jalankan start-web.bat.
+echo   2. Muat ulang halaman aplikasi dengan Ctrl+F5.
+echo   3. Database lokal disalin otomatis; backend\.env tidak disalin.
+echo  Folder lama tidak dihapus. Jangan hapus sebelum aplikasi baru normal.
+echo.
 start "" "%TUJUAN%"
-goto :selesai
+if exist "%ZIP%" del "%ZIP%" >nul 2>nul
+goto :akhir
 
 :gagal_unduh
 echo.
-echo GAGAL mengunduh. Periksa koneksi internet, lalu coba lagi.
-echo Alternatif: buka alamat berikut di browser, lalu ekstrak manual:
+echo GAGAL mengunduh branch "%CABANG%". Periksa koneksi internet dan nama branch.
+echo Unduh manual melalui alamat berikut, lalu ekstrak ZIP:
 echo   %URL%
-goto :selesai
+set "KODE_KELUAR=1"
+goto :akhir
+
+:gagal_folder
+echo.
+echo GAGAL membuat folder tujuan:
+echo   %TUJUAN%
+set "KODE_KELUAR=1"
+goto :akhir
 
 :gagal_buka
 echo.
-echo GAGAL membuka berkas ZIP. Unduh manual lewat browser:
+echo GAGAL membuka ZIP. Unduh manual melalui browser:
 echo   %URL%
-goto :selesai
+set "KODE_KELUAR=1"
 
-:selesai
+:akhir
 echo.
+if exist "%ZIP%" del "%ZIP%" >nul 2>nul
 pause
-endlocal
-exit /b 0
+endlocal & exit /b %KODE_KELUAR%
