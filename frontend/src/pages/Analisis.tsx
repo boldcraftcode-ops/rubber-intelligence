@@ -1,5 +1,4 @@
 import { useEffect, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
 import {
   Bar, BarChart, CartesianGrid, Legend, Line, LineChart, ResponsiveContainer,
   Tooltip, XAxis, YAxis,
@@ -7,9 +6,11 @@ import {
 import {
   Kartu, KartuMuatSaatDiminta, NAMA_BULAN, Panel5W1H, PilihRentangBulan, akhirBulan,
   KepalaPanel, ambilJson, fmtAngka, fmtTanggal, hitungJumlahBulan, kelasInput,
-  kelasTombolAnalisa, kelasTombolKecil, pesanGalat,
+  kelasTombolAnalisa, kelasTombolKecil, pesanGalat, useQueryKartu,
 } from "../bersama";
 import PetaIntake from "./PetaIntake";
+
+import { AlatGrafik } from "../GrafikTools";
 
 /* Palet seri grafik bulanan. Navy & merah lebih dulu (identitas), lalu warna
    pembeda yang tetap kontras di layar proyektor pabrik. */
@@ -157,7 +158,7 @@ export function RincianBulanan({ data, dimensi, drill }: {
   return (
     <>
       <div style={{ height: Math.max(220, 40 + seri.length * 6 + 160) }}>
-        <ResponsiveContainer>
+        <AlatGrafik id="analisis-01"><ResponsiveContainer>
           <BarChart data={grafik} margin={{ top: 5, right: 20, bottom: 5, left: 10 }}>
             <CartesianGrid strokeDasharray="3 3" />
             <XAxis dataKey="nama" fontSize={10} />
@@ -170,7 +171,7 @@ export function RincianBulanan({ data, dimensi, drill }: {
                    fill={WARNA_SERI[i % WARNA_SERI.length]} />
             ))}
           </BarChart>
-        </ResponsiveContainer>
+        </ResponsiveContainer></AlatGrafik>
       </div>
 
       {/* tabel = angka yang mengisi grafik, per bulan */}
@@ -272,7 +273,7 @@ export function AnalisisTren({ dari, sampai, modeEudr, bukaAwal = false }: {
   if (sampai) params.set("sampai", sampai);
   if (modeEudr !== "semua") params.set("eudr", String(modeEudr === "eudr"));
   const url = `/api/kartu/penerimaan/tren${params.size ? `?${params.toString()}` : ""}`;
-  const q = useQuery({
+  const q = useQueryKartu({
     queryKey: ["tren-penerimaan", url],
     queryFn: () => ambilJson(url),
     enabled: buka,
@@ -356,7 +357,7 @@ export function AnalisisTren({ dari, sampai, modeEudr, bukaAwal = false }: {
                 )}
               </div>
               <div className="h-64">
-                <ResponsiveContainer>
+                <AlatGrafik id="analisis-02"><ResponsiveContainer>
                   <LineChart data={grafik} margin={{ top: 5, right: 15, bottom: 5, left: 0 }}>
                     <CartesianGrid strokeDasharray="3 3" />
                     <XAxis dataKey="nama" fontSize={10} minTickGap={20} />
@@ -371,7 +372,7 @@ export function AnalisisTren({ dari, sampai, modeEudr, bukaAwal = false }: {
                     <Line type="monotone" dataKey="EUDR kg" stroke="#15803D"
                           strokeWidth={1} dot={false} />
                   </LineChart>
-                </ResponsiveContainer>
+                </ResponsiveContainer></AlatGrafik>
               </div>
 
               {/* ---- tabel MoM & YoY ---- */}
@@ -426,7 +427,7 @@ export function AnalisisTren({ dari, sampai, modeEudr, bukaAwal = false }: {
                       </b>. {dekom.catatan}
                     </p>
                     <div className="h-56">
-                      <ResponsiveContainer>
+                      <AlatGrafik id="analisis-03"><ResponsiveContainer>
                         <LineChart data={grafikDekom}
                                    margin={{ top: 5, right: 15, bottom: 5, left: 0 }}>
                           <CartesianGrid strokeDasharray="3 3" />
@@ -442,7 +443,7 @@ export function AnalisisTren({ dari, sampai, modeEudr, bukaAwal = false }: {
                           <Line type="monotone" dataKey="Musiman" stroke="#FF1313"
                                 strokeWidth={1.5} strokeDasharray="4 3" dot={false} />
                         </LineChart>
-                      </ResponsiveContainer>
+                      </ResponsiveContainer></AlatGrafik>
                     </div>
 
                     <p className="mt-3 mb-1 text-xs font-semibold text-[#1D2434]">
@@ -541,7 +542,7 @@ export function AnalisisKomposisi({ dari, sampai, modeEudr, dimensi,
   if (sampai) params.set("sampai", sampai);
   if (modeEudr !== "semua") params.set("eudr", String(modeEudr === "eudr"));
   const url = `/api/kartu/penerimaan/komposisi?${params.toString()}`;
-  const q = useQuery({
+  const q = useQueryKartu({
     queryKey: ["komposisi-penerimaan", url],
     queryFn: () => ambilJson(url),
     enabled: buka,
@@ -647,7 +648,7 @@ export function AnalisisKomposisi({ dari, sampai, modeEudr, dimensi,
                     {grafikPorsi.length > 1 && (
                       <div style={{ height: Math.max(160, grafikPorsi.length * 28 + 40) }}
                            className="mt-3">
-                        <ResponsiveContainer>
+                        <AlatGrafik id="analisis-04"><ResponsiveContainer>
                           <BarChart data={grafikPorsi} layout="vertical"
                                     margin={{ top: 5, right: 20, bottom: 5, left: 10 }}>
                             <CartesianGrid strokeDasharray="3 3" />
@@ -657,7 +658,7 @@ export function AnalisisKomposisi({ dari, sampai, modeEudr, dimensi,
                             <Tooltip formatter={(v: any) => [fmtAngka(v as number, 2) + "%", "Porsi"]} />
                             <Bar dataKey="Porsi (%)" fill="#1D2434" />
                           </BarChart>
-                        </ResponsiveContainer>
+                        </ResponsiveContainer></AlatGrafik>
                       </div>
                     )}
 
@@ -714,7 +715,7 @@ export function AnalisisKomposisi({ dari, sampai, modeEudr, dimensi,
                       </p>
                       {eudrBulan.length > 1 && (
                         <div className="mt-2 h-48">
-                          <ResponsiveContainer>
+                          <AlatGrafik id="analisis-05"><ResponsiveContainer>
                             <LineChart data={grafikEudr}
                                        margin={{ top: 5, right: 15, bottom: 5, left: 0 }}>
                               <CartesianGrid strokeDasharray="3 3" />
@@ -724,7 +725,7 @@ export function AnalisisKomposisi({ dari, sampai, modeEudr, dimensi,
                               <Line type="monotone" dataKey="Share EUDR (%)" stroke="#15803D"
                                     strokeWidth={2} dot={{ r: 2 }} />
                             </LineChart>
-                          </ResponsiveContainer>
+                          </ResponsiveContainer></AlatGrafik>
                         </div>
                       )}
                       <div className="mt-2 max-h-40 overflow-y-auto">
@@ -814,11 +815,14 @@ function KartuPenerimaan() {
   })();
   const bolehBulan = jumlahBulan > 1;
   const modeBulan = bolehBulan && tampilan !== "total";
+  // Memilih satu provinsi mengubah level agregasi menjadi semua kabupaten
+  // di dalam provinsi tersebut, bukan satu batang untuk provinsinya saja.
+  const dimensiData = dimensi === "provinsi" && provinsiFilter ? "kabupaten" : dimensi;
 
-  const params = new URLSearchParams({ dimensi });
+  const params = new URLSearchParams({ dimensi: dimensiData });
   if (modeBulan) {
     params.set("per", "bulan");
-    params.set("top", String(topN));
+    params.set("top", dimensi === "provinsi" && provinsiFilter ? "40" : String(topN));
   }
   if (dari) params.set("dari", `${dari}-01`);
   if (sampai) params.set("sampai", akhirBulan(sampai));
@@ -827,8 +831,8 @@ function KartuPenerimaan() {
   jejak.forEach((j) => params.set(j.dim, j.nilai));
   const url = `/api/kartu/penerimaan?${params.toString()}`;
 
-  const q = useQuery({ queryKey: ["penerimaan", url], queryFn: () => ambilJson(url) });
-  const vendorQ = useQuery({
+  const q = useQueryKartu({ queryKey: ["penerimaan", url], queryFn: () => ambilJson(url) });
+  const vendorQ = useQueryKartu({
     queryKey: ["penerimaan-vendor"],
     queryFn: () => ambilJson("/api/kartu/penerimaan?dimensi=vendor"),
   });
@@ -836,7 +840,7 @@ function KartuPenerimaan() {
   if (dari) paramsProvinsi.set("dari", `${dari}-01`);
   if (sampai) paramsProvinsi.set("sampai", akhirBulan(sampai));
   if (vendorFilter) paramsProvinsi.set("vendor", vendorFilter);
-  const provinsiQ = useQuery({
+  const provinsiQ = useQueryKartu({
     queryKey: ["penerimaan-provinsi", paramsProvinsi.toString()],
     queryFn: () => ambilJson(`/api/kartu/penerimaan?${paramsProvinsi.toString()}`),
     enabled: dimensi === "provinsi" && bolehBulan,
@@ -844,7 +848,7 @@ function KartuPenerimaan() {
 
   const drill = (b: any) => {
     if (!q.data?.drill_berikutnya) return;
-    setJejak([...jejak, { dim: dimensi, nilai: b.kunci }]);
+    setJejak([...jejak, { dim: dimensiData, nilai: b.kunci }]);
     setDimensi(q.data.drill_berikutnya);
   };
   const mulaiUlang = (d: string) => {
@@ -853,7 +857,10 @@ function KartuPenerimaan() {
     setProvinsiFilter("");
   };
 
-  const dataGrafik = (q.data?.baris ?? []).slice(0, 10).map((b: any) => ({
+  const batasGrafik = dimensi === "provinsi" && provinsiFilter ? 40 : 10;
+  const namaProvinsiTerpilih = provinsiQ.data?.baris.find((p: any) => p.kunci === provinsiFilter)?.label
+    ?? provinsiFilter;
+  const dataGrafik = (q.data?.baris ?? []).slice(0, batasGrafik).map((b: any) => ({
     nama: b.label.length > 24 ? b.label.slice(0, 24) + "…" : b.label,
     "Penerimaan Karet (kg)": b.kg_total,
   }));
@@ -878,16 +885,9 @@ function KartuPenerimaan() {
         </div>
 
         <div className="flex flex-wrap items-end gap-3 mb-3 text-xs">
-          <div>
-            <label className="block text-[#64676C] mb-1">Dari bulan</label>
-            <input type="month" className="rounded-sm border border-[#E4E5E8] bg-white px-2 py-1.5 text-[#1D2434]"
-                   value={dari} onChange={(e) => setDari(e.target.value)} />
-          </div>
-          <div>
-            <label className="block text-[#64676C] mb-1">Sampai bulan</label>
-            <input type="month" className="rounded-sm border border-[#E4E5E8] bg-white px-2 py-1.5 text-[#1D2434]"
-                   value={sampai} onChange={(e) => setSampai(e.target.value)} />
-          </div>
+          <PilihRentangBulan dari={dari} sampai={sampai}
+                             setDari={setDari} setSampai={setSampai}
+                             labelKosong="tampilkan semua periode" />
           {dimensi !== "vendor" && (
             <div>
               <label className="block text-[#64676C] mb-1">Vendor</label>
@@ -947,14 +947,14 @@ function KartuPenerimaan() {
                 </button>
               ))}
             </div>
-            {modeBulan && (
+            {modeBulan && !(dimensi === "provinsi" && provinsiFilter) && (
               <label className="ml-2 flex items-center gap-1.5 text-[#64676C]">
                 Tampilkan
                 <select className="rounded-sm border border-[#D5D7DB] bg-white px-1.5 py-1"
                         value={topN} onChange={(e) => setTopN(Number(e.target.value))}>
                   {[5, 8, 12, 20].map((n) => <option key={n} value={n}>{n}</option>)}
                 </select>
-                {dimensi} terbesar
+                {dimensiData} terbesar
               </label>
             )}
           </div>
@@ -971,15 +971,21 @@ function KartuPenerimaan() {
         )}
 
 
+        {dimensi === "provinsi" && provinsiFilter && (
+          <p className="mb-2 rounded-sm border border-[#D7E7FF] bg-[#EFF6FF] px-3 py-2 text-xs text-[#1D4ED8]">
+            Menampilkan seluruh Kabupaten/Kota yang tercatat di <b>{namaProvinsiTerpilih}</b>.
+          </p>
+        )}
+
         {/* ================= mode BULAN: grafik + tabel bulan x dimensi ===== */}
-        {modeBulan && <RincianBulanan data={q.data} dimensi={dimensi} drill={drill} />}
+        {modeBulan && <RincianBulanan data={q.data} dimensi={dimensiData} drill={drill} />}
 
         {/* ================= mode TOTAL: satu baris per dimensi ============== */}
         {!modeBulan && (
           <>
             {dataGrafik.length > 0 ? (
-              <div style={{ height: Math.max(180, dataGrafik.length * 36 + 60) }}>
-                <ResponsiveContainer>
+              <div style={{ height: Math.max(320, dataGrafik.length * 8 + 100) }}>
+                <AlatGrafik id="analisis-06"><ResponsiveContainer>
                   <BarChart data={dataGrafik}
                             margin={{ top: 5, right: 20, bottom: 45, left: 0 }}>
                     <CartesianGrid strokeDasharray="3 3" />
@@ -990,7 +996,7 @@ function KartuPenerimaan() {
                     <Tooltip formatter={(v: any) => [fmtAngka(v as number, 0) + " kg", "Penerimaan Karet"]} />
                     <Bar dataKey="Penerimaan Karet (kg)" fill="#1D2434" />
                   </BarChart>
-                </ResponsiveContainer>
+                </ResponsiveContainer></AlatGrafik>
               </div>
             ) : (
               <p className="rounded-sm bg-[#F8F8F8] border border-[#E4E5E8] px-3 py-4 text-sm text-[#64676C]">
@@ -1005,7 +1011,7 @@ function KartuPenerimaan() {
                   <table className="w-full text-xs">
                     <thead>
                       <tr className="text-left text-[#64676C] border-b">
-                        <th className="py-1">{dimensi}</th>
+                        <th className="py-1">{dimensiData}</th>
                         <th className="text-right">Penerimaan (kg)</th>
                         <th className="text-right">Porsi</th>
                         <th className="text-right">Tiket</th>
@@ -1070,7 +1076,7 @@ function KartuTonase() {
   jejak.forEach((j) => params.set(j.dim, j.nilai));
   const url = `/api/kartu/tonase?${params.toString()}`;
 
-  const q = useQuery({ queryKey: ["tonase", url], queryFn: () => ambilJson(url) });
+  const q = useQueryKartu({ queryKey: ["tonase", url], queryFn: () => ambilJson(url) });
 
   const drill = (baris: any) => {
     if (baris?.kunci === "__lainnya__" || !q.data?.drill_berikutnya) return;
@@ -1136,7 +1142,7 @@ function KartuTonase() {
           bulan.length > 0 && seriBulan.length > 0 ? (
             <>
               <div style={{ height: Math.max(220, 40 + seriBulan.length * 6 + 160) }}>
-                <ResponsiveContainer>
+                <AlatGrafik id="analisis-07"><ResponsiveContainer>
                   <BarChart data={grafik} margin={{ top: 5, right: 20, bottom: 5, left: 10 }}>
                     <CartesianGrid strokeDasharray="3 3" />
                     <XAxis dataKey="nama" fontSize={10} />
@@ -1149,7 +1155,7 @@ function KartuTonase() {
                            fill={WARNA_SERI[i % WARNA_SERI.length]} />
                     ))}
                   </BarChart>
-                </ResponsiveContainer>
+                </ResponsiveContainer></AlatGrafik>
               </div>
               <TabelBulanan data={q.data} dimensi={dimensi} nilaiKey="ton_per_bulan"
                             desimal={3} satuan="ton kering"
@@ -1206,7 +1212,7 @@ function KartuKonsentrasi() {
   const [top, setTop] = useState(5);
   const [tahun, setTahun] = useState<number | "">("");
   const url = `/api/kartu/konsentrasi-vendor?top=${top}${tahun ? `&tahun=${tahun}` : ""}`;
-  const q = useQuery({ queryKey: ["konsentrasi", url], queryFn: () => ambilJson(url) });
+  const q = useQueryKartu({ queryKey: ["konsentrasi", url], queryFn: () => ambilJson(url) });
 
   return (
     <Kartu idMetrik="konsentrasi_vendor" judul="Konsentrasi vendor" urlEkspor={url}
@@ -1253,7 +1259,7 @@ function KartuKonsentrasi() {
 function KartuGrade() {
   const [tahun, setTahun] = useState<number | "">("");
   const url = `/api/kartu/bauran-grade${tahun ? `?tahun=${tahun}` : ""}`;
-  const q = useQuery({ queryKey: ["grade", url], queryFn: () => ambilJson(url) });
+  const q = useQueryKartu({ queryKey: ["grade", url], queryFn: () => ambilJson(url) });
   const grades: any[] = q.data?.baris ?? [];
   const totalTon = grades.reduce((sum, b) => sum + (b.ton ?? 0), 0);
   const eudrTon = grades.filter((b) => b.eudr).reduce((sum, b) => sum + (b.ton ?? 0), 0);
@@ -1318,7 +1324,7 @@ const umurDalamKata = (hari: number) =>
 export function KartuIntakeTerakhir() {
   const [limit, setLimit] = useState(20);
   const url = `/api/kartu/intake-terakhir?limit=${limit}`;
-  const q = useQuery({ queryKey: ["intake-terakhir", url], queryFn: () => ambilJson(url) });
+  const q = useQueryKartu({ queryKey: ["intake-terakhir", url], queryFn: () => ambilJson(url) });
   const t = q.data?.terakhir;
 
   return (
@@ -1439,7 +1445,7 @@ export function KartuReject() {
   if (tahun) params.set("tahun", String(tahun));
   params.set("bulan", String(jmlBulan));
   const url = `/api/kartu/reject?${params.toString()}`;
-  const q = useQuery({ queryKey: ["reject", url], queryFn: () => ambilJson(url) });
+  const q = useQueryKartu({ queryKey: ["reject", url], queryFn: () => ambilJson(url) });
 
   const kp = q.data?.kpi?.kpi_periode;
   const labelPeriode = jmlBulan === 0 ? "seluruh periode"
@@ -1515,7 +1521,7 @@ function KartuMarginHarian() {
   const [tahun, setTahun] = useState<number>(2026);
   const [bulan, setBulan] = useState<number>(1);
   const url = `/api/kartu/margin-harian?tahun=${tahun}&bulan=${bulan}`;
-  const q = useQuery({ queryKey: ["margin-harian", url], queryFn: () => ambilJson(url) });
+  const q = useQueryKartu({ queryKey: ["margin-harian", url], queryFn: () => ambilJson(url) });
 
   return (
     <Kartu idMetrik="margin_harian" judul="Margin harian" urlEkspor={url}
@@ -1580,7 +1586,7 @@ function KartuMarginPer() {
   if (sampai) params.set("sampai", akhirBulan(sampai));
   const url = `/api/kartu/margin-per?${params.toString()}`;
 
-  const q = useQuery({ queryKey: ["margin-per", url], queryFn: () => ambilJson(url) });
+  const q = useQueryKartu({ queryKey: ["margin-per", url], queryFn: () => ambilJson(url) });
 
   /* Margin adalah TINGKAT (US¢/kg) — batang dikelompokkan, tidak ditumpuk. */
   const bulan: { ym: string; label: string }[] = q.data?.per === "bulan"
@@ -1629,7 +1635,7 @@ function KartuMarginPer() {
           bulan.length > 0 && seriBulan.length > 0 ? (
             <>
               <div style={{ height: Math.max(220, 40 + seriBulan.length * 8 + 150) }}>
-                <ResponsiveContainer>
+                <AlatGrafik id="analisis-08"><ResponsiveContainer>
                   <BarChart data={grafik} margin={{ top: 5, right: 20, bottom: 5, left: 10 }}>
                     <CartesianGrid strokeDasharray="3 3" />
                     <XAxis dataKey="nama" fontSize={10} />
@@ -1642,7 +1648,7 @@ function KartuMarginPer() {
                            fill={WARNA_SERI[i % WARNA_SERI.length]} />
                     ))}
                   </BarChart>
-                </ResponsiveContainer>
+                </ResponsiveContainer></AlatGrafik>
               </div>
               <TabelBulanan data={q.data} dimensi={dimensi} nilaiKey="margin_per_bulan"
                             desimal={2} satuan="US¢/kg"
@@ -1706,16 +1712,8 @@ export default function Analisis() {
             bauran grade & EUDR, reject%, dan margin — pada periode terpilih.
           </p>
         </div>
-        <div>
-          <label className="block text-xs text-[#64676C] mb-1">Dari bulan</label>
-          <input type="month" className="rounded-sm border border-[#E4E5E8] bg-white px-2 py-1.5 text-xs text-[#1D2434]"
-                 value={dariA} onChange={(e) => setDariA(e.target.value)} />
-        </div>
-        <div>
-          <label className="block text-xs text-[#64676C] mb-1">Sampai bulan</label>
-          <input type="month" className="rounded-sm border border-[#E4E5E8] bg-white px-2 py-1.5 text-xs text-[#1D2434]"
-                 value={sampaiA} onChange={(e) => setSampaiA(e.target.value)} />
-        </div>
+        <PilihRentangBulan dari={dariA} sampai={sampaiA}
+                           setDari={setDariA} setSampai={setSampaiA} />
         <button className={kelasTombolAnalisa} onClick={() => setBukaAnalisa(true)}>
           ✨ Analisa semua data
         </button>
@@ -1732,7 +1730,7 @@ export default function Analisis() {
       /></div>
       <div className="lg:col-span-2"><KartuMuatSaatDiminta
         judul="Sebaran Intake per Provinsi Indonesia"
-        keterangan="Peta choropleth total intake Dry per provinsi. Pilih periode; nilai agregat dihitung dari kolom provinsi yang tercatat pada tiket."
+        keterangan="Peta intake Dry per provinsi atau lapisan sentra produksi karet kering; rata-rata intake wilayah dihitung dari tiket internal. Data penjualan pasar per provinsi belum tersedia pada sumber resmi."
         anak={<PetaIntake />}
       /></div>
       <KartuMuatSaatDiminta judul="Tonase (drill-down)" keterangan="Memuat rincian tonase hanya setelah Anda meminta." anak={<KartuTonase />} />

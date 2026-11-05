@@ -4,8 +4,10 @@ import {
   Bar, BarChart, CartesianGrid, Cell, ComposedChart, LabelList, Legend, Line,
   LineChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from "recharts";
-import { Kartu, KartuMuatSaatDiminta, KepalaPanel, NAMA_BULAN, Panel5W1H, ambilJson, fmtAngka, fmtTanggal, kelasTombolAnalisa, kelasTombolKecil, pesanGalat, urlApi } from "../bersama";
+import { Kartu, KartuMuatSaatDiminta, KepalaPanel, NAMA_BULAN, Panel5W1H, PilihRentangBulan, ambilJson, fmtAngka, fmtTanggal, kelasTombolAnalisa, kelasTombolKecil, pesanGalat, urlApi, useQueryKartu } from "../bersama";
 import { useBahasa } from "../i18n";
+
+import { AlatGrafik } from "../GrafikTools";
 
 /* Palet korporat (navy / merah / abu) untuk seri grafik. */
 const WARNA = ["#1D2434", "#FF1313", "#64676C", "#3B82F6", "#EAB308",
@@ -136,7 +138,7 @@ function Telusur({ tahun, bulan, tutup }: { tahun: number; bulan: number; tutup:
 
 /* ---------- panel RCA 5 Why: angka dihitung server dari periode kartu ---------- */
 function PanelRCA({ url, tutup }: { url: string; tutup: () => void }) {
-  const q = useQuery({ queryKey: ["rca-rm-stock-intake-pricing", url], queryFn: () => ambilJson(url) });
+  const q = useQueryKartu({ queryKey: ["rca-rm-stock-intake-pricing", url], queryFn: () => ambilJson(url) });
   const fmt = (v: number | null | undefined, d = 2) => v == null ? "—" : fmtAngka(v, d);
   const delta = (v: number | null | undefined, d = 2) =>
     v == null ? "—" : `${v > 0 ? "+" : ""}${fmtAngka(v, d)}`;
@@ -254,7 +256,7 @@ function KartuElemen() {
   const urlDoc = `/api/days-of-cover${qsPeriode}`;
   const urlRca = `/api/ringkasan-elemen/rca${qsPeriode}`;
 
-  const q = useQuery({
+  const q = useQueryKartu({
     queryKey: ["ringkasan-elemen", url],
     queryFn: () => ambilJson(url),
   });
@@ -267,22 +269,9 @@ function KartuElemen() {
            anak={
       <>
         <div className="flex flex-wrap items-end gap-3 mb-3 text-xs">
-          <div>
-            <label className="block text-[#64676C] mb-1">{t("Dari bulan")}</label>
-            <input type="month" className="rounded-sm border border-[#E4E5E8] bg-white px-2 py-1.5 text-[#1D2434]"
-                   value={dari} onChange={(e) => setDari(e.target.value)} />
-          </div>
-          <div>
-            <label className="block text-[#64676C] mb-1">{t("Sampai bulan")}</label>
-            <input type="month" className="rounded-sm border border-[#E4E5E8] bg-white px-2 py-1.5 text-[#1D2434]"
-                   value={sampai} onChange={(e) => setSampai(e.target.value)} />
-          </div>
-          {(dari || sampai) && (
-            <button className="rounded-sm border border-[#E4E5E8] bg-[#F8F8F8] px-2.5 py-1.5 text-[#1D2434] hover:bg-[#FFF1F1]"
-                    onClick={() => { setDari(""); setSampai(""); }}>
-              {t("tampilkan semua periode")}
-            </button>
-          )}
+          <PilihRentangBulan dari={dari} sampai={sampai}
+                             setDari={setDari} setSampai={setSampai}
+                             labelKosong={t("tampilkan semua periode")} />
           <span className="text-[#64676C]">
             {q.data ? `${q.data.baris.length} ${t("bulan ditampilkan")}` : ""}
           </span>
@@ -320,7 +309,7 @@ function KartuElemen() {
                             ubah={ubahPeriode} />
         )}
         <div className="h-96">
-          <ResponsiveContainer>
+          <AlatGrafik id="ringkasan-01"><ResponsiveContainer>
             <ComposedChart data={q.data?.baris ?? []}
                            margin={{ top: 5, right: 10, bottom: 5, left: 0 }}>
               <CartesianGrid strokeDasharray="3 3" />
@@ -346,7 +335,7 @@ function KartuElemen() {
               <Line yAxisId="usc" dataKey="op_price" name="OP Price"
                     stroke="#FF1313" dot={false} strokeWidth={2} connectNulls />
             </ComposedChart>
-          </ResponsiveContainer>
+          </ResponsiveContainer></AlatGrafik>
         </div>
         <div className="mt-3 max-h-56 overflow-y-auto">
           <table className="w-full text-xs">
@@ -466,11 +455,11 @@ function KartuGrafikMargin() {
   if (sampai) params.set("sampai", sampai);
   const qs = params.size ? "?" + params.toString() : "";
 
-  const bulanan = useQuery({
+  const bulanan = useQueryKartu({
     queryKey: ["margin-bulanan-grafik", qs],
     queryFn: () => ambilJson(`/api/kartu/margin-bulanan${qs}`),
   });
-  const antar = useQuery({
+  const antar = useQueryKartu({
     queryKey: ["grafik-margin", qs],
     queryFn: () => ambilJson(`/api/grafik/margin-antar-tahun${qs}`),
   });
@@ -564,22 +553,9 @@ function KartuGrafikMargin() {
            anak={
       <>
         <div className="flex flex-wrap items-end gap-3 mb-3 text-xs">
-          <div>
-            <label className="block text-[#64676C] mb-1">{t("Dari bulan")}</label>
-            <input type="month" className="rounded-sm border border-[#E4E5E8] bg-white px-2 py-1.5 text-[#1D2434]"
-                   value={dari} onChange={(e) => setDari(e.target.value)} />
-          </div>
-          <div>
-            <label className="block text-[#64676C] mb-1">{t("Sampai bulan")}</label>
-            <input type="month" className="rounded-sm border border-[#E4E5E8] bg-white px-2 py-1.5 text-[#1D2434]"
-                   value={sampai} onChange={(e) => setSampai(e.target.value)} />
-          </div>
-          {(dari || sampai) && (
-            <button className="rounded-sm border border-[#E4E5E8] bg-[#F8F8F8] px-2.5 py-1.5 text-[#1D2434] hover:bg-[#FFF1F1]"
-                    onClick={() => { setDari(""); setSampai(""); }}>
-              {t("tampilkan semua periode")}
-            </button>
-          )}
+          <PilihRentangBulan dari={dari} sampai={sampai}
+                             setDari={setDari} setSampai={setSampai}
+                             labelKosong={t("tampilkan semua periode")} />
           <div>
             <label className="block text-[#64676C] mb-1">{t("Satuan")}</label>
             <div className="flex rounded-sm overflow-hidden border border-[#E4E5E8]">
@@ -624,7 +600,7 @@ function KartuGrafikMargin() {
         {mode === "tren" ? (
           <>
             <div className="h-80">
-              <ResponsiveContainer>
+              <AlatGrafik id="ringkasan-02"><ResponsiveContainer>
                 <ComposedChart data={dataTren}
                                margin={{ top: 22, right: 10, bottom: 5, left: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#EDEFF2" />
@@ -688,7 +664,7 @@ function KartuGrafikMargin() {
                         dot={<SegmenTarget lebar={lebarSegmen} />} activeDot={false}
                         isAnimationActive={false} legendType="none" />
                 </ComposedChart>
-              </ResponsiveContainer>
+              </ResponsiveContainer></AlatGrafik>
             </div>
 
             {/* Panel selisih terhadap target: satu pandangan melihat bulan minus */}
@@ -697,7 +673,7 @@ function KartuGrafikMargin() {
                 {t("Selisih terhadap target (ke atas = di atas target, ke bawah = kurang)")}
               </div>
               <div className="h-24">
-                <ResponsiveContainer>
+                <AlatGrafik id="ringkasan-03"><ResponsiveContainer>
                   <BarChart data={dataTren} margin={{ top: 4, right: 10, bottom: 0, left: 0 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,.06)" />
                     <XAxis dataKey="label" hide />
@@ -722,7 +698,7 @@ function KartuGrafikMargin() {
                       ))}
                     </Bar>
                   </BarChart>
-                </ResponsiveContainer>
+                </ResponsiveContainer></AlatGrafik>
               </div>
             </div>
 
@@ -758,7 +734,7 @@ function KartuGrafikMargin() {
               ))}
             </div>
             <div className="h-80">
-              <ResponsiveContainer>
+              <AlatGrafik id="ringkasan-04"><ResponsiveContainer>
                 <LineChart data={dataBanding}
                            margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#EDEFF2" />
@@ -776,7 +752,7 @@ function KartuGrafikMargin() {
                           strokeWidth={th.tahun === Math.max(...tahunDipilih) ? 2.5 : 1.5} />
                   ))}
                 </LineChart>
-              </ResponsiveContainer>
+              </ResponsiveContainer></AlatGrafik>
             </div>
             <p className="mt-2 text-xs text-[#64676C]">
               {t("Cara baca: membandingkan pola bulanan beberapa tahun (mis. apakah margin biasanya turun di pertengahan tahun). Centang maksimal 2–3 tahun supaya tetap mudah dibaca; garis paling tebal = tahun terbaru yang dipilih.")}
@@ -827,7 +803,7 @@ function PanelMarginBridge({ url, tutup, awal, akhir, ubah }: {
 }) {
   const { t } = useBahasa();
   const [rincian, setRincian] = useState(false);
-  const q = useQuery({ queryKey: ["margin-bridge", url],
+  const q = useQueryKartu({ queryKey: ["margin-bridge", url],
                        queryFn: () => ambilJson(url), retry: false });
   const d = q.data;
 
@@ -866,16 +842,9 @@ function PanelMarginBridge({ url, tutup, awal, akhir, ubah }: {
                      url={url} tutup={tutup} />
 
         <div className="mt-3 flex flex-wrap items-end gap-3 text-xs">
-          <div>
-            <label className="block text-[#64676C] mb-1">{t("Periode awal")}</label>
-            <input type="month" className="rounded-sm border border-[#E4E5E8] bg-white px-2 py-1.5 text-[#1D2434]"
-                   value={awal} onChange={(e) => ubah(e.target.value, akhir)} />
-          </div>
-          <div>
-            <label className="block text-[#64676C] mb-1">{t("Periode akhir")}</label>
-            <input type="month" className="rounded-sm border border-[#E4E5E8] bg-white px-2 py-1.5 text-[#1D2434]"
-                   value={akhir} onChange={(e) => ubah(awal, e.target.value)} />
-          </div>
+          <PilihRentangBulan dari={awal} sampai={akhir}
+            setDari={(v) => ubah(v, akhir)} setSampai={(v) => ubah(awal, v)}
+            labelKosong={t("seluruh data")} />
           <p className="text-[#64676C]">{t("Bawaan: mengikuti filter kartu grafik.")}</p>
         </div>
 
@@ -910,7 +879,7 @@ function PanelMarginBridge({ url, tutup, awal, akhir, ubah }: {
             </div>
 
             <div className="h-72 mt-3">
-              <ResponsiveContainer width="100%" height="100%">
+              <AlatGrafik id="ringkasan-05"><ResponsiveContainer width="100%" height="100%">
                 <BarChart data={titik} margin={{ top: 10, right: 10, bottom: 5, left: -10 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#EDEFF2" />
                   <XAxis dataKey="label" tick={{ fill: "#64676C", fontSize: 10 }}
@@ -941,7 +910,7 @@ function PanelMarginBridge({ url, tutup, awal, akhir, ubah }: {
                     }} />
                   </Bar>
                 </BarChart>
-              </ResponsiveContainer>
+              </ResponsiveContainer></AlatGrafik>
             </div>
 
             <div className="mt-3 rounded-sm border border-[#E4E5E8] bg-[#F8F8F8] p-3">
@@ -1134,7 +1103,7 @@ function PanelDaysOfCover({ url, tutup, awal, akhir, ubah }: {
   ubah: (a: string, b: string) => void;
 }) {
   const { t } = useBahasa();
-  const q = useQuery({ queryKey: ["days-of-cover", url],
+  const q = useQueryKartu({ queryKey: ["days-of-cover", url],
                        queryFn: () => ambilJson(url), retry: false });
   const d = q.data;
   const baris: any[] = d?.baris ?? [];
@@ -1162,16 +1131,9 @@ function PanelDaysOfCover({ url, tutup, awal, akhir, ubah }: {
                      url={url} tutup={tutup} />
 
         <div className="mt-3 flex flex-wrap items-end gap-3 text-xs">
-          <div>
-            <label className="block text-[#64676C] mb-1">{t("Dari bulan")}</label>
-            <input type="month" className="rounded-sm border border-[#E4E5E8] bg-white px-2 py-1.5 text-[#1D2434]"
-                   value={awal} onChange={(e) => ubah(e.target.value, akhir)} />
-          </div>
-          <div>
-            <label className="block text-[#64676C] mb-1">{t("Sampai bulan")}</label>
-            <input type="month" className="rounded-sm border border-[#E4E5E8] bg-white px-2 py-1.5 text-[#1D2434]"
-                   value={akhir} onChange={(e) => ubah(awal, e.target.value)} />
-          </div>
+          <PilihRentangBulan dari={awal} sampai={akhir}
+            setDari={(v) => ubah(v, akhir)} setSampai={(v) => ubah(awal, v)}
+            labelKosong={t("seluruh data")} />
         </div>
 
         <p className="mt-2 text-sm text-[#1D2434] font-mono">
@@ -1225,7 +1187,7 @@ function PanelDaysOfCover({ url, tutup, awal, akhir, ubah }: {
             </div>
 
             <div className="h-64 mt-4">
-              <ResponsiveContainer width="100%" height="100%">
+              <AlatGrafik id="ringkasan-06"><ResponsiveContainer width="100%" height="100%">
                 <ComposedChart data={seri} margin={{ top: 10, right: 10, bottom: 5, left: -15 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#EDEFF2" />
                   <XAxis dataKey="label" tick={{ fill: "#64676C", fontSize: 10 }} minTickGap={12} />
@@ -1247,7 +1209,7 @@ function PanelDaysOfCover({ url, tutup, awal, akhir, ubah }: {
                   <Line type="stepAfter" dataKey="safety" name={t("Safety (hari)")}
                         stroke="#B45309" strokeWidth={1.5} strokeDasharray="5 4" dot={false} />
                 </ComposedChart>
-              </ResponsiveContainer>
+              </ResponsiveContainer></AlatGrafik>
             </div>
 
             <div className="mt-4 max-h-72 overflow-y-auto">
@@ -1367,14 +1329,14 @@ function StripAngkaKunci({ thn, data, ke }: {
   const kini = berdata.length ? berdata[berdata.length - 1] : null;
   const lalu = berdata.length > 1 ? berdata[berdata.length - 2] : null;
 
-  const doc = useQuery({
+  const doc = useQueryKartu({
     queryKey: ["doc-strip"],
     queryFn: () => ambilJson("/api/days-of-cover"),
   });
   const qsBridge = kini && lalu && thn !== null
     ? `?dari=${ymDariBulan(thn, lalu.bulan)}&sampai=${ymDariBulan(thn, kini.bulan)}`
     : "";
-  const bridge = useQuery({
+  const bridge = useQueryKartu({
     queryKey: ["bridge-strip", qsBridge],
     queryFn: () => ambilJson(`/api/margin-bridge${qsBridge}`),
   });
@@ -1484,9 +1446,9 @@ type BarisPerhatian = {
 
 function PanelPerhatian({ ke }: { ke?: (tab: string) => void }) {
   const { t } = useBahasa();
-  const alarm = useQuery({ queryKey: ["alarm-strip"], queryFn: () => ambilJson("/api/alarm") });
-  const kualitas = useQuery({ queryKey: ["kualitas-strip"], queryFn: () => ambilJson("/api/kualitas") });
-  const rekom = useQuery({ queryKey: ["rekomendasi-strip"], queryFn: () => ambilJson("/api/rekomendasi") });
+  const alarm = useQueryKartu({ queryKey: ["alarm-strip"], queryFn: () => ambilJson("/api/alarm") });
+  const kualitas = useQueryKartu({ queryKey: ["kualitas-strip"], queryFn: () => ambilJson("/api/kualitas") });
+  const rekom = useQueryKartu({ queryKey: ["rekomendasi-strip"], queryFn: () => ambilJson("/api/rekomendasi") });
 
   const baris: BarisPerhatian[] = [];
 
@@ -1576,7 +1538,7 @@ function PanelPerhatian({ ke }: { ke?: (tab: string) => void }) {
 export default function Ringkasan({ ke }: { ke?: (tab: string) => void }) {
   const { t } = useBahasa();
   const [ringkasanDiminta, setRingkasanDiminta] = useState(false);
-  const tahunQ = useQuery({ queryKey: ["tahun"], queryFn: () => ambilJson("/api/tahun"), enabled: ringkasanDiminta });
+  const tahunQ = useQuery({ queryKey: ["tahun"], queryFn: () => ambilJson("/api/tahun"), staleTime: Infinity });
   const [tahun, setTahun] = useState<number | null>(null);
   const thn = tahun ?? (tahunQ.data ? tahunQ.data[tahunQ.data.length - 1] : null);
 
@@ -1584,6 +1546,7 @@ export default function Ringkasan({ ke }: { ke?: (tab: string) => void }) {
     queryKey: ["ringkasan", thn],
     queryFn: () => ambilJson(`/api/ringkasan/${thn}`),
     enabled: ringkasanDiminta && thn !== null,
+    staleTime: Infinity,
   });
   const tahunKosong = ringkasanDiminta && !tahunQ.isLoading &&
     Array.isArray(tahunQ.data) && tahunQ.data.length === 0;
@@ -1604,6 +1567,7 @@ export default function Ringkasan({ ke }: { ke?: (tab: string) => void }) {
         keterangan="Indikator ringkas, margin, days of cover, dan perubahan harga."
         siap={siapRingkasan}
         setelahDiminta={() => setRingkasanDiminta(true)}
+        kunciRefreshTambahan={[["tahun"], ["ringkasan", thn]]}
         anak={galatRingkasan
           ? <p className="rounded-sm border border-[#E4E5E8] bg-[#F8F8F8] p-3 text-sm text-[#64676C]">{pesanGalat(galatRingkasan)}</p>
           : tahunKosong
@@ -1622,6 +1586,7 @@ export default function Ringkasan({ ke }: { ke?: (tab: string) => void }) {
         keterangan="Tabel margin dan harga bulanan. Data baru dimuat setelah Anda meminta."
         siap={siapRingkasan}
         setelahDiminta={() => setRingkasanDiminta(true)}
+        kunciRefreshTambahan={[["tahun"], ["ringkasan", thn]]}
         anak={galatRingkasan
           ? <p className="rounded-sm border border-[#E4E5E8] bg-[#F8F8F8] p-3 text-sm text-[#64676C]">{pesanGalat(galatRingkasan)}</p>
           : tahunKosong
@@ -1637,7 +1602,7 @@ export default function Ringkasan({ ke }: { ke?: (tab: string) => void }) {
               <button key={th}
                 className={`rounded-sm px-3 py-1 text-sm ${th === thn
                   ? "bg-[#FF1313] text-white" : "bg-[#F1F2F4] text-[#1D2434] hover:bg-[#E8E9EC]"}`}
-                onClick={() => setTahun(th)}>
+                onClick={() => { setTahun(th); setRingkasanDiminta(false); }}>
                 {th}
               </button>
             ))}

@@ -6,9 +6,10 @@ import {
 } from "recharts";
 import {
   Kartu, PilihRentangBulan, akhirBulan, ambilJson,
-  awalTahunBerjalan, bulanBerjalan, fmtAngka, fmtTanggal, kelasTombolKecil,
-  labelRentangBulan,
+  awalTahunBerjalan, bulanBerjalan, fmtAngka, fmtTanggal, labelRentangBulan,
 } from "../bersama";
+
+import { AlatGrafik } from "../GrafikTools";
 
 /* Periode bawaan menu Stok: 1 Januari tahun berjalan s.d. bulan berjalan.
    Contoh: dibuka Oktober 2026 -> "2026-01" s.d. "2026-10". */
@@ -58,10 +59,6 @@ export default function Stok() {
                              setDari={setDari} setSampai={setSampai}
                              labelKosong="seluruh data" />
         </div>
-        <button className={kelasTombolKecil}
-                onClick={() => { setDari(bawaan.dari); setSampai(bawaan.sampai); }}>
-          tahun ini
-        </button>
         <p className="text-xs text-[#64676C]">
           {urutanSalah
             ? "Bulan awal harus sebelum (atau sama dengan) bulan akhir."
@@ -112,7 +109,7 @@ export default function Stok() {
              keterangan={`Ton bahan baku per hari dibandingkan safety stock yang berlaku — ${keteranganPeriode}.`}
              anak={
         <div className="h-80">
-          <ResponsiveContainer>
+          <AlatGrafik id="stok-01"><ResponsiveContainer>
             <LineChart data={dataGrafik} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
               <CartesianGrid strokeDasharray="3 3" />
               <XAxis dataKey="tanggal" fontSize={11}
@@ -125,7 +122,7 @@ export default function Stok() {
               <Line dataKey="safety" name="Safety stock (ton)" stroke="#FF1313"
                     dot={false} strokeDasharray="6 3" />
             </LineChart>
-          </ResponsiveContainer>
+          </ResponsiveContainer></AlatGrafik>
         </div>
       } />
 

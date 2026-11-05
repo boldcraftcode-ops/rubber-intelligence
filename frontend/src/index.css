@@ -48,6 +48,78 @@ body {
   background-size: 10px 10px;
 }
 
+/* Latar grid data pada panel login: kotak data yang bergerak perlahan */
+@keyframes RinjangData {
+  to { background-position: 0 48px, 0 48px; }
+}
+
+@keyframes TumbuhData {
+  from {
+    transform: scaleY(0);
+    opacity: 0;
+  }
+  to {
+    transform: scaleY(1);
+    opacity: 1;
+  }
+}
+
+@keyframes SiklusKolom {
+  0% {
+    transform: scaleY(0);
+    opacity: 0;
+  }
+  25% {
+    transform: scaleY(1);
+    opacity: 1;
+  }
+  75% {
+    transform: scaleY(1);
+    opacity: 1;
+  }
+  100% {
+    transform: scaleY(0);
+    opacity: 0;
+  }
+}
+
+@keyframes SelimutData {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 0.9;
+  }
+}
+
+@layer utilities {
+  .login-bar {
+    will-change: transform, opacity;
+  }
+}
+
+@layer components {
+  .login-grid {
+    background-image:
+      linear-gradient(rgba(255, 255, 255, 0.05) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255, 255, 255, 0.05) 1px, transparent 1px);
+    background-size: 48px 48px;
+    animation: RinjangData 5s linear infinite;
+  }
+
+  .login-selimut {
+    background:
+      radial-gradient(120px 80px at 15% 80%, rgba(255, 19, 19, 0.10), transparent 70%),
+      radial-gradient(160px 100px at 90% 10%, rgba(255, 255, 255, 0.08), transparent 70%);
+    animation: SelimutData 1.2s ease-out both;
+  }
+
+  .login-kolom {
+    transform-origin: bottom;
+    animation: SiklusKolom 3s cubic-bezier(0.22, 1, 0.36, 1) infinite;
+  }
+}
+
 /* Huruf judul sedikit lebih rapat, seperti materi korporat */
 h1, h2 {
   letter-spacing: -0.01em;

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { dehydrate, hydrate, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Ringkasan from "./pages/Ringkasan";
 import Analisis from "./pages/Analisis";
 import Stok from "./pages/Stok";
@@ -12,6 +12,7 @@ import AlarmPage from "./pages/AlarmPage";
 import Rekonsiliasi from "./pages/Rekonsiliasi";
 import Kualitas from "./pages/Kualitas";
 import InputHarian from "./pages/InputHarian";
+import IntakeData from "./pages/IntakeData";
 import UnggahData from "./pages/UnggahData";
 import GradeHarga from "./pages/GradeHarga";
 import MasterVendor from "./pages/MasterVendor";
@@ -20,8 +21,9 @@ import Database from "./pages/Database";
 import Pengguna from "./pages/Pengguna";
 import Login, { LayarApiLama, LayarGalat } from "./pages/Login";
 import { VERSI_UI } from "./versi";
-import { ambilJson, kirimJson, pesanGalat, kelasInput, kelasLabel, kelasTombol, kelasTombolKecil, simpanToken } from "./bersama";
+import { ambilJson, kirimJson, pesanGalat, kelasInput, kelasLabel, kelasTombol, kelasTombolKecil, simpanToken, KUNCI_CACHE_PREVIEW_KARTU } from "./bersama";
 import { useBahasa } from "./i18n";
+import { KonteksPenggunaGrafik } from "./GrafikTools";
 
 /* Menu samping = pohon dua tingkat (grup -> halaman). Urutan grup dan
    anggotanya mengikuti struktur yang diminta pemilik:
@@ -52,12 +54,19 @@ const TAB = [
   { id: "collector", label: "Master Collector", ikon: "◎", grup: "master" },
   { id: "gradeharga", label: "Grade & Harga", ikon: "◇", grup: "master" },
   { id: "input", label: "Input Harian", ikon: "✎", grup: "input" },
+  { id: "intakedata", label: "Data Intake Details", ikon: "▤", grup: "input" },
   { id: "unggah", label: "Unggah Data", ikon: "↑", grup: "input" },
   { id: "database", label: "Database", ikon: "▣", grup: "sistem", hanyaAdmin: true },
   { id: "pengguna", label: "Pengguna", ikon: "●", grup: "sistem", hanyaAdmin: true },
 ] as const;
 
 type TabId = (typeof TAB)[number]["id"];
+
+function inisialNama(nama?: string, username?: string) {
+  const bagian = (nama?.trim() || username?.trim() || "?").split(/\s+/).filter(Boolean);
+  return bagian.slice(0, 2).map((kata) => Array.from(kata)[0] ?? "?")
+    .join("").toLocaleUpperCase("id-ID");
+}
 
 /* ---------- modal ganti sandi ---------- */
 function ModalGantiSandi({ tutup }: { tutup: () => void }) {
@@ -161,6 +170,61 @@ export default function App() {
     retry: false,
     staleTime: 5 * 60_000,
   });
+  const usernameCache = saya.data ? String(saya.data.username ?? "anonim") : null;
+  const [previewUser, setPreviewUser] = useState<string | null>(null);
+  useEffect(() => {
+    if (!usernameCache) {
+      setPreviewUser(null);
+      return;
+    }
+
+    const keyStorage = `rubber-intelligence:card-preview:${encodeURIComponent(usernameCache)}`;
+    // Jangan pernah menampilkan data preview akun sebelumnya setelah pergantian sesi.
+    for (const query of qc.getQueryCache().findAll()) {
+      if (KUNCI_CACHE_PREVIEW_KARTU.has(String(query.queryKey[0]))) {
+        qc.removeQueries({ queryKey: query.queryKey, exact: true });
+      }
+    }
+    try {
+      const raw = localStorage.getItem(keyStorage);
+      if (raw) {
+        const tersimpan = JSON.parse(raw);
+        if (tersimpan?.version === 1 && Date.now() - tersimpan.savedAt < 30 * 24 * 60 * 60 * 1000) {
+          hydrate(qc, tersimpan.cache);
+        }
+      }
+    } catch { /* localStorage/cache preview hanya peningkatan kenyamanan */ }
+    setPreviewUser(usernameCache);
+
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const simpanPreview = () => {
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => {
+        try {
+          const cache = dehydrate(qc, {
+            shouldDehydrateQuery: (query) =>
+              query.state.status === "success" && KUNCI_CACHE_PREVIEW_KARTU.has(String(query.queryKey[0])),
+          });
+          const queries = [...cache.queries]
+            .sort((a, b) => a.state.dataUpdatedAt - b.state.dataUpdatedAt)
+            .slice(-80);
+          let snapshot = { ...cache, queries };
+          let value = JSON.stringify({ version: 1, savedAt: Date.now(), cache: snapshot });
+          // Sisakan ruang untuk kuota localStorage; data terlama dibuang lebih dulu.
+          while (value.length > 1_800_000 && snapshot.queries.length > 0) {
+            snapshot = { ...snapshot, queries: snapshot.queries.slice(1) };
+            value = JSON.stringify({ version: 1, savedAt: Date.now(), cache: snapshot });
+          }
+          localStorage.setItem(keyStorage, value);
+        } catch { /* kuota penuh/private browsing tidak boleh memblokir dashboard */ }
+      }, 300);
+    };
+    const unsubscribe = qc.getQueryCache().subscribe(simpanPreview);
+    return () => {
+      unsubscribe();
+      if (timer) clearTimeout(timer);
+    };
+  }, [usernameCache, qc]);
   const admin = saya.data?.peran === "admin";
   const modeLokal = saya.data?.mode === "lokal";
   /* Login sedang DIMATIKAN (AUTH_DISABLED=true) — dipakai sementara saat
@@ -214,6 +278,13 @@ export default function App() {
     }
     return <Login onSukses={() => qc.invalidateQueries({ queryKey: ["saya"] })} />;
   }
+  if (saya.data && previewUser !== usernameCache) {
+    return (
+      <div className="galaxy min-h-screen flex items-center justify-center text-[#64676C]">
+        <p className="text-sm animate-pulse tracking-wide">Menyiapkan preview kartu…</p>
+      </div>
+    );
+  }
 
   const tabTampil = TAB.filter((tb: any) => !tb.hanyaAdmin || admin);
 
@@ -227,7 +298,7 @@ export default function App() {
           <span aria-hidden className="pola-titik pointer-events-none absolute right-4 top-4
                                        h-10 w-14 opacity-60" />
           <div className="flex items-center gap-3">
-            <img src="/logo-rubber-intelligence.svg" alt=""
+            <img src="/rubber-intelligence-logo.svg" alt=""
                  className="h-10 w-10 bg-white rounded-sm p-1" />
             <div>
               <h1 className="text-[15px] font-bold leading-tight tracking-tight">
@@ -316,16 +387,10 @@ export default function App() {
           })}
         </nav>
 
-        {/* ===== info akun ===== */}
-        <div className="px-5 py-4 border-t border-[#E4E5E8] bg-[#F8F8F8]">
-          <p className="text-sm font-semibold text-[#1D2434] truncate">
-            {saya.data?.nama}
-          </p>
-          <p className="text-[11px] text-[#64676C] mb-2.5">
-            {saya.data?.username} · {saya.data?.peran}
-          </p>
-          {modeLokal && (
-            <div className="flex gap-1.5">
+        {/* ===== kontrol akun ===== */}
+        {modeLokal && (
+          <div className="px-5 py-4 border-t border-[#E4E5E8] bg-[#F8F8F8]">
+            <div className="flex flex-wrap gap-1.5">
               <button className={kelasTombolKecil} onClick={() => setBukaSandi(true)}>
                 {t("Ganti sandi")}
               </button>
@@ -333,8 +398,8 @@ export default function App() {
                 {t("Keluar")}
               </button>
             </div>
-          )}
-        </div>
+          </div>
+        )}
       </aside>
 
       {/* ===== Isi halaman ===== */}
@@ -355,7 +420,7 @@ export default function App() {
           )}
           {/* ===== kepala halaman ===== */}
           <header className="mb-6 border-b border-[#E4E5E8] pb-4">
-            <div className="flex items-end justify-between gap-4">
+            <div className="flex flex-wrap items-center justify-between gap-4">
               <div>
                 <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#FF1313]">
                   Rubber Intelligence
@@ -364,35 +429,58 @@ export default function App() {
                   {t(TAB.find((tb) => tb.id === tab)?.label ?? "")}
                 </h1>
               </div>
-              <p className="text-[11px] text-[#9AA0A6] pb-1">
-                Rubber Raw Material Big Data
-              </p>
+              <div className="ml-auto flex min-w-0 items-center gap-3" aria-label="Pengguna yang sedang login">
+                {saya.data?.foto_profil ? (
+                  <img
+                    src={saya.data.foto_profil}
+                    alt={`Foto profil ${saya.data?.nama ?? saya.data?.username ?? "pengguna"}`}
+                    className="h-11 w-11 shrink-0 rounded-full border border-white object-cover ring-2 ring-[#FF1313]/30"
+                  />
+                ) : (
+                  <div
+                    aria-label={`Avatar ${saya.data?.nama ?? saya.data?.username ?? "pengguna"}`}
+                    className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-white bg-[#1D2434] text-sm font-bold text-white ring-2 ring-[#FF1313]/30">
+                    {inisialNama(saya.data?.nama, saya.data?.username)}
+                  </div>
+                )}
+                <div className="min-w-0 text-right">
+                  <p className="max-w-[190px] truncate text-sm font-semibold text-[#1D2434]">
+                    {saya.data?.nama ?? "Memuat pengguna…"}
+                  </p>
+                  <p className="max-w-[190px] truncate text-[11px] text-[#64676C]">
+                    {saya.data?.username}{saya.data?.peran ? ` · ${saya.data.peran}` : ""}
+                  </p>
+                </div>
+              </div>
             </div>
           </header>
 
-          {tab === "ringkasan" && <Ringkasan ke={(x) => setTab(x as TabId)} />}
-          {tab === "analisis" && <Analisis />}
-          {tab === "stok" && <Stok />}
-          {tab === "stokmargin" && <StokMargin />}
-          {tab === "traceability" && <Traceability />}
-          {tab === "aturan" && <AturanHarga />}
-          {tab === "simulasi" && <Simulasi />}
-          {tab === "rencana" && <Perencanaan />}
-          {tab === "alarm" && (
-            <AlarmPage ke={(x) => setTab(
-              // id dari API divalidasi: menu yang tidak dikenal diabaikan,
-              // supaya layar tidak pernah kosong karena tautan alarm.
-              (TAB.some((tb: any) => tb.id === x) ? x : "alarm") as TabId)} />
-          )}
-          {tab === "rekonsiliasi" && <Rekonsiliasi />}
-          {tab === "kualitas" && <Kualitas />}
-          {tab === "vendor" && <MasterVendor />}
-          {tab === "collector" && <MasterCollector />}
-          {tab === "gradeharga" && <GradeHarga />}
-          {tab === "unggah" && <UnggahData />}
-          {tab === "input" && <InputHarian pengisi={saya.data?.nama ?? "?"} />}
-          {tab === "database" && admin && <Database />}
-          {tab === "pengguna" && admin && <Pengguna saya={saya.data?.username} />}
+          <KonteksPenggunaGrafik.Provider value={{ pengguna: saya.data?.username ?? "anonim" }}>
+            {tab === "ringkasan" && <Ringkasan ke={(x) => setTab(x as TabId)} />}
+            {tab === "analisis" && <Analisis />}
+            {tab === "stok" && <Stok />}
+            {tab === "stokmargin" && <StokMargin />}
+            {tab === "traceability" && <Traceability />}
+            {tab === "aturan" && <AturanHarga />}
+            {tab === "simulasi" && <Simulasi />}
+            {tab === "rencana" && <Perencanaan />}
+            {tab === "alarm" && (
+              <AlarmPage ke={(x) => setTab(
+                // id dari API divalidasi: menu yang tidak dikenal diabaikan,
+                // supaya layar tidak pernah kosong karena tautan alarm.
+                (TAB.some((tb: any) => tb.id === x) ? x : "alarm") as TabId)} />
+            )}
+            {tab === "rekonsiliasi" && <Rekonsiliasi />}
+            {tab === "kualitas" && <Kualitas />}
+            {tab === "vendor" && <MasterVendor />}
+            {tab === "collector" && <MasterCollector />}
+            {tab === "gradeharga" && <GradeHarga />}
+            {tab === "unggah" && <UnggahData />}
+            {tab === "intakedata" && <IntakeData />}
+            {tab === "input" && <InputHarian pengisi={saya.data?.nama ?? "?"} />}
+            {tab === "database" && admin && <Database />}
+            {tab === "pengguna" && admin && <Pengguna saya={saya.data?.username} />}
+          </KonteksPenggunaGrafik.Provider>
         </div>
       </main>
 

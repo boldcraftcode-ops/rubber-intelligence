@@ -55,34 +55,39 @@ export default function Login({ onSukses }: { onSukses: () => void }) {
                       shadow-[#1D2434]/10 border border-[#E4E5E8] grid md:grid-cols-[42%_58%]">
 
         {/* ===== panel kiri: identitas (navy) ===== */}
-        <aside className="relative bg-[#1D2434] px-8 py-10 text-white flex flex-col justify-between">
+        <aside className="relative bg-[#1D2434] px-8 py-10 text-white flex flex-col justify-between overflow-hidden">
           {/* garis merah vertikal di tepi kanan, seperti materi korporat */}
           <span className="hidden md:block absolute top-8 bottom-8 right-0 w-[3px] bg-[#FF1313]" />
 
-          <div>
-            <img src="/logo-rubber-intelligence.svg" alt="Rubber Intelligence"
-                 className="h-16 w-16 bg-white rounded-sm p-1.5" />
-            <p className="mt-6 text-[11px] uppercase tracking-[0.18em] text-white/60">
+          {/* latar grid data yang bergerak perlahan + lapisan aksen */}
+          <div aria-hidden className="login-grid login-selimut pointer-events-none absolute inset-0" />
+
+          <div className="relative flex flex-col items-start">
+            <p className="text-[11px] uppercase tracking-[0.18em] text-white/60">
               Rubber Raw Material
             </p>
             <h1 className="mt-1 text-2xl font-bold leading-tight">
               Rubber<br />Intelligence
             </h1>
-            <p className="mt-3 text-sm leading-relaxed text-white/70">
-              Big data karet alam: harga, mutu, stok, dan margin dalam satu
-              tempat — untuk keputusan beli yang lebih tenang.
-            </p>
+            <img src="/rubber-intelligence-logo.svg" alt="Rubber Intelligence"
+                 className="mt-6 h-16 w-16 bg-white rounded-sm p-1.5" />
           </div>
 
-          {/* aksen pola titik */}
-          <span aria-hidden className="pola-titik pointer-events-none absolute
-                                       bottom-6 right-5 h-24 w-16 opacity-70" />
-
-          <ul className="mt-8 space-y-2 text-xs text-white/60">
-            <li className="flex gap-2"><span className="text-[#FF1313]">—</span> SICOM &amp; OP Margin harian</li>
-            <li className="flex gap-2"><span className="text-[#FF1313]">—</span> Intake, stok, dan days of cover</li>
-            <li className="flex gap-2"><span className="text-[#FF1313]">—</span> Penjelasan angka dalam bahasa manusia</li>
-          </ul>
+          {/* animasi kolom data yang tumbuh ke atas — berulang setiap 3 detik */}
+          <div aria-hidden className="relative mt-10 flex items-end gap-1.5 h-24">
+            <div className="login-bar login-kolom w-1.5 rounded-t-sm bg-white/30"
+                 style={{ height: "38%", animationDelay: "0ms" }} />
+            <div className="login-bar login-kolom w-1.5 rounded-t-sm bg-white/50"
+                 style={{ height: "62%", animationDelay: "150ms" }} />
+            <div className="login-bar login-kolom w-1.5 rounded-t-sm bg-white/50"
+                 style={{ height: "50%", animationDelay: "300ms" }} />
+            <div className="login-bar login-kolom w-1.5 rounded-t-sm bg-[#FF1313]/85"
+                 style={{ height: "86%", animationDelay: "450ms" }} />
+            <div className="login-bar login-kolom w-1.5 rounded-t-sm bg-white/50"
+                 style={{ height: "68%", animationDelay: "600ms" }} />
+            <div className="login-bar login-kolom w-1.5 rounded-t-sm bg-white/30"
+                 style={{ height: "42%", animationDelay: "750ms" }} />
+          </div>
         </aside>
 
         {/* ===== panel kanan: form ===== */}

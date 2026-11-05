@@ -7,6 +7,8 @@ import {
 import { Kartu, NAMA_BULAN, ambilJson, fmtAngka, kelasTombolKecil } from "../bersama";
 import { useBahasa } from "../i18n";
 
+import { AlatGrafik } from "../GrafikTools";
+
 /* ---------- warna per tahun ----------
    Yang terbaru selalu merah (paling relevan), tahun-tahun sebelumnya makin
    pudar. Tidak memakai warna baru di luar palet: merah, navy, abu. */
@@ -214,9 +216,9 @@ export default function StokMargin() {
           )}
 
           {/* ===== grafik ===== */}
-          <div className="h-80" role="img"
+          <div className="h-80" role="group"
                aria-label={t("Grafik sebar bulan: rasio stok dibanding OP Margin")}>
-            <ResponsiveContainer>
+            <AlatGrafik id="stokmargin-01"><ResponsiveContainer>
               <ScatterChart margin={{ top: 5, right: 20, bottom: 20, left: 0 }}>
                 <CartesianGrid stroke="#EDEFF2" strokeDasharray="3 3" />
                 <XAxis dataKey="rasio_stok" name={t("Rasio stok/safety")} fontSize={11}
@@ -261,7 +263,7 @@ export default function StokMargin() {
                            fill={warnaTahun(tahunAda, th)} />
                 ))}
               </ScatterChart>
-            </ResponsiveContainer>
+            </ResponsiveContainer></AlatGrafik>
           </div>
 
           {/* ===== legenda per tahun ===== */}

@@ -1,5 +1,5 @@
-import { ReactNode, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { createContext, ReactNode, useContext, useEffect, useRef, useState } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { bahasaSekarang, useBahasa } from "./i18n";
 
 /* ---------- format angka mengikuti bahasa aktif ---------- */
@@ -324,38 +324,110 @@ function ModalJelaskan({ idMetrik, judul, qs, tutup }: {
   );
 }
 
-/* ---------- kartu yang baru memuat data setelah diminta ---------- */
-export function KartuMuatSaatDiminta({ judul, keterangan, anak, siap = true,
-                                      setelahDiminta }: {
+/* ---------- preview lokal dan muat ulang per kartu ---------- */
+export const KUNCI_CACHE_PREVIEW_KARTU = new Set([
+  "tahun", "ringkasan", "ringkasan-elemen", "rca-rm-stock-intake-pricing",
+  "margin-bulanan-grafik", "grafik-margin", "margin-bridge", "days-of-cover",
+  "doc-strip", "bridge-strip", "alarm-strip", "kualitas-strip", "rekomendasi-strip",
+  "tren-penerimaan", "komposisi-penerimaan", "penerimaan", "penerimaan-vendor",
+  "penerimaan-provinsi", "tonase", "konsentrasi", "grade", "intake-terakhir",
+  "reject", "margin-harian", "margin-per", "peta-intake-provinsi",
+  "peta-potensi-karet", "peta-batas-provinsi-indonesia",
+]);
+
+type KonteksKueriKartu = {
+  daftarKueri: Map<string, () => Promise<unknown>>;
+};
+const konteksKueriKartu = createContext<KonteksKueriKartu | null>(null);
+
+/** Query di dalam kartu menampilkan cache tetapi hanya mengambil jaringan saat Refresh ditekan. */
+export function useQueryKartu<TData = any>(opsi: any) {
+  const konteks = useContext(konteksKueriKartu);
+  const kunci = JSON.stringify(opsi.queryKey);
+  const query = useQuery<TData>({
+    ...opsi,
+    // Selalu tampilkan cache, tetapi jangan mengambil data baru saat periode berubah.
+    enabled: konteks ? false : (opsi.enabled ?? true),
+    ...(konteks ? {
+      staleTime: opsi.staleTime ?? Infinity,
+      gcTime: opsi.gcTime ?? 30 * 24 * 60 * 60 * 1000,
+    } : {}),
+  });
+  if (konteks) {
+    konteks.daftarKueri.set(kunci, () =>
+      opsi.enabled === false ? Promise.resolve() : query.refetch(),
+    );
+  }
+  return query;
+}
+
+export function KartuMuatSaatDiminta({ judul, anak, siap = true,
+                                      setelahDiminta, kunciRefreshTambahan = [] }: {
   judul: string;
   keterangan?: string;
   anak: ReactNode;
-  /** False bila tampilan menunggu query bersama di komponen induk. */
+  /** False menandai kartu yang juga menunggu query bersama di komponen induk. */
   siap?: boolean;
   setelahDiminta?: () => void;
+  /** Query induk yang ikut dimuat ulang oleh tombol kartu ini. */
+  kunciRefreshTambahan?: unknown[][];
 }) {
-  const [diminta, setDiminta] = useState(false);
   const { t } = useBahasa();
+  const queryClient = useQueryClient();
+  const [nomorRefresh, setNomorRefresh] = useState(0);
+  const [sedangRefresh, setSedangRefresh] = useState(false);
+  const daftarKueri = useRef(new Map<string, () => Promise<unknown>>());
+  const kunciTambahanRef = useRef(kunciRefreshTambahan);
+  kunciTambahanRef.current = kunciRefreshTambahan;
 
-  if (diminta && siap) return <>{anak}</>;
+  useEffect(() => {
+    if (!nomorRefresh) return;
+    let masihAktif = true;
+    const aktif = queryClient.getQueryCache().getAll().filter((query) => query.getObserversCount() > 0);
+    const aktifSet = new Set(aktif.map((query) => JSON.stringify(query.queryKey)));
+    for (const kunci of daftarKueri.current.keys()) {
+      if (!aktifSet.has(kunci)) daftarKueri.current.delete(kunci);
+    }
+    const permintaanKartu = aktif
+      .map((query) => daftarKueri.current.get(JSON.stringify(query.queryKey)))
+      .filter((muat): muat is () => Promise<unknown> => !!muat)
+      .map((muat) => muat());
+    const kunciInduk = new Set(kunciTambahanRef.current.map((kunci) => JSON.stringify(kunci)));
+    // Query induk yang belum memiliki cache akan dimulai saat `setelahDiminta`
+    // mengaktifkannya. Yang sudah punya preview dipaksa mengambil data baru di sini.
+    const permintaanInduk = queryClient.refetchQueries({
+      type: "active",
+      predicate: (query) => kunciInduk.has(JSON.stringify(query.queryKey)) && query.state.data !== undefined,
+    });
+    setSedangRefresh(true);
+    Promise.all([...permintaanKartu, permintaanInduk]).finally(() => {
+      if (masihAktif) setSedangRefresh(false);
+    });
+    return () => { masihAktif = false; };
+  }, [nomorRefresh, queryClient]);
+
+  const refresh = () => {
+    setelahDiminta?.();
+    setNomorRefresh((sebelumnya) => sebelumnya + 1);
+  };
+  const konteks = { daftarKueri: daftarKueri.current };
+
   return (
-    <section className="kartu-aksen rounded-sm border border-[#E4E5E8] bg-white p-5 shadow-[0_1px_3px_rgba(29,36,52,0.08)]">
-      <div>
-        <h2 className="text-lg font-semibold text-[#1D2434]">{t(judul)}</h2>
-        {keterangan && <p className="text-sm text-[#64676C]">{t(keterangan)}</p>}
+    <div className="space-y-2">
+      <div className="flex flex-wrap items-center justify-between gap-2 rounded-sm border border-[#E4E5E8] bg-white px-3 py-2">
+        <div className="min-w-0">
+          <p className="text-sm font-semibold text-[#1D2434]">{t(judul)}</p>
+          <p className="text-xs text-[#64676C]">
+            {siap ? t("Preview lokal bila tersedia · pilih periode, lalu tekan Refresh pada kartu ini") : t("Menampilkan preview · data utama menunggu dimuat ulang")}
+          </p>
+        </div>
+        <button type="button" className={kelasTombolAnalisa} onClick={refresh} disabled={sedangRefresh}
+                aria-label={`${t("Refresh")} ${t(judul)}`}>
+          {sedangRefresh ? `⏳ ${t("Memuat…")}` : `↻ ${t("Refresh")}`}
+        </button>
       </div>
-      <div className="mt-4 flex flex-wrap items-center gap-3 rounded-sm border border-[#E4E5E8] bg-[#F8F8F8] px-3 py-3">
-        <p className="text-sm text-[#64676C]">
-          {diminta ? `⏳ ${t("Sedang memuat data…")}` : `◷ ${t("Menunggu permintaan Anda. Data belum dimuat.")}`}
-        </p>
-        {!diminta && (
-          <button type="button" className={`${kelasTombolAnalisa} ml-auto`}
-                  onClick={() => { setDiminta(true); setelahDiminta?.(); }}>
-            {t("Tampilkan data")}
-          </button>
-        )}
-      </div>
-    </section>
+      <konteksKueriKartu.Provider value={konteks}>{anak}</konteksKueriKartu.Provider>
+    </div>
   );
 }
 
@@ -552,8 +624,37 @@ export function PilihRentangBulan({ dari, sampai, setDari, setSampai,
   setSampai: (v: string) => void;
   labelKosong?: string;
 }) {
+  const pilihCepat = (event: { currentTarget: HTMLSelectElement }) => {
+    const pilihan = event.currentTarget.value;
+    const sekarang = new Date();
+    const tahun = sekarang.getFullYear();
+    const bulan = `${tahun}-${String(sekarang.getMonth() + 1).padStart(2, "0")}`;
+    const rentang: Record<string, [string, string]> = {
+      semua: ["", ""],
+      tahun: [`${tahun}-01`, `${tahun}-12`],
+      bulan: [bulan, bulan],
+      semester1: [`${tahun}-01`, `${tahun}-06`],
+      semester2: [`${tahun}-07`, `${tahun}-12`],
+    };
+    const hasil = rentang[pilihan];
+    if (hasil) { setDari(hasil[0]); setSampai(hasil[1]); }
+    event.currentTarget.value = "";
+  };
+
   return (
     <div className="flex flex-wrap items-end gap-2 text-xs">
+      <div>
+        <label className="mb-1 block text-[#64676C]">Rentang cepat</label>
+        <select className="rounded-sm border border-[#E4E5E8] bg-white px-2 py-1.5 text-[#1D2434]"
+                defaultValue="" aria-label="Pilih rentang waktu cepat" onChange={pilihCepat}>
+          <option value="" disabled>Pilih rentang…</option>
+          <option value="semua">Seluruh data</option>
+          <option value="tahun">Tahunan · tahun berjalan</option>
+          <option value="bulan">Bulanan · bulan berjalan</option>
+          <option value="semester1">1st half · Semester 1 (Jan–Jun)</option>
+          <option value="semester2">2nd half · Semester 2 (Jul–Des)</option>
+        </select>
+      </div>
       <div>
         <label className="mb-1 block text-[#64676C]">Dari bulan</label>
         <input type="month" className="rounded-sm border border-[#E4E5E8] bg-white px-2 py-1.5 text-[#1D2434]"

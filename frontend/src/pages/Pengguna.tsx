@@ -1,12 +1,12 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  Kartu, Pesan, ambilJson, kirimJson, kelasInput, kelasLabel,
+  Kartu, Pesan, ambilJson, kirimJson, kirimMetode, kelasInput, kelasLabel,
   kelasTombol, kelasTombolKecil, fmtTanggal,
 } from "../bersama";
 
 type Baris = {
-  username: string; nama: string; peran: string; aktif: boolean;
+  username: string; nama: string; peran: string; aktif: boolean; ada_foto: boolean;
   dibuat_pada: string; login_terakhir: string | null;
 };
 
@@ -43,6 +43,29 @@ export default function Pengguna({ saya }: { saya: string }) {
     onError: gagal,
   });
 
+  const unggahFoto = useMutation({
+    mutationFn: ({ u, file }: { u: string; file: File }) => {
+      const form = new FormData();
+      form.append("file", file);
+      return kirimMetode(`/api/auth/pengguna/${encodeURIComponent(u)}/foto`, "POST", form);
+    },
+    onSuccess: (j, variables) => {
+      segar(j.pesan);
+      if (variables.u === saya) qc.invalidateQueries({ queryKey: ["saya"] });
+    },
+    onError: gagal,
+  });
+
+  const hapusFoto = useMutation({
+    mutationFn: (u: string) => kirimMetode(
+      `/api/auth/pengguna/${encodeURIComponent(u)}/foto`, "DELETE"),
+    onSuccess: (j, u) => {
+      segar(j.pesan);
+      if (u === saya) qc.invalidateQueries({ queryKey: ["saya"] });
+    },
+    onError: gagal,
+  });
+
   const resetSandi = (u: string) => {
     const baru = prompt(`Sandi baru untuk '${u}' (minimal 8 karakter):`);
     if (baru) ubah.mutate({ u, body: { sandi_baru: baru } });
@@ -51,7 +74,7 @@ export default function Pengguna({ saya }: { saya: string }) {
   return (
     <div className="grid gap-6">
       <Kartu idMetrik="pengguna" judul="Pengguna"
-             keterangan="Kelola akun login aplikasi. Peran 'admin' boleh mengelola pengguna dan modul Database; 'pengguna' hanya memakai aplikasi."
+             keterangan="Kelola akun login dan foto profil. Unggah foto PNG, JPEG, atau WebP (maks. 1,5 MB) untuk ditampilkan di header akun; inisial akan dipakai jika foto belum tersedia."
              anak={
         <>
           {q.isLoading && <p className="text-sm text-[#64676C]">Memuat…</p>}
@@ -67,6 +90,7 @@ export default function Pengguna({ saya }: { saya: string }) {
                     <th className="py-2 pr-3">Peran</th>
                     <th className="py-2 pr-3">Status</th>
                     <th className="py-2 pr-3">Login terakhir</th>
+                    <th className="py-2 pr-3">Foto profil</th>
                     <th className="py-2">Aksi</th>
                   </tr>
                 </thead>
@@ -93,6 +117,39 @@ export default function Pengguna({ saya }: { saya: string }) {
                         {p.login_terakhir
                           ? `${fmtTanggal(p.login_terakhir.slice(0, 10))} ${p.login_terakhir.slice(11, 16)}`
                           : "belum pernah"}
+                      </td>
+                      <td className="py-2 pr-3">
+                        <div className="flex min-w-[150px] flex-col items-start gap-1.5">
+                          <span className="text-[11px] text-[#64676C]">
+                            {p.ada_foto ? "Foto tersedia" : "Belum ada foto"}
+                          </span>
+                          <label className={`${kelasTombolKecil} cursor-pointer`}>
+                            {unggahFoto.isPending && unggahFoto.variables?.u === p.username
+                              ? "Mengunggah…" : p.ada_foto ? "Ganti foto" : "Unggah foto"}
+                            <input
+                              className="sr-only"
+                              type="file"
+                              accept="image/png,image/jpeg,image/webp"
+                              aria-label={`${p.ada_foto ? "Ganti" : "Unggah"} foto profil ${p.nama}`}
+                              disabled={unggahFoto.isPending}
+                              onChange={(e) => {
+                                const file = e.currentTarget.files?.[0];
+                                e.currentTarget.value = "";
+                                if (file) unggahFoto.mutate({ u: p.username, file });
+                              }}
+                            />
+                          </label>
+                          {p.ada_foto && (
+                            <button
+                              type="button"
+                              className="text-[11px] font-semibold text-[#B91C1C] hover:underline"
+                              disabled={hapusFoto.isPending}
+                              onClick={() => hapusFoto.mutate(p.username)}>
+                              {hapusFoto.isPending && hapusFoto.variables === p.username
+                                ? "Menghapus…" : "Hapus foto"}
+                            </button>
+                          )}
+                        </div>
                       </td>
                       <td className="py-2">
                         <div className="flex flex-wrap gap-1.5">

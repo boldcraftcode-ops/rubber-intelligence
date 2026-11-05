@@ -1,4 +1,4 @@
-import { type ReactNode, useEffect, useMemo, useState } from "react";
+import { type ReactNode, Fragment, useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ambilJson, fmtAngka, kelasInput, kelasLabel, kelasTombol, urlApi } from "../bersama";
 
@@ -8,6 +8,33 @@ type Wilayah = {
   traceability_pct: number | null; ticket_lines: number; status_code: string;
   traceability_status: "traceable" | "partial" | "unmatched"; children: Wilayah[];
 };
+type TingkatGap = "Kabupaten/Kota" | "Kecamatan" | "Desa/Kelurahan";
+type BarisGap = {
+  name: string; path: string; dry_mt: number; traceable_mt: number;
+  untraceable_mt: number; traceability_pct: number | null; ticket_lines: number;
+  traceability_status: Wilayah["traceability_status"];
+};
+
+function daftarBelumTraceable(nodes: Wilayah[], tingkat: TingkatGap, parents: string[] = []): BarisGap[] {
+  return nodes.flatMap((node) => {
+    const path = [...parents, node.name];
+    const belumTraceable = node.traceability_status !== "traceable" ||
+      (node.traceability_pct !== null && node.traceability_pct < 100);
+    if (node.level === tingkat) {
+      return belumTraceable ? [{
+        name: node.name,
+        path: parents.join(" / ") || "—",
+        dry_mt: node.dry_mt,
+        traceable_mt: node.traceable_mt,
+        untraceable_mt: Math.max(0, node.dry_mt - node.traceable_mt),
+        traceability_pct: node.traceability_pct,
+        ticket_lines: node.ticket_lines,
+        traceability_status: node.traceability_status,
+      }] : [];
+    }
+    return daftarBelumTraceable(node.children ?? [], tingkat, path);
+  });
+}
 
 const PERIODE = [
   ["ALL", "Satu tahun"], ["H1", "Semester 1"], ["H2", "Semester 2"],
@@ -25,15 +52,123 @@ function paramsFilter(f: Filter) {
   return p.toString();
 }
 
-function Kpi({ title, value, unit, note }: { title: string; value: number | null; unit: string; note?: string }) {
-  return (
-    <div className="min-w-0 rounded-sm border border-[#E4E5E8] border-l-2 border-l-[#FF1313] bg-white px-4 py-3">
+function Kpi({ title, value, unit, note, onClick, active = false }: {
+  title: string; value: number | null; unit: string; note?: string;
+  onClick?: () => void; active?: boolean;
+}) {
+  const className = `min-w-0 rounded-sm border ${active ? "border-[#F79009] bg-[#FFFAEB]" : "border-[#E4E5E8] bg-white"} border-l-2 ${onClick ? "border-l-[#F79009] hover:bg-[#FFFAEB] focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#175CD3]" : "border-l-[#FF1313]"} px-4 py-3 text-left`;
+  const content = (
+    <>
       <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-[#64676C]">{title}</p>
       <p className="mt-1 text-xl font-bold tabular-nums text-[#1D2434]">
         {value == null ? "—" : fmtAngka(value, unit === "%" ? 2 : unit === "MT" ? 3 : 0)}
         <span className="ml-1 text-xs font-medium text-[#64676C]">{unit}</span>
       </p>
       {note && <p className="mt-1 text-[10px] text-[#9AA0A6]">{note}</p>}
+      {onClick && <p className="mt-1 text-[10px] font-semibold text-[#B54708]">Klik untuk melihat rincian belum traceable</p>}
+    </>
+  );
+  return onClick ? (
+    <button type="button" className={`${className} w-full cursor-pointer`} onClick={onClick} aria-haspopup="dialog" aria-expanded={active}>
+      {content}
+    </button>
+  ) : <div className={className}>{content}</div>;
+}
+
+type Langkah = { step: string; level: string; name: string; code: string | null };
+
+const KOMISI_STEP: Record<string, string> = {
+  desa: "bg-[#ECFDF3] text-[#027A48] border-[#A6F4C5]",
+  kecamatan: "bg-[#EFF8FF] text-[#175CD3] border-[#B2DDFF]",
+  kabupaten: "bg-[#FFF6F3] text-[#B54708] border-[#FECDCA]",
+  kolektor: "bg-[#F4F3FF] text-[#5925DC] border-[#DBD6FE]",
+  vendor: "bg-[#F8F8F8] text-[#344054] border-[#E4E5E8]",
+  factory: "bg-[#1D2434] text-[#FFFFFF] border-[#1D2434]",
+};
+
+function TraceabilityCard({ entity, factory }: { entity: any; factory: any }) {
+  const chain = entity.chain_summary ?? [];
+  const lines = entity.lines ?? [];
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#9AA0A6]">
+            {entity.entity_type === "vendor" ? "Kartu Traceability · Vendor (T1)" :
+              entity.entity_type === "collector" ? "Kartu Traceability · Kolektor (T2)" :
+              "Kartu Traceability · Pabrik"}
+          </p>
+          <h4 className="mt-0.5 text-sm font-bold text-[#1D2434]">{entity.entity_name}</h4>
+          <p className="font-mono text-[10px] text-[#64676C]">
+            {entity.entity_code} · {fmtAngka(entity.total_dry_mt, 3)} MT · {entity.tickets} tiket
+          </p>
+        </div>
+        <span className="rounded-sm border border-[#1D2434] bg-[#1D2434] px-2 py-1 text-[10px] font-semibold text-white">
+          {factory?.code || "PT. BSRE"}
+        </span>
+      </div>
+
+      <div>
+        <p className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-[#64676C]">
+          Rantai asal usul · desa → pabrik
+        </p>
+        <div className="flex flex-wrap items-stretch gap-1 overflow-x-auto pb-1">
+          {chain.map((step: Langkah, index: number) => (
+            <Fragment key={index}>
+              <div className={`min-w-[120px] rounded-sm border px-2 py-1.5 text-[10px] ${KOMISI_STEP[step.step] || "bg-[#F8F8F8] text-[#344054] border-[#E4E5E8]"}`}>
+                <p className="text-[8px] uppercase tracking-wide opacity-80">{step.level}</p>
+                <p className="truncate font-semibold">{step.name || "Unknown"}</p>
+                {step.code && <p className="truncate font-mono text-[8px] opacity-70">{step.code}</p>}
+              </div>
+              {index < chain.length - 1 && <span className="self-center text-[#9AA0A6]">→</span>}
+            </Fragment>
+          ))}
+        </div>
+      </div>
+
+      <div>
+        <div className="flex items-center justify-between">
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-[#64676C]">
+            Rincian per tiket intake
+          </p>
+          <span className="text-[10px] text-[#9AA0A6]">{lines.length} baris</span>
+        </div>
+        <div className="mt-1 max-h-[260px] overflow-auto rounded-sm border border-[#E4E5E8]">
+          <table className="w-full min-w-[820px] text-[10px]">
+            <thead className="sticky top-0 bg-[#F8F8F8] text-left uppercase tracking-wide text-[#64676C]">
+              <tr>
+                <th className="py-1.5 pl-2 font-medium">Tiket</th>
+                <th className="px-2 font-medium">Tanggal</th>
+                <th className="px-2 font-medium">Item</th>
+                <th className="px-2 text-right font-medium">Dry</th>
+                <th className="px-2 font-medium">Desa</th>
+                <th className="px-2 font-medium">District</th>
+                <th className="px-2 font-medium">Regency</th>
+                <th className="px-2 font-medium">Kolektor</th>
+                <th className="pr-2 font-medium">Pabrik</th>
+              </tr>
+            </thead>
+            <tbody>
+              {lines.map((line: any, index: number) => (
+                <tr key={`${line.ticket_no}-${line.line_seq}-${index}`} className="border-t border-[#EDEFF2]">
+                  <td className="py-1.5 pl-2 font-mono text-[#1D2434]">{line.ticket_no}</td>
+                  <td className="px-2 text-[#64676C]">{line.date || "—"}</td>
+                  <td className="px-2 font-mono text-[#64676C]">{line.item_code || "—"}</td>
+                  <td className="px-2 text-right font-mono">{fmtAngka(line.dry_mt, 3)} MT</td>
+                  <td className="px-2 text-[#374151]">{line.desa || "—"}</td>
+                  <td className="px-2 text-[#374151]">{line.kecamatan || "—"}</td>
+                  <td className="px-2 text-[#374151]">{line.kabupaten || "—"}</td>
+                  <td className="px-2 text-[#374151]">{line.collector_code ? (line.collector_name || line.collector_code) : "—"}</td>
+                  <td className="px-2 text-[#1D2434] font-semibold">{factory?.code || "PT. BSRE"}</td>
+                </tr>
+              ))}
+              {!lines.length && (
+                <tr><td colSpan={9} className="py-6 text-center text-[#9AA0A6]">Tidak ada baris tiket.</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
     </div>
   );
 }
@@ -43,7 +178,10 @@ export default function Traceability() {
   const [tab, setTab] = useState<"regions" | "actors">("regions");
   const [open, setOpen] = useState<Set<string>>(() => new Set());
   const [selectedActor, setSelectedActor] = useState<string | null>(null);
+  const [expandedActor, setExpandedActor] = useState<string | null>(null);
+  const [gapLevel, setGapLevel] = useState<TingkatGap | null>(null);
   const [editingOrigin, setEditingOrigin] = useState<any | null>(null);
+  const [targetDistrict, setTargetDistrict] = useState("");
   const [targetSubdistrict, setTargetSubdistrict] = useState("");
   const queryClient = useQueryClient();
   const query = paramsFilter(filters);
@@ -61,16 +199,30 @@ export default function Traceability() {
     queryFn: () => ambilJson(`/api/traceability/actors/${encodeURIComponent(selectedActor!)}?${query}`),
     enabled: Boolean(selectedActor),
   });
+  const cards = useQuery({
+    queryKey: ["traceability-cards", query],
+    queryFn: () => ambilJson(`/api/traceability/cards?${query}`),
+  });
+  const expandedCard = expandedActor ? cards.data?.vendor_cards?.find(
+    (c: any) => c.entity_code === expandedActor) : null;
+  const districtOptions = useQuery({
+    queryKey: ["traceability-district-options", editingOrigin?.source_key?.kabupaten_norm],
+    queryFn: () => {
+      const p = new URLSearchParams({ kabupaten_norm: editingOrigin.source_key.kabupaten_norm });
+      return ambilJson(`/api/traceability/locations/districts?${p}`);
+    },
+    enabled: Boolean(editingOrigin),
+  });
   const subdistrictOptions = useQuery({
-    queryKey: ["traceability-subdistrict-options", editingOrigin?.source_key],
+    queryKey: ["traceability-subdistrict-options", editingOrigin?.source_key, targetDistrict],
     queryFn: () => {
       const p = new URLSearchParams({
         kabupaten_norm: editingOrigin.source_key.kabupaten_norm,
-        kecamatan_norm: editingOrigin.source_key.kecamatan_norm,
+        kecamatan_norm: targetDistrict || editingOrigin.source_key.kecamatan_norm,
       });
       return ambilJson(`/api/traceability/locations/subdistricts?${p}`);
     },
-    enabled: Boolean(editingOrigin),
+    enabled: Boolean(editingOrigin && targetDistrict),
   });
   const historicalRecommendations = useQuery({
     queryKey: ["traceability-origin-recommendations", selectedActor, editingOrigin?.source_key, query],
@@ -90,6 +242,7 @@ export default function Traceability() {
           source_kabupaten_norm: origin.source_key.kabupaten_norm,
           source_kecamatan_norm: origin.source_key.kecamatan_norm,
           source_desa_norm: origin.source_key.desa_norm,
+          target_kecamatan_norm: targetDistrict || origin.source_key.kecamatan_norm,
           target_desa_norm: target,
         }),
       }),
@@ -103,6 +256,25 @@ export default function Traceability() {
       setEditingOrigin(null);
     },
   });
+  const imporMapping = useMutation({
+    mutationFn: (file: File) => {
+      const form = new FormData();
+      form.append("file", file);
+      return ambilJson("/api/traceability/unmapped/import", { method: "POST", body: form });
+    },
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["traceability"] }),
+        queryClient.invalidateQueries({ queryKey: ["traceability-actors"] }),
+        queryClient.invalidateQueries({ queryKey: ["traceability-actor-detail"] }),
+      ]);
+    },
+  });
+  const hapusPemetaan = (origin: any) => {
+    if (window.confirm("Hapus pemetaan District/Sub-district ini? Data intake tetap tersimpan dan status kembali mengikuti pencocokan asli.")) {
+      simpanKoreksi.mutate({ origin, target: null });
+    }
+  };
   useEffect(() => {
     if (!filters.year && q.data?.year) setFilters((f) => ({ ...f, year: String(q.data.year) }));
   }, [filters.year, q.data?.year]);
@@ -146,6 +318,16 @@ export default function Traceability() {
 
   const d = q.data;
   const k = d?.kpis ?? {};
+  const wilayah = d?.wilayah ?? [];
+  const regencyGaps = daftarBelumTraceable(wilayah, "Kabupaten/Kota");
+  const districtGaps = daftarBelumTraceable(wilayah, "Kecamatan");
+  const subdistrictGaps = daftarBelumTraceable(wilayah, "Desa/Kelurahan");
+  const gapRows = gapLevel ? daftarBelumTraceable(wilayah, gapLevel) : [];
+  const totalGapMt = gapRows.reduce((sum, row) => sum + row.untraceable_mt, 0);
+  const gapNote = (traceableMt: number | null | undefined, gaps: BarisGap[]) => {
+    const remaining = Math.max(0, (k.dry_mt ?? 0) - (traceableMt ?? 0));
+    return `${fmtAngka(traceableMt ?? 0, 3)} MT traceable${gaps.length ? ` · ${fmtAngka(remaining, 3)} MT belum` : ""}`;
+  };
   const actorRows = actors.data?.baris ?? [];
   const maxActorDry = actorRows.reduce((max: number, row: any) => Math.max(max, Number(row.period_turnover_mt) || 0), 0);
   const downloadUrl = (path: string, queryString: string) => urlApi(`${path}${queryString ? `?${queryString}` : ""}`);
@@ -163,7 +345,22 @@ export default function Traceability() {
           <a className={kelasTombol} href={downloadUrl("/api/traceability", exportQuery)}>⬇ Ekspor Excel</a>
           <a className="inline-flex items-center rounded-sm border border-[#D1D5DB] bg-white px-3 py-2 text-xs font-semibold text-[#374151] hover:bg-[#F8F8F8]"
              href={downloadUrl("/api/traceability/unmapped", unmappedQuery)}>⬇ Unduh belum termapping</a>
+          <label className={`inline-flex cursor-pointer items-center rounded-sm border border-[#D1D5DB] bg-white px-3 py-2 text-xs font-semibold text-[#374151] hover:bg-[#F8F8F8] ${imporMapping.isPending ? "pointer-events-none opacity-60" : ""}`}>
+            <input className="sr-only" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+              disabled={imporMapping.isPending}
+              onChange={(e) => {
+                const file = e.currentTarget.files?.[0];
+                if (file) imporMapping.mutate(file);
+                e.currentTarget.value = "";
+              }} />
+            {imporMapping.isPending ? "Mengunggah…" : "⬆ Unggah hasil mapping"}
+          </label>
         </div>
+      </div>
+      <div aria-live="polite" className="text-xs">
+        <p className="text-[#64676C]">Unduh file lewat tombol <b>Unduh belum termapping</b>, isi kolom <b>SCDF District</b> dan <b>SCDF Sub-district</b> bersama-sama, lalu unggah file .xlsx di sini. Jangan ubah kolom sumber; pasangan target divalidasi terhadap SCDF dalam Kabupaten/Kota sumber yang sama. Baris dengan alasan Asal Getah tidak valid atau tanpa lokasi sumber biarkan kosong dan perbaiki dari data intake. Pemetaan tersimpan dapat dihapus dari detail Supplier Actors.</p>
+        {imporMapping.isSuccess && <p className="mt-1 rounded-sm border border-[#A6F4C5] bg-[#ECFDF3] px-3 py-2 text-[#027A48]">{imporMapping.data.pesan} {imporMapping.data.baris_mapping_diisi} baris Excel terisi; {imporMapping.data.lokasi_dipetakan} lokasi unik diproses, {imporMapping.data.baris_direvisi} koreksi direvisi ({imporMapping.data.koreksi_baru} baru, {imporMapping.data.koreksi_diperbarui} diperbarui, {imporMapping.data.koreksi_tidak_berubah} sudah sama).</p>}
+        {imporMapping.error && <p className="mt-1 whitespace-pre-line rounded-sm border border-[#FECACA] bg-[#FEF2F2] px-3 py-2 text-[#B42318]">{(imporMapping.error as Error).message}</p>}
       </div>
 
       <div className="grid grid-cols-2 gap-2 md:grid-cols-5">
@@ -201,9 +398,15 @@ export default function Traceability() {
 
       <div className="grid grid-cols-2 gap-2 md:grid-cols-5">
         <Kpi title="Dry volume" value={k.dry_mt} unit="MT" />
-        <Kpi title="Traceable · Regency" value={k.trace_reg_pct} unit="%" note={`${fmtAngka(k.trace_reg_mt ?? 0, 3)} MT`} />
-        <Kpi title="Traceable · District" value={k.trace_kec_pct} unit="%" note={`${fmtAngka(k.trace_kec_mt ?? 0, 3)} MT`} />
-        <Kpi title="Traceable · Sub-district" value={k.trace_desa_pct} unit="%" note={`${fmtAngka(k.trace_desa_mt ?? 0, 3)} MT`} />
+        <Kpi title="Traceable · Regency" value={k.trace_reg_pct} unit="%"
+          note={gapNote(k.trace_reg_mt, regencyGaps)} onClick={regencyGaps.length ? () => setGapLevel("Kabupaten/Kota") : undefined}
+          active={gapLevel === "Kabupaten/Kota"} />
+        <Kpi title="Traceable · District" value={k.trace_kec_pct} unit="%"
+          note={gapNote(k.trace_kec_mt, districtGaps)} onClick={districtGaps.length ? () => setGapLevel("Kecamatan") : undefined}
+          active={gapLevel === "Kecamatan"} />
+        <Kpi title="Traceable · Sub-district" value={k.trace_desa_pct} unit="%"
+          note={gapNote(k.trace_desa_mt, subdistrictGaps)} onClick={subdistrictGaps.length ? () => setGapLevel("Desa/Kelurahan") : undefined}
+          active={gapLevel === "Desa/Kelurahan"} />
         <Kpi title="Validated tickets" value={k.tickets} unit="tickets" note={`${fmtAngka(k.regencies ?? 0, 0)} regencies`} />
       </div>
 
@@ -230,6 +433,26 @@ export default function Traceability() {
         ) : (
           <div className="max-h-[580px] overflow-auto">
             {actors.error && <p className="m-4 rounded-sm border border-[#FECACA] bg-[#FEF2F2] px-3 py-2 text-xs text-[#B91C1C]">{(actors.error as Error).message}</p>}
+            {cards.data?.factory_card && (
+              <div className="m-3 rounded-sm border border-[#E4E5E8] bg-[#FFFAEB] p-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#B54708]">Kartu Traceability · Pabrik tujuan akhir</p>
+                    <p className="mt-0.5 text-sm font-bold text-[#1D2434]">{cards.data.factory_card.entity_name}</p>
+                    <p className="font-mono text-[10px] text-[#64676C]">
+                      {cards.data.factory_card.entity_code} · {fmtAngka(cards.data.factory_card.total_dry_mt, 3)} MT · {cards.data.factory_card.tickets} tiket
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap gap-x-4 gap-y-1 text-[10px]">
+                    {cards.data.factory_card.by_vendor.map((v: any) => (
+                      <span key={v.vendor_code} className="font-mono text-[#374151]">
+                        {v.vendor_code}: <b className="text-[#1D2434]">{fmtAngka(v.dry_mt, 3)} MT</b> · {v.tickets} tk
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
             <table className="w-full min-w-[1050px] text-xs">
               <thead className="sticky top-0 z-10 bg-[#F8F8F8] text-left text-[10px] uppercase tracking-wide text-[#64676C]">
                 <tr>
@@ -242,25 +465,88 @@ export default function Traceability() {
               <tbody>
                 {actorRows.map((a: any) => {
                   const barWidth = maxActorDry > 0 ? Math.max(3, Number(a.period_turnover_mt) / maxActorDry * 100) : 0;
-                  return <tr key={a.supplier_code} className="border-b border-[#EDEFF2] hover:bg-[#FAFAFA]">
+                  const expanded = expandedActor === a.supplier_code;
+                  return <Fragment key={a.supplier_code}>
+                  <tr className={`border-b border-[#EDEFF2] hover:bg-[#FAFAFA] ${expanded ? "bg-[#FFFAEB]" : ""}`}>
                     <td className="py-3 pl-4 font-mono text-[#64676C]">{a.supplier_code}</td>
-                    <td className="px-2"><button className="text-left font-semibold text-[#1D2434] underline decoration-dotted underline-offset-2 hover:text-[#B91C1C]" onClick={() => setSelectedActor(a.supplier_code)}>{a.supplier}</button></td>
-                    <td className="px-2 text-[#9AA0A6]">{a.tier || "—"}</td>
+                    <td className="px-2">
+                      <button className="text-left font-semibold text-[#1D2434] underline decoration-dotted underline-offset-2 hover:text-[#B91C1C]" onClick={() => setSelectedActor(a.supplier_code)}>{a.supplier}</button>
+                      <button className="ml-2 text-[10px] font-semibold text-[#B54708] underline decoration-dotted underline-offset-2 hover:text-[#B91C1C]" onClick={() => setExpandedActor(expanded ? null : a.supplier_code)}>
+                        {expanded ? "Sembunyikan kartu" : "Kartu rantai"}
+                      </button>
+                    </td>
+                    <td className="px-2">{a.tier ? <span className="rounded-sm border border-[#E4E5E8] bg-[#F8F8F8] px-1.5 py-0.5 font-mono text-[10px] text-[#1D2434]">{a.tier}</span> : "—"}</td>
                     <td className="px-2">{a.activity_type || "—"}</td>
                     <td className="px-2 text-[#9AA0A6]">{a.terminal_status || "—"}</td>
                     <td className="px-2"><div className="min-w-[115px]"><div className="flex justify-between gap-2 font-mono"><span>{fmtAngka(a.period_turnover_mt, 3)} MT</span><span className="text-[#9AA0A6]">{fmtAngka(a.tickets, 0)} tk</span></div><div className="mt-1 h-1.5 rounded bg-[#EDEFF2]"><div className="h-1.5 rounded bg-[#FF1313]" style={{ width: `${barWidth}%` }} /></div></div></td>
                     <td className="px-2">{a.sourcing_type || "Belum diklasifikasi"}{a.is_direct_producer && <span className="ml-1 text-[9px] text-[#9AA0A6]">*</span>}</td>
                     <td className="px-2">{a.country || "—"}</td><td className="px-2">{a.regency || "—"}</td><td className="px-2">{a.district || "—"}</td>
                     <td className="px-2">{a.source_from ? `${a.source_from} lokasi` : "—"}</td><td className="px-2 pr-4 text-[#9AA0A6]">Tidak tercatat</td>
-                  </tr>;
+                  </tr>
+                  {expanded && expandedCard && (
+                    <tr className="border-b border-[#EDEFF2] bg-[#FFFAEB]">
+                      <td colSpan={12} className="py-4 pl-4 pr-4">
+                        <TraceabilityCard entity={expandedCard} factory={cards.data?.factory} />
+                      </td>
+                    </tr>
+                  )}
+                  </Fragment>;
                 })}
                 {!actors.isLoading && !(actors.data?.baris?.length) && <tr><td colSpan={12} className="px-4 py-8 text-center text-[#9AA0A6]">Tidak ada aktor untuk filter ini.</td></tr>}
               </tbody>
             </table>
-            <p className="px-4 py-2 text-[10px] text-[#9AA0A6]">Tier, terminal, dan tujuan penjualan tidak tercatat di intake/master. Klik nama supplier untuk melihat rincian Asal Getah. * Flag produsen langsung bersifat sementara.</p>
+            <p className="px-4 py-2 text-[10px] text-[#9AA0A6]">Tier T1 dipakai untuk vendor; T2 dipakai untuk vendor yang memiliki kolektor. Terminal dan tujuan penjualan tidak tercatat di intake/master. Klik nama supplier untuk melihat rincian Asal Getah, atau <b>Kartu rantai</b> untuk melihat asal usul intake dari desa sampai ke pabrik PT. BSRE. * Flag produsen langsung bersifat sementara.</p>
           </div>
         )}
       </div>
+      {gapLevel && (
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-[#101828]/55 p-3 sm:p-6" onMouseDown={(e) => { if (e.target === e.currentTarget) setGapLevel(null); }}>
+          <section role="dialog" aria-modal="true" aria-labelledby="traceability-gap-title" className="flex max-h-[88vh] w-full max-w-5xl flex-col overflow-hidden rounded-sm border border-[#E4E5E8] bg-white shadow-2xl">
+            <div className="flex items-start justify-between gap-4 border-b border-[#E4E5E8] px-5 py-4">
+              <div>
+                <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[#B54708]">Traceability gap</p>
+                <h3 id="traceability-gap-title" className="mt-1 text-lg font-bold text-[#1D2434]">Data belum traceable · {gapLevel}</h3>
+                <p className="mt-1 text-xs text-[#64676C]">Menampilkan wilayah pada tingkat KPI ini yang masih memiliki volume Dry belum cocok dengan referensi SCDF.</p>
+              </div>
+              <button aria-label="Tutup rincian belum traceable" onClick={() => setGapLevel(null)} className="rounded-sm border border-[#E4E5E8] px-2.5 py-1 text-lg leading-none text-[#64676C] hover:bg-[#F8F8F8]">×</button>
+            </div>
+            <div className="overflow-auto p-5">
+              {q.isLoading && <p className="py-8 text-center text-sm text-[#64676C]">Memuat wilayah…</p>}
+              {!q.isLoading && (
+                <>
+                  <div className="mb-3 flex flex-wrap gap-x-5 gap-y-1 text-xs text-[#475467]">
+                    <span>Wilayah belum traceable: <b>{fmtAngka(gapRows.length, 0)}</b></span>
+                    <span>Volume belum traceable: <b className="font-mono">{fmtAngka(totalGapMt, 3)} MT</b></span>
+                    <span>Filter mengikuti tahun, periode, supplier, EUDR, dan LATEX OP di halaman.</span>
+                  </div>
+                  <div className="max-h-[55vh] overflow-auto rounded-sm border border-[#E4E5E8]">
+                    <table className="w-full min-w-[850px] text-xs">
+                      <thead className="sticky top-0 bg-[#F8F8F8] text-left text-[10px] uppercase tracking-wide text-[#64676C]">
+                        <tr><th className="py-2 pl-3">Wilayah ({gapLevel})</th><th className="px-2">Parent wilayah</th><th className="px-2 text-right">Dry (MT)</th><th className="px-2 text-right">Traceable (MT)</th><th className="px-2 text-right">Belum traceable (MT)</th><th className="px-2 text-right">Traceability</th><th className="px-2 text-right pr-3">Ticket lines</th></tr>
+                      </thead>
+                      <tbody>
+                        {gapRows.map((row, index) => (
+                          <tr key={`${row.path}/${row.name}/${index}`} className="border-t border-[#EDEFF2]">
+                            <td className="py-2 pl-3 font-semibold text-[#1D2434]">{row.name}</td>
+                            <td className="px-2 text-[#64676C]">{row.path}</td>
+                            <td className="px-2 text-right font-mono">{fmtAngka(row.dry_mt, 3)}</td>
+                            <td className="px-2 text-right font-mono">{fmtAngka(row.traceable_mt, 3)}</td>
+                            <td className="px-2 text-right font-mono font-semibold text-[#B54708]">{fmtAngka(row.untraceable_mt, 3)}</td>
+                            <td className="px-2 text-right font-mono">{row.traceability_pct == null ? "—" : `${fmtAngka(row.traceability_pct, 2)}%`}</td>
+                            <td className="px-2 pr-3 text-right font-mono">{fmtAngka(row.ticket_lines, 0)}</td>
+                          </tr>
+                        ))}
+                        {!gapRows.length && <tr><td colSpan={7} className="py-8 text-center text-[#9AA0A6]">Tidak ada data belum traceable pada filter saat ini.</td></tr>}
+                      </tbody>
+                    </table>
+                  </div>
+                  <p className="mt-3 text-[10px] leading-relaxed text-[#64676C]">Wilayah ditampilkan sebagaimana tercatat/tercocokkan pada data Traceability. Rincian ini tidak menebak provinsi atau lokasi dari Asal Getah; perbaikan Sub-district dapat dilakukan pada tab Supplier Actors jika tersedia padanan SCDF.</p>
+                </>
+              )}
+            </div>
+          </section>
+        </div>
+      )}
       {selectedActor && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#101828]/55 p-3 sm:p-6" onMouseDown={(e) => { if (e.target === e.currentTarget) setSelectedActor(null); }}>
           <section role="dialog" aria-modal="true" aria-labelledby="actor-detail-title" className="flex max-h-[92vh] w-full max-w-6xl flex-col overflow-hidden rounded-sm border border-[#E4E5E8] bg-white shadow-2xl">
@@ -286,16 +572,17 @@ export default function Traceability() {
                     <div className="grid grid-cols-2 gap-x-5 gap-y-3 rounded-sm border border-[#E4E5E8] p-4 text-xs sm:grid-cols-4">
                       <div><p className="text-[#9AA0A6]">Alt ID</p><p className="mt-1 font-medium text-[#1D2434]">{detail.alt_id || "Not recorded"}</p></div>
                       <div><p className="text-[#9AA0A6]">Product / category</p><p className="mt-1 font-medium text-[#1D2434]">{detail.product || "Not recorded"}</p></div>
-                      <div><p className="text-[#9AA0A6]">Tier</p><p className="mt-1 text-[#64676C]">Not recorded in intake/master</p></div>
+                      <div><p className="text-[#9AA0A6]">Tier</p><p className="mt-1 font-mono text-[#1D2434]">{detail.tier || "Not recorded"}</p></div>
                       <div><p className="text-[#9AA0A6]">Terminal status</p><p className="mt-1 text-[#64676C]">Not recorded in intake/master</p></div>
                       <div><p className="text-[#9AA0A6]">Coordinates</p><p className="mt-1 text-[#64676C]">{detail.coordinates_note}</p></div>
                       <div><p className="text-[#9AA0A6]">Direct producer flag</p><p className="mt-1 text-[#1D2434]">{detail.is_direct_producer ? "Yes — provisional" : "No (default)"}</p></div>
+                      <div><p className="text-[#9AA0A6]">Collector affiliation</p><p className="mt-1 text-[#1D2434]">{detail.is_collector ? "Yes" : "No"}</p></div>
                       <div><p className="text-[#9AA0A6]">Sourcing type source</p><p className="mt-1 text-[#1D2434]">{detail.sourcing_type_source}</p></div>
                       <div><p className="text-[#9AA0A6]">Sell to</p><p className="mt-1 text-[#64676C]">Not recorded in intake</p></div>
                     </div>
                   </div>
                   <div>
-                    <div className="mb-2 flex flex-wrap items-end justify-between gap-2"><div><h4 className="text-xs font-bold uppercase tracking-wide text-[#374151]">Sourcing locations from Asal Getah</h4><p className="mt-1 text-[10px] text-[#9AA0A6]">Dry volume and share are calculated from filtered intake rows. Klik Edit pada Sub-district untuk memilih nilai SCDF; koreksi tidak menimpa intake asli dan berlaku untuk semua tiket dengan kombinasi lokasi sumber yang sama.</p></div><span className="text-[10px] text-[#64676C]">{origins.length} location groups</span></div>
+                    <div className="mb-2 flex flex-wrap items-end justify-between gap-2"><div><h4 className="text-xs font-bold uppercase tracking-wide text-[#374151]">Sourcing locations from Asal Getah</h4><p className="mt-1 text-[10px] text-[#9AA0A6]">Dry volume and share are calculated from filtered intake rows. Klik Edit untuk memilih District dan Sub-district SCDF; koreksi tidak menimpa intake asli dan berlaku untuk semua tiket dengan kombinasi lokasi sumber yang sama.</p></div><span className="text-[10px] text-[#64676C]">{origins.length} location groups</span></div>
                     <div className="max-h-[320px] overflow-auto rounded-sm border border-[#E4E5E8]">
                       <table className="w-full min-w-[750px] text-xs">
                         <thead className="sticky top-0 bg-[#F8F8F8] text-left text-[10px] uppercase tracking-wide text-[#64676C]"><tr><th className="py-2 pl-3">Country</th><th className="px-2">Regency / city</th><th className="px-2">District</th><th className="px-2">Sub-district</th><th className="px-2 text-right">Dry (MT)</th><th className="px-2 text-right">Share</th><th className="px-2 text-right">Traceable dry (MT)</th><th className="px-2 pr-3">SCDF match</th></tr></thead>
@@ -305,11 +592,16 @@ export default function Traceability() {
                           return <tr key={`${originKey}-${index}`} className="border-t border-[#EDEFF2]">
                             <td className="py-2 pl-3">{origin.country || "Indonesia"}</td>
                             <td className="px-2">{origin.regency || "Unknown"}</td>
-                            <td className="px-2">{origin.district || "Unknown"}</td>
+                            <td className="px-2"><span>{origin.district || "Unknown"}</span>{origin.manual_correction && <p className="text-[9px] text-[#9AA0A6]">Input: {origin.source_district || "Not recorded"}</p>}</td>
                             <td className="px-2">
                               {isEditing ? <div className="min-w-[250px] space-y-1">
-                                <select className="w-full rounded-sm border border-[#D1D5DB] bg-white px-2 py-1 text-xs" value={targetSubdistrict} onChange={(e) => setTargetSubdistrict(e.target.value)} disabled={subdistrictOptions.isLoading}>
-                                  <option value="">{subdistrictOptions.isLoading ? "Memuat pilihan SCDF…" : "Pilih Sub-district SCDF"}</option>
+                                <select className="w-full rounded-sm border border-[#D1D5DB] bg-white px-2 py-1 text-xs" value={targetDistrict} onChange={(e) => { setTargetDistrict(e.target.value); setTargetSubdistrict(""); }} disabled={districtOptions.isLoading}>
+                                  <option value="">{districtOptions.isLoading ? "Memuat District SCDF…" : "Pilih District SCDF"}</option>
+                                  {(districtOptions.data?.options ?? []).map((option: any) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                                </select>
+                                {districtOptions.error && <p className="text-[10px] text-[#B42318]">Gagal memuat District SCDF: {(districtOptions.error as Error).message}</p>}
+                                <select className="w-full rounded-sm border border-[#D1D5DB] bg-white px-2 py-1 text-xs" value={targetSubdistrict} onChange={(e) => setTargetSubdistrict(e.target.value)} disabled={!targetDistrict || subdistrictOptions.isLoading}>
+                                  <option value="">{!targetDistrict ? "Pilih District terlebih dahulu" : subdistrictOptions.isLoading ? "Memuat Sub-district SCDF…" : "Pilih Sub-district SCDF"}</option>
                                   {(subdistrictOptions.data?.options ?? []).map((option: any) => <option key={option.value} value={option.value}>{option.label}</option>)}
                                 </select>
                                 <div className="rounded-sm border border-[#D1D5DB] bg-[#F8FAFC] p-2">
@@ -322,14 +614,17 @@ export default function Traceability() {
                                 </div>
                                 {!subdistrictOptions.isLoading && !(subdistrictOptions.data?.options?.length) && <p className="text-[10px] text-[#B54708]">Tidak ada pilihan SCDF untuk Regency/District ini. Periksa parent location pada intake.</p>}
                                 <div className="flex flex-wrap gap-1">
-                                  <button className="rounded-sm bg-[#1D2434] px-2 py-1 text-[10px] font-semibold text-white disabled:opacity-50" disabled={!targetSubdistrict || simpanKoreksi.isPending} onClick={() => simpanKoreksi.mutate({ origin, target: targetSubdistrict })}>{simpanKoreksi.isPending ? "Menyimpan…" : "Simpan"}</button>
-                                  {origin.manual_correction && <button className="rounded-sm border border-[#D1D5DB] px-2 py-1 text-[10px] text-[#B54708] disabled:opacity-50" disabled={simpanKoreksi.isPending} onClick={() => simpanKoreksi.mutate({ origin, target: null })}>Hapus koreksi</button>}
+                                  <button className="rounded-sm bg-[#1D2434] px-2 py-1 text-[10px] font-semibold text-white disabled:opacity-50" disabled={!targetDistrict || !targetSubdistrict || simpanKoreksi.isPending} onClick={() => simpanKoreksi.mutate({ origin, target: targetSubdistrict })}>{simpanKoreksi.isPending ? "Menyimpan…" : "Simpan"}</button>
+                                  {origin.manual_correction && <button className="rounded-sm border border-[#D1D5DB] px-2 py-1 text-[10px] text-[#B54708] disabled:opacity-50" disabled={simpanKoreksi.isPending} onClick={() => hapusPemetaan(origin)}>Hapus pemetaan</button>}
                                   <button className="rounded-sm px-2 py-1 text-[10px] text-[#64676C] hover:bg-[#F8F8F8]" onClick={() => setEditingOrigin(null)}>Batal</button>
                                 </div>
                                 <p className="text-[9px] text-[#9AA0A6]">Koreksi berlaku untuk semua tiket dengan kombinasi lokasi sumber ini.</p>
                               </div> : <div className="flex items-start justify-between gap-2">
                                 <div><span>{origin.sub_district || "Unknown"}</span>{origin.manual_correction && <p className="text-[9px] text-[#9AA0A6]">Input: {origin.source_sub_district}</p>}</div>
-                                <button className="text-[10px] font-semibold text-[#475467] underline decoration-dotted underline-offset-2 hover:text-[#B91C1C]" onClick={() => { setEditingOrigin(origin); setTargetSubdistrict(origin.source_key.desa_norm || ""); }}>Edit</button>
+                                <div className="flex shrink-0 flex-col items-end gap-1">
+                                  <button className="text-[10px] font-semibold text-[#475467] underline decoration-dotted underline-offset-2 hover:text-[#B91C1C]" onClick={() => { setEditingOrigin(origin); setTargetDistrict(origin.target_district_norm || origin.source_key.kecamatan_norm || ""); setTargetSubdistrict(origin.target_subdistrict_norm || origin.source_key.desa_norm || ""); }}>Edit</button>
+                                  {origin.manual_correction && <button className="text-[10px] font-semibold text-[#B42318] underline decoration-dotted underline-offset-2" disabled={simpanKoreksi.isPending} onClick={() => hapusPemetaan(origin)}>Hapus pemetaan</button>}
+                                </div>
                               </div>}
                             </td>
                             <td className="px-2 text-right font-mono">{fmtAngka(origin.dry_mt, 3)}</td>
