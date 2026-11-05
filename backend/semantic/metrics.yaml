@@ -272,7 +272,9 @@ kartu:
       dipakai angka referensi rekonsiliasi (Jul/Agu 2026), lalu kuantitas
       Pembelian. SICOM dan OP Price = angka bulanan tertimbang tonase (rumus
       resmi bagian 6). Baris proyeksi di Excel tidak direplikasi karena rumus
-      proyeksi belum ditetapkan.
+      proyeksi belum ditetapkan. Tonase disediakan dalam MT (kunci *_ton)
+      sekaligus kg (kunci *_kg, 1 MT = 1.000 kg); kartu bisa diganti satuan
+      MT/kg dan ekspor Excel memuat kedua satuan. Harga tetap US¢/kg.
   penerimaan:
     judul: Penerimaan karet biasa vs EUDR
     cara_dihitung: >

@@ -1453,6 +1453,13 @@ def pasang_router(app, ambil_session):
                 "op_price": m.harga_beli_usc if m else None,
                 "op_margin": m.op_margin_usc if m else None,
             })
+        # Tonase disediakan dalam dua satuan sekaligus: MT (*_ton, nilai lama
+        # tetap ada supaya layar/tes lama aman) dan kg (*_kg). 1 MT = 1.000 kg.
+        for b in baris:
+            for kunci_ton in ("rm_stock_ton", "intake_ton", "safety_ton"):
+                nilai_ton = b[kunci_ton]
+                b[kunci_ton.replace("_ton", "_kg")] = (
+                    round(nilai_ton * 1000, 3) if nilai_ton is not None else None)
         hasil = {"baris": baris, "catatan": [
             "Intake = tonase kering tiket (sumber resmi); bulan tanpa data tiket "
             "memakai angka referensi rekonsiliasi atau kuantitas Pembelian.",
@@ -1464,15 +1471,22 @@ def pasang_router(app, ambil_session):
             "Mohon konfirmasi.",
             "Baris proyeksi (Sep-Des 26) di Excel tidak direplikasi karena rumus "
             "proyeksinya belum ditetapkan [TERBUKA].",
+            "Tonase tersedia dalam MT (*_ton) dan kg (*_kg); 1 MT = 1.000 kg. "
+            "SICOM, OP Price, dan OP Margin tetap dalam US¢/kg.",
         ]}
         if format == "xlsx":
             return respon_xlsx(
                 "rm_stock_intake_vs_pricing.xlsx",
-                ["Date", "RM Stock", "Intake", "Safety Level Stock", "SICOM",
-                 "OP Price", "OP Margin", "Sumber intake", "Catatan"],
+                ["Date", "RM Stock (MT)", "Intake (MT)",
+                 "Safety Level Stock (MT)", "SICOM (US¢/kg)",
+                 "OP Price (US¢/kg)", "OP Margin (US¢/kg)",
+                 "Sumber intake", "Catatan",
+                 "RM Stock (kg)", "Intake (kg)", "Safety (kg)"],
                 [[b["label"], b["rm_stock_ton"], b["intake_ton"], b["safety_ton"],
                   b["sicom"], b["op_price"], b["op_margin"], b["sumber_intake"],
-                  "stok sebagian" if b["stok_sebagian"] else ""] for b in baris])
+                  "stok sebagian" if b["stok_sebagian"] else "",
+                  b["rm_stock_kg"], b["intake_kg"], b["safety_kg"]]
+                 for b in baris])
         return hasil
 
     @router.get("/ringkasan-elemen/analisa")

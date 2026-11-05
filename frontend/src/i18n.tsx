@@ -251,8 +251,12 @@ const KAMUS: Record<string, string> = {
   "Pilih tahun yang dibandingkan:": "Select years to compare:",
   // kartu elemen
   "RM Stock – Intake vs Pricing": "RM Stock – Intake vs Pricing",
-  "Elemen pemengaruh OP Margin per bulan, disamakan dengan Excel: batang = ton (sumbu kiri), garis = US¢/kg (sumbu kanan).":
-    "Monthly OP Margin drivers, matched to the Excel sheet: bars = tonnes (left axis), lines = US¢/kg (right axis).",
+  "Elemen pemengaruh OP Margin per bulan, disamakan dengan Excel: batang = tonase (pilih MT atau kg), garis = US¢/kg (sumbu kanan).":
+    "Monthly OP Margin drivers, matched to the Excel sheet: bars = tonnage (switch between MT and kg), lines = US¢/kg (right axis).",
+  "Satuan berat": "Weight unit",
+  "Belum ada data untuk periode ini.": "No data for this period.",
+  "1 MT = 1.000 kg. Angka kecil di bawah tonase menampilkan satuan pasangannya; SICOM, OP Price, dan OP Margin tetap US¢/kg.":
+    "1 MT = 1,000 kg. The small figure under each tonnage shows the other unit; SICOM, OP Price, and OP Margin stay in US¢/kg.",
   "Dari bulan": "From month",
   "Sampai bulan": "To month",
   "tampilkan semua periode": "show all periods",

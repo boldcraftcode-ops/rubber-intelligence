@@ -59,10 +59,29 @@ def test_tanpa_baris_proyeksi(klien):
                if b["rm_stock_ton"] is None and b["intake_ton"] is None)
 
 
+def test_tonase_tersedia_dalam_mt_dan_kg(klien):
+    """Payload menyediakan MT dan kg sekaligus; kunci lama *_ton tetap ada."""
+    d = klien.get("/api/ringkasan-elemen").json()
+    jan23 = _baris(d, "Jan-23")
+    for kunci in ("rm_stock", "intake", "safety"):
+        assert jan23[f"{kunci}_ton"] is not None
+        assert jan23[f"{kunci}_kg"] == round(jan23[f"{kunci}_ton"] * 1000, 3)
+    assert any("1 MT = 1.000 kg" in c for c in d["catatan"])
+
+
 def test_ekspor_xlsx(klien):
     r = klien.get("/api/ringkasan-elemen", params={"format": "xlsx"})
     assert r.status_code == 200
     ws = openpyxl.load_workbook(io.BytesIO(r.content)).active
-    assert [c.value for c in ws[1][:6]] == \
-        ["Date", "RM Stock", "Intake", "Safety Level Stock", "SICOM", "OP Price"]
+    judul = [c.value for c in ws[1]]
+    assert judul[:6] == \
+        ["Date", "RM Stock (MT)", "Intake (MT)", "Safety Level Stock (MT)",
+         "SICOM (US¢/kg)", "OP Price (US¢/kg)"]
+    assert "RM Stock (kg)" in judul and "Intake (kg)" in judul
+    # Kolom kg harus konsisten dengan kolom MT pada baris yang berisi angka.
+    i_mt, i_kg = judul.index("RM Stock (MT)"), judul.index("RM Stock (kg)")
+    for baris in ws.iter_rows(min_row=2, values_only=True):
+        if baris[i_mt] is not None:
+            assert baris[i_kg] == round(baris[i_mt] * 1000, 3)
+            break
     assert ws.max_row >= 44

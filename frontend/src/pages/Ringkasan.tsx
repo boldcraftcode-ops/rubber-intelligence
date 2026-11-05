@@ -225,6 +225,28 @@ function PanelRCA({ url, tutup }: { url: string; tutup: () => void }) {
   );
 }
 
+/* ---------- satuan berat kartu RM Stock ---------- */
+type SatuanBerat = "mt" | "kg";
+
+/* Sumber angka di API adalah MT (*_ton). kg = MT x 1.000; konversi dilakukan
+   di layar supaya grafik/tabel tidak bergantung pada versi API yang lama. */
+const keBerat = (ton: number | null | undefined, satuan: SatuanBerat) =>
+  ton == null ? null : ton * (satuan === "kg" ? 1000 : 1);
+
+/* Sel tonase: angka utama memakai satuan terpilih, satuan pasangannya ditulis
+   kecil di bawahnya — jadi MT dan kg selalu terbaca tanpa menambah kolom. */
+function SelBerat({ ton, satuan }: { ton: number | null | undefined; satuan: SatuanBerat }) {
+  const lainnya: SatuanBerat = satuan === "kg" ? "mt" : "kg";
+  return (
+    <td className="whitespace-nowrap border-r border-[#EDEFF2] px-3 py-2 text-right font-mono tabular-nums last:border-r-0">
+      <span>{fmtAngka(keBerat(ton, satuan), satuan === "kg" ? 0 : 3)}</span>
+      <span className="block text-[10px] font-normal text-[#9AA0A6]">
+        {fmtAngka(keBerat(ton, lainnya), lainnya === "kg" ? 0 : 3)} {lainnya === "kg" ? "kg" : "MT"}
+      </span>
+    </td>
+  );
+}
+
 /* ---------- elemen OP Margin: RM Stock-Intake vs Pricing (seperti Excel) ---------- */
 function KartuElemen() {
   const { t } = useBahasa();
@@ -232,6 +254,8 @@ function KartuElemen() {
   const [sampai, setSampai] = useState("");
   const [tampilkanCatatan, setTampilkanCatatan] = useState(false);
   const [panel, setPanel] = useState<null | "5w1h" | "bridge" | "doc" | "rca">(null);
+  const [satuan, setSatuan] = useState<SatuanBerat>("mt");
+  const labelSatuan = satuan === "kg" ? "kg" : "MT";
   const params = new URLSearchParams();
   if (dari) params.set("dari", dari);
   if (sampai) params.set("sampai", sampai);
@@ -260,10 +284,16 @@ function KartuElemen() {
     queryKey: ["ringkasan-elemen", url],
     queryFn: () => ambilJson(url),
   });
+  const dataGrafik = (q.data?.baris ?? []).map((b: any) => ({
+    ...b,
+    rm_stock: keBerat(b.rm_stock_ton, satuan),
+    intake: keBerat(b.intake_ton, satuan),
+    safety: keBerat(b.safety_ton, satuan),
+  }));
 
   return (
     <Kartu idMetrik="elemen_op_margin" judul={t("RM Stock – Intake vs Pricing")}
-           keterangan={t("Elemen pemengaruh OP Margin per bulan, disamakan dengan Excel: batang = ton (sumbu kiri), garis = US¢/kg (sumbu kanan).")}
+           keterangan={t("Elemen pemengaruh OP Margin per bulan, disamakan dengan Excel: batang = tonase (pilih MT atau kg), garis = US¢/kg (sumbu kanan).")}
            urlEkspor={url}
            qsJelaskan={qs}
            anak={
@@ -275,6 +305,20 @@ function KartuElemen() {
           <span className="text-[#64676C]">
             {q.data ? `${q.data.baris.length} ${t("bulan ditampilkan")}` : ""}
           </span>
+          <div className="pb-0.5">
+            <label className="mb-1 block text-[#64676C]">{t("Satuan berat")}</label>
+            <div className="flex overflow-hidden rounded-sm border border-[#E4E5E8]">
+              {(["mt", "kg"] as const).map((s) => (
+                <button key={s} type="button" aria-pressed={satuan === s}
+                  onClick={() => setSatuan(s)}
+                  className={`px-2.5 py-1.5 text-xs font-semibold ${satuan === s
+                    ? "bg-[#FF1313] text-white"
+                    : "bg-[#F8F8F8] text-[#1D2434] hover:bg-[#F1F2F4]"}`}>
+                  {s === "mt" ? "MT" : "kg"}
+                </button>
+              ))}
+            </div>
+          </div>
           <div className="ml-auto flex flex-wrap gap-2">
             <button className={kelasTombolAnalisa} onClick={() => setPanel("5w1h")}>
               ✨ 5W1H
@@ -310,24 +354,34 @@ function KartuElemen() {
         )}
         <div className="h-96">
           <AlatGrafik id="ringkasan-01"><ResponsiveContainer>
-            <ComposedChart data={q.data?.baris ?? []}
+            <ComposedChart data={dataGrafik}
                            margin={{ top: 5, right: 10, bottom: 5, left: 0 }}>
               <CartesianGrid strokeDasharray="3 3" />
               <XAxis dataKey="label" fontSize={10} minTickGap={18} />
               <YAxis yAxisId="ton" fontSize={10}
-                     label={{ value: "ton", angle: -90, position: "insideLeft",
+                     label={{ value: labelSatuan, angle: -90, position: "insideLeft",
                               fontSize: 11, fill: "#1D2434" }} />
               <YAxis yAxisId="usc" orientation="right" fontSize={10}
                      domain={["auto", "auto"]}
                      label={{ value: "US¢/kg", angle: 90, position: "insideRight",
                               fontSize: 11, fill: "#1D2434" }} />
-              <Tooltip formatter={(v: any, nama: any) => [fmtAngka(v as number, 2), nama]} />
+              <Tooltip formatter={(v: any, nama: any) => {
+                const seriBerat = ["Intake", "RM Stock", "Safety Level Stock"]
+                  .includes(String(nama));
+                if (!seriBerat || v === null || v === undefined)
+                  return [fmtAngka(v as number, 4), nama];
+                const utama = `${fmtAngka(v as number, satuan === "kg" ? 0 : 2)} ${labelSatuan}`;
+                const pasangan = satuan === "kg"
+                  ? `${fmtAngka((v as number) / 1000, 3)} MT`
+                  : `${fmtAngka((v as number) * 1000, 0)} kg`;
+                return [`${utama} (${pasangan})`, nama];
+              }} />
               <Legend />
-              <Bar yAxisId="ton" dataKey="intake_ton" name="Intake"
+              <Bar yAxisId="ton" dataKey="intake" name="Intake"
                    fill="#FF1313" opacity={0.9} />
-              <Bar yAxisId="ton" dataKey="rm_stock_ton" name="RM Stock"
+              <Bar yAxisId="ton" dataKey="rm_stock" name="RM Stock"
                    fill="#1D2434" opacity={0.85} />
-              <Line yAxisId="ton" dataKey="safety_ton" name="Safety Level Stock"
+              <Line yAxisId="ton" dataKey="safety" name="Safety Level Stock"
                     stroke="#B45309" strokeDasharray="6 3" dot={false}
                     type="stepAfter" strokeWidth={1.5} />
               <Line yAxisId="usc" dataKey="sicom" name="SICOM"
@@ -337,41 +391,51 @@ function KartuElemen() {
             </ComposedChart>
           </ResponsiveContainer></AlatGrafik>
         </div>
-        <div className="mt-3 max-h-56 overflow-y-auto">
-          <table className="w-full text-xs">
-            <thead>
-              <tr className="text-left text-[#64676C] border-b">
-                <th className="py-1">{t("Date")}</th>
-                <th className="text-right">RM Stock</th>
-                <th className="text-right">Intake</th>
-                <th className="text-right">{t("Safety")}</th>
-                <th className="text-right">SICOM</th>
-                <th className="text-right">OP Price</th>
-                <th className="text-right">OP Margin</th>
-                <th className="pl-2">{t("Sumber intake")}</th>
+        <div className="mt-3 max-h-72 overflow-auto rounded-sm border border-[#E4E5E8]">
+          <table className="w-full min-w-[980px] text-xs">
+            <thead className="sticky top-0 z-10">
+              <tr className="border-b border-[#E4E5E8] bg-[#F8F8F8] text-[10px] uppercase tracking-wide text-[#64676C]">
+                <th scope="col" className="whitespace-nowrap px-3 py-2 text-left font-semibold">{t("Date")}</th>
+                <th scope="col" className="whitespace-nowrap px-3 py-2 text-right font-semibold">{t("RM Stock")} ({labelSatuan})</th>
+                <th scope="col" className="whitespace-nowrap px-3 py-2 text-right font-semibold">{t("Intake")} ({labelSatuan})</th>
+                <th scope="col" className="whitespace-nowrap px-3 py-2 text-right font-semibold">{t("Safety")} ({labelSatuan})</th>
+                <th scope="col" className="whitespace-nowrap px-3 py-2 text-right font-semibold">SICOM (US¢/kg)</th>
+                <th scope="col" className="whitespace-nowrap px-3 py-2 text-right font-semibold">OP Price (US¢/kg)</th>
+                <th scope="col" className="whitespace-nowrap px-3 py-2 text-right font-semibold">OP Margin (US¢/kg)</th>
+                <th scope="col" className="whitespace-nowrap px-3 py-2 text-left font-semibold">{t("Sumber intake")}</th>
               </tr>
             </thead>
             <tbody>
               {q.data?.baris.map((b: any) => (
-                <tr key={b.label} className={`border-b border-[#EDEFF2] ${
-                    b.stok_sebagian ? "bg-[#FFFBEB]" : ""}`}>
-                  <td className="py-1">{b.label}{b.stok_sebagian ? " *" : ""}</td>
-                  <td className="text-right font-mono">{fmtAngka(b.rm_stock_ton, 3)}</td>
-                  <td className="text-right font-mono">{fmtAngka(b.intake_ton, 3)}</td>
-                  <td className="text-right font-mono">{fmtAngka(b.safety_ton, 1)}</td>
-                  <td className="text-right font-mono">{fmtAngka(b.sicom, 4)}</td>
-                  <td className="text-right font-mono">{fmtAngka(b.op_price, 4)}</td>
-                  <td className={`text-right font-mono font-semibold ${
+                <tr key={b.label} className={`border-b border-[#EDEFF2] hover:bg-[#FFFAEB] ${
+                    b.stok_sebagian ? "bg-[#FFFBEB]" : "even:bg-[#FAFAFA]"}`}>
+                  <td className="whitespace-nowrap border-r border-[#EDEFF2] px-3 py-2 text-[#1D2434] last:border-r-0">
+                    {b.label}{b.stok_sebagian ? " *" : ""}
+                  </td>
+                  <SelBerat ton={b.rm_stock_ton} satuan={satuan} />
+                  <SelBerat ton={b.intake_ton} satuan={satuan} />
+                  <SelBerat ton={b.safety_ton} satuan={satuan} />
+                  <td className="whitespace-nowrap border-r border-[#EDEFF2] px-3 py-2 text-right font-mono tabular-nums last:border-r-0">{fmtAngka(b.sicom, 4)}</td>
+                  <td className="whitespace-nowrap border-r border-[#EDEFF2] px-3 py-2 text-right font-mono tabular-nums last:border-r-0">{fmtAngka(b.op_price, 4)}</td>
+                  <td className={`whitespace-nowrap border-r border-[#EDEFF2] px-3 py-2 text-right font-mono font-semibold tabular-nums last:border-r-0 ${
                     b.op_margin === null ? "" : b.op_margin >= 0
                       ? "text-[#15803D]" : "text-[#DC2626]"}`}>
                     {fmtAngka(b.op_margin, 4)}
                   </td>
-                  <td className="pl-2 text-[#64676C]">{b.sumber_intake ?? "-"}</td>
+                  <td className="px-3 py-2 text-[#64676C]">{b.sumber_intake ?? "-"}</td>
                 </tr>
               ))}
+              {q.data?.baris.length === 0 && (
+                <tr><td colSpan={8} className="px-3 py-6 text-center text-[#9AA0A6]">
+                  {t("Belum ada data untuk periode ini.")}
+                </td></tr>
+              )}
             </tbody>
           </table>
         </div>
+        <p className="mt-2 text-xs text-[#64676C]">
+          {t("1 MT = 1.000 kg. Angka kecil di bawah tonase menampilkan satuan pasangannya; SICOM, OP Price, dan OP Margin tetap US¢/kg.")}
+        </p>
         {!!q.data?.catatan?.length && <div className="mt-2">
           <button type="button" aria-expanded={tampilkanCatatan}
             className="rounded-sm border border-[#E4E5E8] bg-[#F8F8F8] px-3 py-1.5 text-xs font-medium text-[#475467] hover:bg-[#F1F2F4]"

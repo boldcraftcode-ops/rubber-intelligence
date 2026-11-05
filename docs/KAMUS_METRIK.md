@@ -38,6 +38,15 @@ yang mudah dibaca manusia.
 | safety (hari) | safety ton / pemakaian harian | hari | 2.795 ton ≈ 21,5 hari pada 130 ton/hari |
 | safety dinamis | 21,5 hari × pemakaian harian | ton | Pengganti safety tetap yang tidak responsif |
 
+**Satuan tonase kartu RM Stock – Intake vs Pricing**: RM Stock, Intake, dan
+Safety Level tersedia dalam **MT (metric ton)** maupun **kg**, dengan
+`1 MT = 1.000 kg`. API `GET /api/ringkasan-elemen` mengirim `*_ton` dan `*_kg`
+sekaligus; tombol **MT / kg** di kartu mengubah sumbu, grafik, dan angka utama
+tabel, sementara angka kecil di bawahnya selalu menampilkan satuan pasangan.
+Ekspor Excel memuat kolom untuk kedua satuan. SICOM, OP Price, dan OP Margin
+tetap **US¢/kg** (harga, bukan berat); panel 5W1H, RCA, Margin Bridge, dan Days
+of Cover tetap memakai ton sesuai rumusnya.
+
 **Margin Bridge** (`/api/margin-bridge`) — tombol analisa pada kartu RM Stock –
 Intake vs Pricing. Dua penyebab: ΔM = ΔSICOM − ΔOP Price. SICOM = harga acuan
 pasar (di luar kendali), OP Price = harga beli (keputusan). Bridge per bulan
