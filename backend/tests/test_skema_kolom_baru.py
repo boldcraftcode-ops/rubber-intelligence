@@ -88,6 +88,26 @@ def test_database_baru_tidak_butuh_penyesuaian():
     assert pastikan_kolom_baru(eng) == []
 
 
+def test_database_lama_menambahkan_kolom_foto_profil():
+    eng = create_engine("sqlite://", future=True,
+                        connect_args={"check_same_thread": False},
+                        poolclass=StaticPool)
+    with eng.begin() as koneksi:
+        koneksi.execute(text(
+            "CREATE TABLE pengguna (username VARCHAR(50) PRIMARY KEY, "
+            "nama VARCHAR(100) NOT NULL)"))
+        koneksi.execute(text(
+            "INSERT INTO pengguna (username, nama) VALUES ('lama', 'Akun Lama')"))
+
+    assert pastikan_kolom_baru(eng) == ["pengguna.foto_profil"]
+    kolom = {k["name"] for k in inspect(eng).get_columns("pengguna")}
+    assert "foto_profil" in kolom
+    with eng.connect() as koneksi:
+        assert koneksi.execute(text(
+            "SELECT nama, foto_profil FROM pengguna WHERE username='lama'")
+        ).one() == ("Akun Lama", None)
+
+
 def test_aplikasi_menyesuaikan_sendiri_saat_start(monkeypatch):
     """Tanpa menjalankan skrip apa pun, buka aplikasi di database lama."""
     monkeypatch.setenv("APP_ENV", "development")

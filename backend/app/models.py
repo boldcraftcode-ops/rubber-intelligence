@@ -357,6 +357,7 @@ class Pengguna(Base):
     nama: Mapped[str] = mapped_column(String(100))
     hash_sandi: Mapped[str] = mapped_column(String(255))
     peran: Mapped[str] = mapped_column(String(20), default="pengguna")  # admin | pengguna
+    foto_profil: Mapped[str | None] = mapped_column(Text, nullable=True)
     aktif: Mapped[bool] = mapped_column(Boolean, default=True)
     dibuat_pada: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
     login_terakhir: Mapped[dt.datetime | None] = mapped_column(DateTime, nullable=True)

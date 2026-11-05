@@ -613,30 +613,37 @@ app.tanya_api`*. Perbaikan login yang terbaru pun tidak ikut terpakai.
 
 Cara membereskan (pilih salah satu):
 
-1. **Otomatis** — klik dua kali **`perbarui-kode.bat`**. Skrip itu mengunduh
-   kode terbaru dari branch resmi, mengekstraknya ke folder baru di sebelah
-   folder lama (`..\rubber-intelligence-terbaru`), lalu membuka foldernya.
-   Folder lama tidak dihapus. Setelah itu jalankan `start-web.bat` di folder
-   baru.
-2. **Manual** — unduh alamat ini di browser, lalu ekstrak:
+1. **Otomatis** — klik dua kali **`perbarui-kode.bat`**. Secara bawaan skrip
+   mengunduh seluruh isi branch `main` (kode serta file data/referensi yang
+   disimpan di repository) ke folder baru di sebelah folder lama, lalu membuka
+   foldernya. Folder lama tidak ditimpa atau dihapus. Database lokal
+   `backend\opmargin.db` dicadangkan otomatis ke folder baru; `backend\.env`
+   sengaja tidak disalin. Jalankan `start-web.bat` dari folder baru.
+
+   Untuk mengunduh branch lain, jalankan dari Command Prompt, misalnya:
+
+   ```bat
+   perbarui-kode.bat arena/399dd64e-rubber-intelligence
+   ```
+
+2. **Manual** — unduh ZIP branch resmi di browser, lalu ekstrak:
 
    ```
-   https://github.com/boldcraftcode-ops/rubber-intelligence/archive/refs/heads/arena/18670644-rubber-intelligence.zip
+   https://codeload.github.com/boldcraftcode-ops/rubber-intelligence/zip/refs/heads/main
    ```
 3. **Paling rapi (butuh Git)** — di folder tujuan:
 
    ```powershell
-   git clone -b arena/18670644-rubber-intelligence https://github.com/boldcraftcode-ops/rubber-intelligence.git
+   git clone -b main https://github.com/boldcraftcode-ops/rubber-intelligence.git
    ```
 
    Setelah itu pembaruan berikutnya cukup `git pull`.
 
-**Data lama tidak hilang.** Bila ingin memakai data yang sudah ada, salin dua
-berkas ini dari folder lama ke folder baru **sebelum** menjalankan
-`start-web.bat`:
-
-- `backend\opmargin.db` — database (data SICOM, pembelian, stok, target)
-- `backend\.env` — setelan login (opsional; bila tidak ada, dibuat otomatis)
+**Data intake lokal tetap aman:** updater menggunakan SQLite online backup untuk
+menyalin `backend\opmargin.db` tanpa mengubah database di folder lama. Berkas
+`.env` tidak disalin agar setelan lama tidak mengganggu; aplikasi baru akan
+menyiapkan setelan lokalnya sendiri. Tutup aplikasi sebelum menjalankan updater
+agar hasil cadangan mencakup perubahan terakhir.
 
 Cara memastikan folder baru benar-benar versi terbaru: lihat **`VERSI.txt`** di
 akar folder (versi terbaru saat dokumen ini ditulis: **0.11.2**), atau buka

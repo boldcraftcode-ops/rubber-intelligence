@@ -61,6 +61,55 @@ def test_login_lokal_berhasil(mode_lokal):
     assert k.get("/api/auth/saya").json()["mode"] == "lokal"
 
 
+def test_admin_kelola_foto_profil_pengguna(mode_lokal):
+    import base64
+
+    k = _klien()
+    assert k.post("/api/auth/login", json={"username": "admin",
+                                           "sandi": "admin123"}).status_code == 200
+    tambah = k.post("/api/auth/pengguna", json={
+        "username": "pegawai", "nama": "Ayu Sari", "sandi": "pegawai123",
+        "peran": "pengguna",
+    })
+    assert tambah.status_code == 200, tambah.text
+
+    png = base64.b64decode(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p2sAAAAASUVORK5CYII=")
+    unggah = k.post("/api/auth/pengguna/pegawai/foto",
+                    files={"file": ("profil.png", png, "image/png")})
+    assert unggah.status_code == 200, unggah.text
+    daftar = {p["username"]: p for p in k.get("/api/auth/pengguna").json()}
+    assert daftar["pegawai"]["ada_foto"] is True
+    assert k.get("/api/auth/saya").json()["foto_profil"] is None  # foto akun terpisah
+
+    assert k.post("/api/auth/logout").status_code == 200
+    assert k.post("/api/auth/login", json={"username": "pegawai",
+                                           "sandi": "pegawai123"}).status_code == 200
+    foto = k.get("/api/auth/saya").json()["foto_profil"]
+    assert foto.startswith("data:image/png;base64,")
+    assert base64.b64decode(foto.split(",", 1)[1]) == png
+
+    # Pengguna biasa tidak dapat menghapus fotonya sendiri.
+    assert k.delete("/api/auth/pengguna/pegawai/foto").status_code == 403
+
+    assert k.post("/api/auth/logout").status_code == 200
+    assert k.post("/api/auth/login", json={"username": "admin",
+                                           "sandi": "admin123"}).status_code == 200
+    hapus = k.delete("/api/auth/pengguna/pegawai/foto")
+    assert hapus.status_code == 200, hapus.text
+    daftar = {p["username"]: p for p in k.get("/api/auth/pengguna").json()}
+    assert daftar["pegawai"]["ada_foto"] is False
+
+
+def test_upload_foto_menolak_format_tidak_dikenal(mode_lokal):
+    k = _klien()
+    assert k.post("/api/auth/login", json={"username": "admin",
+                                           "sandi": "admin123"}).status_code == 200
+    r = k.post("/api/auth/pengguna/admin/foto",
+               files={"file": ("foto.txt", b"bukan gambar", "text/plain")})
+    assert r.status_code == 422
+
+
 def test_halaman_terlindungi_tanpa_sesi(mode_lokal):
     r = _klien().get("/api/alarm")
     assert r.status_code == 401

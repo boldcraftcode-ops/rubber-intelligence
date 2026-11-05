@@ -21,6 +21,7 @@ Keamanan:
 """
 from __future__ import annotations
 
+import base64
 import datetime as dt
 import hashlib
 import hmac
@@ -29,7 +30,7 @@ import secrets
 import time
 
 import jwt
-from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi import APIRouter, Depends, File, HTTPException, Request, Response, UploadFile
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -43,6 +44,7 @@ JALUR_BEBAS_LOKAL = ("/api/health", "/api/sehat", "/api/auth/login",
                      "/api/auth/mode")
 
 _ITERASI = 240_000
+MAKS_FOTO_PROFIL = 1_500_000
 
 
 # ----------------------------------------------------------------------------
@@ -252,12 +254,13 @@ def pasang_router_auth(app, ambil_session, cfg):
         if not lokal_aktif:
             # Login dimatikan (mode pengembangan): semua boleh, tanpa sesi.
             return {"username": "dev", "nama": "Mode Development",
-                    "peran": "admin", "mode": "nonaktif"}
+                    "peran": "admin", "foto_profil": None, "mode": "nonaktif"}
         klaim = info_pengguna(request)
         p = session.get(Pengguna, klaim["sub"]) if klaim else None
         if p is None or not p.aktif:
             raise HTTPException(401, "Akun tidak ditemukan / dinonaktifkan.")
         return {"username": p.username, "nama": p.nama, "peran": p.peran,
+                "foto_profil": p.foto_profil,
                 "login_terakhir": p.login_terakhir.isoformat(timespec="seconds")
                 if p.login_terakhir else None, "mode": "lokal"}
 
@@ -282,7 +285,7 @@ def pasang_router_auth(app, ambil_session, cfg):
         wajib_admin(request)
         return [{
             "username": p.username, "nama": p.nama, "peran": p.peran,
-            "aktif": p.aktif,
+            "aktif": p.aktif, "ada_foto": bool(p.foto_profil),
             "dibuat_pada": p.dibuat_pada.isoformat(timespec="seconds"),
             "login_terakhir": p.login_terakhir.isoformat(timespec="seconds")
             if p.login_terakhir else None,
@@ -332,5 +335,50 @@ def pasang_router_auth(app, ambil_session, cfg):
                     {"username": username, **perubahan})
         session.commit()
         return {"status": "ok", "pesan": f"Pengguna '{username}' diperbarui."}
+
+    @router.post("/pengguna/{username}/foto")
+    async def unggah_foto_pengguna(username: str, request: Request,
+                                   file: UploadFile = File(...),
+                                   session: Session = dep):
+        wajib_admin(request)
+        p = session.get(Pengguna, username)
+        if p is None:
+            raise HTTPException(404, f"Pengguna '{username}' tidak ditemukan.")
+        isi = await file.read(MAKS_FOTO_PROFIL + 1)
+        if not isi:
+            raise HTTPException(422, "File foto kosong.")
+        if len(isi) > MAKS_FOTO_PROFIL:
+            raise HTTPException(413, "Ukuran foto maksimal 1,5 MB.")
+        if isi.startswith(bytes.fromhex("89504e470d0a1a0a")):
+            mime = "image/png"
+        elif isi.startswith(bytes.fromhex("ffd8ff")):
+            mime = "image/jpeg"
+        elif isi.startswith(b"RIFF") and isi[8:12] == b"WEBP":
+            mime = "image/webp"
+        else:
+            raise HTTPException(422, "Gunakan foto PNG, JPEG, atau WebP.")
+        p.foto_profil = f"data:{mime};base64,{base64.b64encode(isi).decode('ascii')}"
+        siapa = (info_pengguna(request) or {}).get("sub", "?")
+        catat_audit(session, siapa, "ubah", "foto_profil_pengguna", {
+            "username": username, "mime": mime, "ukuran_byte": len(isi),
+        })
+        session.commit()
+        return {"status": "ok", "username": username,
+                "pesan": f"Foto profil {p.nama} diperbarui."}
+
+    @router.delete("/pengguna/{username}/foto")
+    def hapus_foto_pengguna(username: str, request: Request,
+                            session: Session = dep):
+        wajib_admin(request)
+        p = session.get(Pengguna, username)
+        if p is None:
+            raise HTTPException(404, f"Pengguna '{username}' tidak ditemukan.")
+        p.foto_profil = None
+        siapa = (info_pengguna(request) or {}).get("sub", "?")
+        catat_audit(session, siapa, "hapus", "foto_profil_pengguna",
+                    {"username": username})
+        session.commit()
+        return {"status": "ok", "username": username,
+                "pesan": f"Foto profil {p.nama} dihapus."}
 
     app.include_router(router)

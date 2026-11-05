@@ -89,13 +89,16 @@ def test_api_agregasi_traceability_berbasis_dry_tiket_valid_dan_ref():
     from sqlalchemy.pool import StaticPool
 
     from app.main import buat_app
-    from app.models import (Base, ReferensiWilayahTrace, TiketBaris, Vendor)
+    from app.models import (Base, Collector, ReferensiWilayahTrace,
+                            TiketBaris, Vendor)
 
     eng = create_engine("sqlite://", connect_args={"check_same_thread": False},
                         poolclass=StaticPool)
     Base.metadata.create_all(eng)
     with Session(eng) as session:
         session.add(Vendor(kode="V1", nama_baku="Supplier One", status="aktif"))
+        session.add(Collector(kode="C1", nama="Collector One",
+                              kode_vendor="V1"))
         session.add(ReferensiWilayahTrace(
             kabupaten_norm="MEDAN", kecamatan_norm="MEDAN BARU", desa_norm="BABURA",
             kabupaten="Kota Medan", kecamatan="Medan Baru", desa="Babura", code=None))
@@ -129,12 +132,16 @@ def test_api_agregasi_traceability_berbasis_dry_tiket_valid_dan_ref():
     actor_rows = client.get("/api/traceability/actors", params={"tahun": 2026}).json()["baris"]
     assert len(actor_rows) == 1
     assert actor_rows[0]["is_direct_producer"] is False
+    assert actor_rows[0]["is_collector"] is True
+    assert actor_rows[0]["tier"] == "T2"
     assert actor_rows[0]["source_from"] == 2
     assert actor_rows[0]["country"] == "Indonesia"
     detail = client.get("/api/traceability/actors/V1", params={"tahun": 2026})
     assert detail.status_code == 200, detail.text
     detail_payload = detail.json()
     assert detail_payload["period_turnover_mt"] == 1.0
+    assert detail_payload["is_collector"] is True
+    assert detail_payload["tier"] == "T2"
     assert detail_payload["tickets"] == 2
     assert len(detail_payload["origins"]) == 2
     assert sum(origin["share_pct"] for origin in detail_payload["origins"]) == 100.0
@@ -259,3 +266,207 @@ def test_koreksi_manual_subdistrict_updates_supplier_and_regional_traceability()
                                  "target_desa_norm": None})
     assert reset.status_code == 200, reset.text
     assert client.get("/api/traceability", params=params).json()["kpis"]["trace_desa_pct"] == 40.0
+
+def test_upload_excel_unmapped_simpan_koreksi_scdf_dan_validasi_atomik():
+    import datetime as dt
+    from io import BytesIO
+
+    from fastapi.testclient import TestClient
+    from openpyxl import load_workbook
+    from sqlalchemy import create_engine, select
+    from sqlalchemy.orm import Session
+    from sqlalchemy.pool import StaticPool
+
+    from app.main import buat_app
+    from app.models import (Base, KoreksiWilayahTrace, ReferensiWilayahTrace,
+                            TiketBaris, Vendor)
+
+    eng = create_engine("sqlite://", connect_args={"check_same_thread": False},
+                        poolclass=StaticPool)
+    Base.metadata.create_all(eng)
+    with Session(eng) as session:
+        session.add(Vendor(kode="V1", nama_baku="Supplier One", status="aktif"))
+        session.add_all([
+            ReferensiWilayahTrace(
+                kabupaten_norm="MEDAN", kecamatan_norm="MEDAN BARU", desa_norm="BABURA TIMUR",
+                kabupaten="Kota Medan", kecamatan="Medan Baru", desa="Babura Timur", code=None),
+            ReferensiWilayahTrace(
+                kabupaten_norm="MEDAN", kecamatan_norm="MEDAN SELATAN", desa_norm="PASAR MERAH",
+                kabupaten="Kota Medan", kecamatan="Medan Selatan", desa="Pasar Merah", code=None),
+        ])
+        session.add(TiketBaris(
+            ticket_no="T-UPLOAD", line_seq=1, ticket_date=dt.date(2026, 2, 1),
+            kode_vendor="V1", item_code="SIR20", wet_kg=1000, drc_pct=50,
+            dry_kg=500, asal_getah="Sumatera Utara, Kota Medan, Medan Baru, Babura Baru",
+            kabupaten="Kota Medan", kecamatan="Medan Baru", desa="Babura Baru",
+            kabupaten_norm="MEDAN", kecamatan_norm="MEDAN BARU", desa_norm="BABURA BARU",
+            asal_getah_valid=True, source_fingerprint="f" * 64, tiket_nol=False))
+        session.commit()
+
+    client = TestClient(buat_app(eng))
+    download = client.get("/api/traceability/unmapped", params={"tahun": 2026})
+    assert download.status_code == 200, download.text
+    wb = load_workbook(BytesIO(download.content))
+    ws = wb["Unmapped Records"]
+    header = {cell.value: cell.column for cell in ws[1]}
+    assert "SCDF District" in header and "SCDF Sub-district" in header
+    assert ws.max_row == 2
+    kolom_district = header["SCDF District"]
+    kolom_subdistrict = header["SCDF Sub-district"]
+
+    def unggah(nama_district: str, nama_subdistrict: str):
+        ws.cell(row=2, column=kolom_district, value=nama_district)
+        ws.cell(row=2, column=kolom_subdistrict, value=nama_subdistrict)
+        buf = BytesIO()
+        wb.save(buf)
+        return client.post("/api/traceability/unmapped/import", files={
+            "file": ("traceability-unmapped.xlsx", buf.getvalue(),
+                     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")})
+
+    invalid = unggah("Medan Selatan", "Sub-district tidak resmi")
+    assert invalid.status_code == 422, invalid.text
+    with Session(eng) as session:
+        assert session.scalar(select(KoreksiWilayahTrace)) is None
+
+    valid = unggah("Medan Selatan", "Pasar Merah")
+    assert valid.status_code == 200, valid.text
+    assert valid.json()["baris_mapping_diisi"] == 1
+    assert valid.json()["lokasi_dipetakan"] == 1
+    assert valid.json()["baris_direvisi"] == 1
+    assert valid.json()["koreksi_baru"] == 1
+    assert valid.json()["koreksi_diperbarui"] == 0
+    with Session(eng) as session:
+        correction = session.scalar(select(KoreksiWilayahTrace))
+        assert correction is not None
+        assert correction.target_ref_id is not None
+    regional = client.get("/api/traceability", params={"tahun": 2026}).json()
+    assert regional["kpis"]["trace_kec_pct"] == 100.0
+    assert regional["kpis"]["trace_desa_pct"] == 100.0
+    node_district = regional["wilayah"][0]["children"][0]
+    assert node_district["name"] == "MEDAN SELATAN"
+    assert node_district["children"][0]["name"] == "PASAR MERAH"
+    district_options = client.get("/api/traceability/locations/districts", params={
+        "kabupaten_norm": "MEDAN"}).json()
+    assert {x["value"] for x in district_options["options"]} == {
+        "MEDAN BARU", "MEDAN SELATAN"}
+
+    sama = unggah("Medan Selatan", "Pasar Merah")
+    assert sama.status_code == 200, sama.text
+    assert sama.json()["baris_direvisi"] == 0
+    assert sama.json()["koreksi_tidak_berubah"] == 1
+
+    diperbarui = unggah("Medan Baru", "Babura Timur")
+    assert diperbarui.status_code == 200, diperbarui.text
+    assert diperbarui.json()["baris_direvisi"] == 1
+    assert diperbarui.json()["koreksi_baru"] == 0
+    assert diperbarui.json()["koreksi_diperbarui"] == 1
+    wb.close()
+
+
+def test_vendor_dan_collector_dari_desa_sama_satu_baris_tier():
+    import datetime as dt
+
+    from fastapi.testclient import TestClient
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import Session
+    from sqlalchemy.pool import StaticPool
+
+    from app.main import buat_app
+    from app.models import (Base, Collector, KoreksiWilayahTrace,
+                            ReferensiWilayahTrace, TiketBaris, Vendor)
+
+    eng = create_engine("sqlite://", connect_args={"check_same_thread": False},
+                        poolclass=StaticPool)
+    Base.metadata.create_all(eng)
+    with Session(eng) as session:
+        session.add(Vendor(kode="V1", nama_baku="Supplier One", status="aktif"))
+        session.add(Collector(kode="C1", nama="Collector One",
+                              kode_vendor="V1", desa="Babura"))
+        session.add(Collector(kode="C2", nama="Collector Two",
+                              kode_vendor="V1", desa="Desa Lain"))
+        session.add(ReferensiWilayahTrace(
+            kabupaten_norm="MEDAN", kecamatan_norm="MEDAN BARU", desa_norm="BABURA",
+            kabupaten="Kota Medan", kecamatan="Medan Baru", desa="Babura",
+            code=None))
+        for no, desa_norm in (("T1", "BABURA"), ("T2", "DESA LAIN")):
+            session.add(TiketBaris(
+                ticket_no=no, line_seq=1, ticket_date=dt.date(2026, 2, 1),
+                kode_vendor="V1", item_code="SIR20", wet_kg=1000, drc_pct=50,
+                dry_kg=500, asal_getah=f"Sumatera Utara, Kota Medan, Medan Baru, "
+                                       f"{desa_norm.title()}",
+                kabupaten_norm="MEDAN", kecamatan_norm="MEDAN BARU",
+                desa_norm=desa_norm, asal_getah_valid=True,
+                source_fingerprint=no.ljust(64, "0"), tiket_nol=False))
+        session.commit()
+
+    client = TestClient(buat_app(eng))
+    params = {"tahun": 2026}
+    actor_rows = client.get("/api/traceability/actors", params=params).json()["baris"]
+    assert len(actor_rows) == 1
+    row = actor_rows[0]
+    assert row["supplier_code"] == "V1"
+    assert row["tier"] == "T2"
+    assert row["collector_code"] == "C1"
+    assert row["collector_name"] == "Collector One"
+
+    detail = client.get("/api/traceability/actors/V1", params=params).json()
+    assert detail["is_collector"] is True
+    assert detail["tier"] == "T2"
+    assert detail["collector_code"] == "C1"
+
+
+def test_kartu_traceability_per_entitas_dari_desa_ke_pabrik():
+    import datetime as dt
+
+    from fastapi.testclient import TestClient
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import Session
+    from sqlalchemy.pool import StaticPool
+
+    from app.main import buat_app
+    from app.models import (Base, Collector, ReferensiWilayahTrace,
+                            TiketBaris, Vendor)
+
+    eng = create_engine("sqlite://", connect_args={"check_same_thread": False},
+                        poolclass=StaticPool)
+    Base.metadata.create_all(eng)
+    with Session(eng) as session:
+        session.add(Vendor(kode="V1", nama_baku="Supplier One", status="aktif"))
+        session.add(Collector(kode="C1", nama="Collector One",
+                              kode_vendor="V1", desa="Babura"))
+        session.add(ReferensiWilayahTrace(
+            kabupaten_norm="MEDAN", kecamatan_norm="MEDAN BARU", desa_norm="BABURA",
+            kabupaten="Kota Medan", kecamatan="Medan Baru", desa="Babura",
+            code=None))
+        session.add(TiketBaris(
+            ticket_no="T1", line_seq=1, ticket_date=dt.date(2026, 2, 1),
+            kode_vendor="V1", item_code="SIR20", wet_kg=1000, drc_pct=50,
+            dry_kg=500, asal_getah="Sumatera Utara, Kota Medan, Medan Baru, Babura",
+            kabupaten_norm="MEDAN", kecamatan_norm="MEDAN BARU", desa_norm="BABURA",
+            asal_getah_valid=True, source_fingerprint="a" * 64, tiket_nol=False))
+        session.commit()
+
+    client = TestClient(buat_app(eng))
+    payload = client.get("/api/traceability/cards", params={"tahun": 2026}).json()
+    assert payload["factory"]["code"] == "PT. BSRE"
+
+    vendor_card = payload["vendor_cards"][0]
+    assert vendor_card["entity_code"] == "V1"
+    assert vendor_card["tier"] == "T2"
+    assert vendor_card["total_dry_mt"] == 0.5
+    # Rantai desa → kecamatan → kabupaten → kolektor → vendor → pabrik
+    steps = [step["step"] for step in vendor_card["chain_summary"]]
+    assert steps == ["desa", "kecamatan", "kabupaten", "kolektor", "vendor", "factory"]
+    factory_step = vendor_card["chain_summary"][-1]
+    assert factory_step["code"] == "PT. BSRE"
+    assert vendor_card["collectors"][0]["code"] == "C1"
+
+    collector_card = payload["collector_cards"][0]
+    assert collector_card["entity_code"] == "C1"
+    assert collector_card["desa"] == "Babura"
+    assert collector_card["vendor_code"] == "V1"
+
+    factory_card = payload["factory_card"]
+    assert factory_card["entity_code"] == "PT. BSRE"
+    assert factory_card["total_dry_mt"] == 0.5
+    assert factory_card["by_vendor"][0]["vendor_code"] == "V1"

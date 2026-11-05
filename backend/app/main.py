@@ -172,6 +172,9 @@ def buat_app(engine: Engine | None = None) -> FastAPI:
     from .api_analisis import pasang_router
     pasang_router(app, ambil_session)
 
+    from .api_intake import pasang_router_intake
+    pasang_router_intake(app, ambil_session)
+
     from .api_jelaskan import pasang_router as pasang_jelaskan
     pasang_jelaskan(app, ambil_session)
 
@@ -198,6 +201,10 @@ def buat_app(engine: Engine | None = None) -> FastAPI:
     # Traceability (agregasi server-side + referensi ID_AUX)
     from .api_traceability import pasang_router_traceability
     pasang_router_traceability(app, ambil_session)
+
+    # Peta sentra produksi karet + rata-rata intake internal per tahun
+    from .api_potensi import pasang_router_potensi
+    pasang_router_potensi(app, ambil_session)
 
     # Rute modul Database (info, kosongkan, ekspor, impor)
     from .api_database import pasang_router_database
