@@ -399,6 +399,21 @@ kode yang hanya muncul di tiket intake tetap punya kelas pada detailnya, dan
 jumlahnya ditampilkan terpisah agar tidak hilang. Kelas dihitung dari nilai
 sebelum dibulatkan, tidak disimpan, dan tidak bisa diisi manual.
 
+**Tree node view (sejak v0.11.2).** Di menu **Traceability**, tepat di sebelah
+tab **Supplier Actors**, ada tab **Tree node view**. Ini diagram ilustrasi
+**Pabrik → Tier 1 vendor → Tier 2 kolektor** dengan node lingkaran, garis
+lengkung, dan warna per tier: pabrik hijau tua, T1 biru, T2 oranye. Bawaannya
+vertikal dari atas ke bawah; tombol **Arah** mengubahnya menjadi horizontal
+kiri → kanan. Label tiap node memuat nama dan volume kg, sedangkan ketebalan
+garis mengikuti volume jalur.
+
+Klik node **T1** untuk menyorot semua **T2** di bawahnya; klik lagi atau tekan
+**Reset sorotan** untuk kembali. Struktur contohnya: 1 pabrik, 4 vendor
+(V1–V4), 10 kolektor (K1–K10), dengan **K5 menyuplai V2 sekaligus V3**. Volume
+K5 adalah gabungan dua jalur itu, bukan dua kolektor terpisah. Data diagram
+ini **statis/contoh**, bukan agregasi tiket intake, dan sengaja tidak mengubah
+tabel Supplier Actors, lane detail, SCDF, atau endpoint backend.
+
 Di Excel, tiga kolom baru ada di kanan: `Alamat`, `Kontak_Person`,
 `Klasifikasi`. Mengosongkan selnya berarti **tidak diubah** (bukan dihapus) —
 sama seperti Kategori — supaya file yang hanya berisi kode + nama tidak
