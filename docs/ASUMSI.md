@@ -60,8 +60,10 @@ teknis yang saya pilih dan bisa diubah kapan saja.
 18. **Rekonsiliasi**: selisih yang sudah diketahui (Jul 2026 = 19,453 ton;
     Agu 2026 = 6,878 ton; tiket berhenti 19 Sep 2026) ditanam sebagai data
     referensi dan selalu tampil di halaman Rekonsiliasi. Pemeriksaan harian
-    tiket-vs-pembelian memakai toleransi 1 kg. Tidak ada koreksi otomatis —
-    menunggu persetujuan pengguna [TERBUKA].
+    tiket-vs-pembelian memakai toleransi 1 kg. Tidak ada koreksi otomatis:
+    pengguna memilih sumber yang benar, lalu keputusannya disimpan sebagai
+    revisi terkontrol (data asli tetap utuh, tercatat di audit log, bisa
+    dibatalkan); lihat jawaban #6 di bawah.
 19. **Margin per grade/vendor** hanya dihitung bila Amount tersedia pada
     tingkat itu; kalau tidak, layar menampilkan "data harga belum tersedia".
     Tidak ada alokasi harga diam-diam.
@@ -143,5 +145,5 @@ teknis yang saya pilih dan bisa diubah kapan saja.
 | 3 | Aturan stok→harga | Apa rentang rasio dan penyesuaian resmi? Isi template hanyalah contoh bentuk. |
 | 4 | Selisih harga antar grade | Berapa selisih harga beli antar grade? Rekomendasi harga saat ini dihitung di rata-rata semua grade. |
 | 5 | Reject | Apakah Amount dibayar atas berat bersih (setelah reject)? Bila ya, Quantity perlu disesuaikan agar harga/kg tidak terlihat terlalu rendah. |
-| 6 | Selisih rekonsiliasi | Jul 2026 (5.269,319 vs 5.249,866) dan Agu 2026 (4.759,827 vs 4.752,949): tiket dianggap sumber resmi — perlu persetujuan Anda sebelum angka lama dikoreksi. |
+| 6 | ~~Selisih rekonsiliasi~~ | **TERJAWAB (06/11/2026)**: pemilik ingin antarmuka memberi pilihan sumber yang benar, lalu merevisi baris selisih. Implementasinya berupa keputusan terkontrol pada `rekonsiliasi_koreksi` (bukan perubahan data sumber): pilih Tiket/Excel lama untuk Jul–Agu 2026 atau Dry tiket/Qty pembelian untuk baris harian; selisih efektif menjadi 0, alarm ikut padam, dan untuk Jul/Agu 2026 sumber itu juga menjadi referensi intake di RM Stock – Intake vs Pricing. Kebijakan bawaan tetap tiket = sumber resmi sampai keputusan disimpan; hanya admin yang dapat menyimpan/membatalkan. |
 | 7 | Dasar angka Y27 | Dasar Penyesuaian Manual dan Effort di Perencanaan belum diketahui; nilai template dimuat apa adanya. |

@@ -197,6 +197,27 @@ class KoreksiWilayahTrace(Base):
     updated_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
 
 
+class KoreksiRekonsiliasi(Base):
+    """Keputusan sumber yang benar untuk satu baris selisih Rekonsiliasi.
+
+    Data tiket, pembelian, dan angka Excel lama TIDAK diubah. Baris
+    rekap memakai nilai dari sumber yang dipilih; keputusan ini tercatat di
+    audit log dan dapat dibatalkan. Satu keputusan per baris/jenis.
+    """
+
+    __tablename__ = "rekonsiliasi_koreksi"
+    __table_args__ = (UniqueConstraint("jenis", "kunci",
+                                      name="uq_rekonsiliasi_koreksi"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    jenis: Mapped[str] = mapped_column(String(20), index=True)  # harian | diketahui
+    kunci: Mapped[str] = mapped_column(String(20), index=True)  # YYYY-MM-DD | YYYY-MM
+    sumber_benar: Mapped[str] = mapped_column(String(20))  # tiket | pembelian | excel
+    alasan: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    updated_by: Mapped[str] = mapped_column(String(100), default="?")
+    updated_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
+
+
 class PengaturanTraceability(Base):
     """Label tambahan pada tabel Traceability (baris tunggal, id=1)."""
     __tablename__ = "traceability_pengaturan"

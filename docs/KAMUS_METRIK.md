@@ -113,3 +113,18 @@ menampilkan **satu nilai kelas tertinggi** dalam periode, tanpa tabel bulanan;
 ringkasan jumlah *supplier-bulan* per kelas berada di menu **Master Vendor**
 (dengan tahun terbaru otomatis) dan hanya menghitung kode yang punya baris
 Master Vendor.
+
+## Rekonsiliasi: selisih asli vs selisih efektif
+
+| Istilah | Arti |
+|---------|------|
+| `selisih_ton` / `selisih_kg` | Selisih **asli** antara dua sumber. Nilai ini tidak pernah diubah keputusan, supaya riwayat dan ekspor lama tetap dapat diaudit. |
+| `selisih_efektif_ton` / `selisih_efektif_kg` | Selisih yang dipakai status & alarm: `0` bila sudah ada keputusan sumber benar,jika belum ada keputusan, sama dengan selisih asli. |
+| `nilai_dipakai_ton` / `nilai_dipakai_kg` | Angka dari sumber yang dipilih (Tiket, Excel lama, atau Qty pembelian). |
+| `sumber_dipakai` | Kode sumber yang disetujui: `tiket`, `excel`, atau `pembelian`. |
+| `direvisi` / `koreksi` | Penanda keputusan beserta alasan, pembuat, dan waktu; keputusan dapat dibatalkan. |
+
+Keputusan **tidak menimpa** `tiket_baris`, `pembelian`, atau angka Excel lama.
+Untuk selisih bulanan Jul/Agu 2026, sumber yang dipilih juga menjadi
+`sumber_intake` pada `GET /api/ringkasan-elemen`; bulan tanpa keputusan tetap
+memakai urutan lama: tiket (bila wajar) → referensi rekonsiliasi → pembelian.

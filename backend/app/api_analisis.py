@@ -10,15 +10,19 @@ import io
 import pathlib
 from collections import defaultdict
 from decimal import Decimal
+from typing import Literal
 
 import openpyxl
 import yaml
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
+from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from .auth_lokal import info_pengguna, wajib_admin
 from .core import rumus
+from .core.alarm import catat_audit, evaluasi_alarm
 from .core.kualitas import (
     data_terlambat,
     hari_pembelian_tanpa_sicom,
@@ -29,12 +33,16 @@ from .core.kualitas import (
 from .core.lookup import PencariBerlaku
 from .core.rekonsiliasi import (
     CATATAN_DIKETAHUI,
+    PILIHAN_SUMBER,
     SELISIH_DIKETAHUI,
+    keputusan_intake_diketahui,
     rekonsiliasi_harian,
+    sah_kunci,
     selisih_diketahui,
 )
 from .models import (
     Grade,
+    KoreksiRekonsiliasi,
     Kurs,
     MartBulanan,
     MartHarian,
@@ -55,6 +63,52 @@ KOREKSI = {
 
 NAMA_BULAN_SINGKAT = ("", "Jan", "Feb", "Mar", "Apr", "Mei", "Jun",
                       "Jul", "Agu", "Sep", "Okt", "Nov", "Des")
+
+
+class RekonsiliasiKeputusanMasuk(BaseModel):
+    """Pilihan sumber benar untuk satu baris selisih Rekonsiliasi."""
+    jenis: Literal["harian", "diketahui"]
+    kunci: str = Field(min_length=7, max_length=10)
+    sumber_benar: Literal["tiket", "pembelian", "excel"]
+    alasan: str | None = Field(default=None, max_length=300)
+
+
+def _boleh_revisi(request: Request) -> bool:
+    """Admin (atau mode development tanpa login) boleh menyimpan keputusan."""
+    try:
+        wajib_admin(request)
+        return True
+    except HTTPException:
+        return False
+
+
+def _baris_rekonsiliasi(jenis: str, kunci: str, session: Session) -> dict | None:
+    if jenis == "harian":
+        return next((h for h in rekonsiliasi_harian(session)
+                     if h["kunci"] == kunci), None)
+    return next((d for d in selisih_diketahui(session)
+                 if d["kunci"] == kunci), None)
+
+
+def _validasi_keputusan(data: RekonsiliasiKeputusanMasuk,
+                        session: Session) -> dict:
+    kunci = data.kunci.strip()
+    if not sah_kunci(data.jenis, kunci):
+        raise HTTPException(422, "Kunci baris Rekonsiliasi tidak dikenal. "
+                                "Gunakan YYYY-MM-DD untuk harian atau "
+                                "YYYY-MM untuk selisih yang sudah diketahui.")
+    if data.sumber_benar not in PILIHAN_SUMBER[data.jenis]:
+        sah = ", ".join(PILIHAN_SUMBER[data.jenis])
+        raise HTTPException(422, f"Sumber '{data.sumber_benar}' tidak sah "
+                                f"untuk {data.jenis}. Pilih salah satu: {sah}.")
+    baris = _baris_rekonsiliasi(data.jenis, kunci, session)
+    if baris is None:
+        raise HTTPException(422, f"Baris {data.jenis} '{kunci}' tidak ditemukan "
+                                "pada data Rekonsiliasi.")
+    if data.jenis == "harian" and baris["cocok_asli"] and not baris["direvisi"]:
+        raise HTTPException(422, "Baris harian ini sudah cocok; tidak perlu "
+                                "keputusan revisi.")
+    return {**baris, "kunci": kunci}
 
 DIMENSI_TONASE = ("vendor", "grade", "provinsi", "kabupaten", "kecamatan", "desa")
 URUTAN_WILAYAH = ("provinsi", "kabupaten", "kecamatan", "desa")
@@ -1400,6 +1454,9 @@ def pasang_router(app, ambil_session):
                     float(t.dry_kg) / 1000.0
         referensi = {(s["tahun"], s["bulan"]): s["tiket_ton"]
                      for s in SELISIH_DIKETAHUI}
+        # Keputusan Rekonsiliasi Jul/Agu 2026 menggantikan sumber intake
+        # pada kartu ini, termasuk bila data tiket mentah tersedia.
+        keputusan = keputusan_intake_diketahui(session)
 
         mart = {(m.tahun, m.bulan): m for m in session.scalars(select(MartBulanan))}
         if not stok_bulan:
@@ -1430,7 +1487,10 @@ def pasang_router(app, ambil_session):
             tiket_ton = tiket_bulan.get((th, bl))
             # tiket dipakai hanya bila wajar (>=50% pembelian) agar baris
             # contoh/parsial tidak menggantikan angka bulan penuh
-            if tiket_ton and (not pembelian_ton or tiket_ton >= 0.5 * pembelian_ton):
+            kep = keputusan.get((th, bl))
+            if kep:
+                intake, sumber = round(kep[0], 3), kep[1]
+            elif tiket_ton and (not pembelian_ton or tiket_ton >= 0.5 * pembelian_ton):
                 intake, sumber = round(tiket_ton, 3), "tiket"
             elif (th, bl) in referensi:
                 intake, sumber = referensi[(th, bl)], "tiket (referensi rekonsiliasi)"
@@ -1473,6 +1533,8 @@ def pasang_router(app, ambil_session):
             "proyeksinya belum ditetapkan [TERBUKA].",
             "Tonase tersedia dalam MT (*_ton) dan kg (*_kg); 1 MT = 1.000 kg. "
             "SICOM, OP Price, dan OP Margin tetap dalam US¢/kg.",
+            "Untuk Jul/Agu 2026, sumber intake mengikuti keputusan pada "
+            "halaman Rekonsiliasi bila sudah disimpan; data asli tidak diubah.",
         ]}
         if format == "xlsx":
             return respon_xlsx(
@@ -1552,19 +1614,126 @@ def pasang_router(app, ambil_session):
 
     # ------------------------------------------------------------ rekonsiliasi
     @router.get("/rekonsiliasi")
-    def rekonsiliasi(format: str | None = None, session: Session = dep):
+    def rekonsiliasi(request: Request, format: str | None = None,
+                     session: Session = dep):
         harian = rekonsiliasi_harian(session)
+        diketahui = selisih_diketahui(session)
         hasil = {
-            "diketahui": selisih_diketahui(),
+            "diketahui": diketahui,
             "catatan": CATATAN_DIKETAHUI,
             "harian": harian,
+            "bisa_revisi": _boleh_revisi(request),
         }
         if format == "xlsx":
-            judul = ["Periode", "Tiket (ton)", "Excel lama (ton)", "Selisih (ton)", "Status"]
-            isi = [[d["periode"], d["tiket_ton"], d["excel_ton"], d["selisih_ton"],
-                    d["status"]] for d in hasil["diketahui"]]
+            judul = ["Periode", "Tiket (ton)", "Excel lama (ton)",
+                     "Selisih asli (ton)", "Selisih setelah revisi (ton)",
+                     "Sumber dipakai", "Status", "Direvisi oleh", "Waktu", "Alasan"]
+            isi = [[d["periode"], d["tiket_ton"], d["excel_ton"],
+                    d["selisih_ton"], d["selisih_efektif_ton"],
+                    d["sumber_dipakai"] or "", d["status"],
+                    (d["koreksi"] or {}).get("oleh", ""),
+                    (d["koreksi"] or {}).get("pada", ""),
+                    (d["koreksi"] or {}).get("alasan", "")]
+                   for d in diketahui]
             return respon_xlsx("rekonsiliasi.xlsx", judul, isi)
         return hasil
+
+    @router.post("/rekonsiliasi/keputusan")
+    def simpan_keputusan_rekonsiliasi(data: RekonsiliasiKeputusanMasuk,
+                                      request: Request,
+                                      session: Session = dep):
+        """Simpan sumber yang benar; data sumber asli sengaja tidak diubah."""
+        wajib_admin(request)
+        baris = _validasi_keputusan(data, session)
+        kunci, alasan = baris["kunci"], (data.alasan or "").strip() or None
+        lama = session.scalar(select(KoreksiRekonsiliasi).where(
+            KoreksiRekonsiliasi.jenis == data.jenis,
+            KoreksiRekonsiliasi.kunci == kunci))
+        if lama and lama.sumber_benar == data.sumber_benar                 and (lama.alasan or None) == alasan:
+            return {"status": "tidak berubah", "jenis": data.jenis,
+                    "kunci": kunci, "sumber_benar": data.sumber_benar,
+                    "pesan": "Keputusan sudah sama; tidak ada perubahan."}
+
+        sebelum = None
+        if lama is None:
+            keputusan = KoreksiRekonsiliasi(jenis=data.jenis, kunci=kunci)
+            session.add(keputusan)
+            aksi = "tambah"
+        else:
+            keputusan = lama
+            sebelum = {"sumber_benar": lama.sumber_benar,
+                       "alasan": lama.alasan,
+                       "oleh": lama.updated_by}
+            aksi = "ubah"
+
+        pengguna = info_pengguna(request) or {}
+        siapa = pengguna.get("sub") or "dev"
+        keputusan.sumber_benar = data.sumber_benar
+        keputusan.alasan = alasan
+        keputusan.updated_by = siapa
+        keputusan.updated_at = dt.datetime.utcnow()
+        session.flush()
+
+        satuan = "kg" if data.jenis == "harian" else "ton"
+        opsi = next((o for o in baris["pilihan_sumber"]
+                     if o["kode"] == data.sumber_benar), None)
+        nilai_dipakai = opsi[f"nilai_{satuan}"] if opsi else None
+        catat_audit(session, siapa, aksi, "rekonsiliasi_koreksi", {
+            "jenis": data.jenis,
+            "kunci": kunci,
+            "sumber_benar": data.sumber_benar,
+            "alasan": alasan,
+            "nilai_tiket": baris["pilihan_sumber"][0][f"nilai_{satuan}"],
+            "nilai_lawan": baris["pilihan_sumber"][1][f"nilai_{satuan}"],
+            "selisih_asli": baris[f"selisih_asli_{satuan}"],
+            "selisih_efektif": 0.0,
+            "nilai_dipakai": nilai_dipakai,
+            "sebelumnya": sebelum,
+        })
+        evaluasi_alarm(session)
+        session.commit()
+        return {
+            "status": "tersimpan",
+            "jenis": data.jenis,
+            "kunci": kunci,
+            "sumber_benar": data.sumber_benar,
+            "nilai_dipakai": nilai_dipakai,
+            "satuan": satuan,
+            "oleh": siapa,
+            "pada": keputusan.updated_at.isoformat(timespec="seconds"),
+            "alasan": alasan,
+            "pesan": (f"Revisi {kunci} tersimpan: "
+                      f"{data.sumber_benar} dipakai. Data asli tidak diubah."),
+        }
+
+    @router.delete("/rekonsiliasi/keputusan")
+    def hapus_keputusan_rekonsiliasi(request: Request,
+                                     jenis: str = Query(...),
+                                     kunci: str = Query(...),
+                                     session: Session = dep):
+        """Batalkan keputusan; baris kembali memakai selisih aslinya."""
+        wajib_admin(request)
+        if jenis not in PILIHAN_SUMBER or not sah_kunci(jenis, kunci.strip()):
+            raise HTTPException(422, "Jenis/kunci keputusan tidak dikenal.")
+        kunci = kunci.strip()
+        lama = session.scalar(select(KoreksiRekonsiliasi).where(
+            KoreksiRekonsiliasi.jenis == jenis,
+            KoreksiRekonsiliasi.kunci == kunci))
+        if lama is None:
+            raise HTTPException(404, "Belum ada keputusan revisi untuk baris ini.")
+        sebelum = {"sumber_benar": lama.sumber_benar, "alasan": lama.alasan,
+                   "oleh": lama.updated_by}
+        session.delete(lama)
+        session.flush()
+        pengguna = info_pengguna(request) or {}
+        siapa = pengguna.get("sub") or "dev"
+        catat_audit(session, siapa, "hapus", "rekonsiliasi_koreksi", {
+            "jenis": jenis, "kunci": kunci, "sebelumnya": sebelum,
+        })
+        evaluasi_alarm(session)
+        session.commit()
+        return {"status": "dibatalkan", "jenis": jenis, "kunci": kunci,
+                "pesan": "Revisi dibatalkan; selisih asli kembali ditampilkan."}
 
     # ------------------------------------------------------------ kualitas data
     @router.get("/kualitas")

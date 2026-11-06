@@ -249,6 +249,36 @@ set SAJIKAN_WEB=true
 .venv\Scripts\python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
 ```
 
+## 3h. Memutuskan selisih di Rekonsiliasi
+
+Pada kedua kartu **Rekonsiliasi**, baris yang berselisih memiliki dropdown
+**"Data mana yang benar?"**:
+
+- kartu **Selisih yang sudah diketahui**: pilih **Tiket** atau **Excel lama**
+  untuk Jul/Agu 2026;
+- kartu **Pemeriksaan harian**: pilih **Dry tiket** atau **Qty pembelian**
+  untuk tanggal yang berselisih lebih dari 1 kg.
+
+Isi **Alasan revisi** bila perlu, lalu tekan **Simpan revisi**. Selisih asli
+tetap terlihat (dicoret) dan di sampingnya muncul **0 setelah revisi**, status
+berubah hijau, serta nilai yang dipakai ditampilkan lengkap dengan pembuat
+dan waktu keputusan. **Data tiket/pembelian/Excel asli tidak diubah**; yang
+tersimpan adalah keputusan pada tabel `rekonsiliasi_koreksi` plus jejak di
+audit log. Karena itu keputusan bisa diganti lewat **Perbarui revisi** atau
+dikembalikan ke kondisi semula lewat **Batalkan revisi**. Hanya **admin** yang
+bisa menyimpan/membatalkan; pengguna lain tetap bisa membaca statusnya.
+
+Efek keputusan:
+
+1. Baris Rekonsiliasi dianggap cocok dan alarm `SELISIH_REKONSILIASI` untuk
+   baris itu padam.
+2. Ekspor Excel `rekonsiliasi.xlsx` memuat kolom sumber dipakai, selisih
+   setelah revisi, pembuat, waktu, dan alasan.
+3. Untuk Jul/Agu 2026, sumber yang dipilih juga menjadi **referensi intake**
+   pada kartu **RM Stock – Intake vs Pricing**. Memilih Excel lama mengubah
+   angka intake bulanan itu ke nilai Excel; memilih Tiket memakai angka
+   referensi tiket. Modul lain tidak diubah.
+
 ## 4. Mengimpor data (tiket, stok, pembelian, dll.)
 
 Selain lewat tab **Unggah Data**, impor bisa dijalankan dari terminal
@@ -457,7 +487,8 @@ Lalu buka `http://localhost:5173`. Sejak Fase 3 aplikasi punya lima tab:
   bila Amount belum rinci). Semua kartu punya tombol "Cara dihitung" dan
   "Ekspor Excel".
 - **Rekonsiliasi** — selisih yang sudah diketahui (Jul & Agu 2026) dan
-  pemeriksaan harian tiket vs pembelian.
+  pemeriksaan harian tiket vs pembelian; tiap baris selisih kini bisa
+  diputuskan sumber mana yang benar (lihat bagian 3h).
 - **Kualitas Data** — kesegaran data, hari pembelian tanpa SICOM, lonjakan
   harga, rekap peringatan impor.
 - **Stok** — Days, rasio, status per hari; grafik stok vs safety; daftar hari
