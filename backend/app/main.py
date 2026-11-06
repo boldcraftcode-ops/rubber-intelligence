@@ -206,6 +206,10 @@ def buat_app(engine: Engine | None = None) -> FastAPI:
     from .api_potensi import pasang_router_potensi
     pasang_router_potensi(app, ambil_session)
 
+    # Kepatuhan vendor sampling (laporan workbook Monitoring Vendor RM)
+    from .api_kepatuhan_vendor import pasang_router_kepatuhan
+    pasang_router_kepatuhan(app, ambil_session)
+
     # Rute modul Database (info, kosongkan, ekspor, impor)
     from .api_database import pasang_router_database
     pasang_router_database(app, ambil_session, engine)
@@ -267,6 +271,7 @@ def buat_app(engine: Engine | None = None) -> FastAPI:
                     "unggah-pratinjau", "unggah-mismatch-xlsx",
                     "vendor-profil",
                     "master-collector",
+                    "kepatuhan-vendor-sampling",
                 ],
                 # versi kode ikut dilaporkan supaya mudah membandingkan
                 # folder yang dijalankan dengan kode terbaru di repo

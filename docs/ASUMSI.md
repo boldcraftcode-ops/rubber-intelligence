@@ -137,6 +137,20 @@ teknis yang saya pilih dan bisa diubah kapan saja.
     EUDR). Grade tidak pernah dihapus dari sistem, hanya ditambah/diubah,
     agar data historis tetap tertaut.
 
+## Default teknis Kepatuhan vendor sampling
+
+38. **Sumber laporan = workbook GitHub** `Laporan_Monitoring_Vendor_RM_Purchasing (1).xlsx`
+    yang disalin ke akar repo. Modul hanya membaca berkas itu; tidak ada
+    unggahan, tabel database, atau penulisan ulang nilai. Delapan sheet
+    dipasangkan menjadi 4 periode Agu–Nov 2026.
+39. **Angka dan status ditampilkan apa adanya**. Header menulis ambang 30 menit,
+    tetapi formula Agu/Sep memakai `selisih ≥ 40 = Tepat Waktu` dan Okt/Nov
+    memakai `selisih ≥ 40 = Terlambat`. Modul menjelaskan perbedaan itu dan
+    **tidak** menghitung ulang atau menyeragamkan aturan tanpa keputusan pemilik.
+40. **Ruang lingkup tampilan** mencakup ringkasan + log lengkap, filter bulan,
+    pencarian vendor/catatan, dan ekspor XLSX 2 sheet. Menu ditempatkan di
+    akhir grup **Pengawasan & Kontrol**.
+
 ## Pertanyaan [TERBUKA] — menunggu jawaban Anda
 | # | Topik | Pertanyaan |
 |---|-------|-----------|

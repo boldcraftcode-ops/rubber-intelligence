@@ -119,7 +119,7 @@ Master Vendor.
 | Istilah | Arti |
 |---------|------|
 | `selisih_ton` / `selisih_kg` | Selisih **asli** antara dua sumber. Nilai ini tidak pernah diubah keputusan, supaya riwayat dan ekspor lama tetap dapat diaudit. |
-| `selisih_efektif_ton` / `selisih_efektif_kg` | Selisih yang dipakai status & alarm: `0` bila sudah ada keputusan sumber benar,jika belum ada keputusan, sama dengan selisih asli. |
+| `selisih_efektif_ton` / `selisih_efektif_kg` | Selisih yang dipakai status & alarm: `0` bila sudah ada keputusan sumber benar, jika belum ada keputusan, sama dengan selisih asli. |
 | `nilai_dipakai_ton` / `nilai_dipakai_kg` | Angka dari sumber yang dipilih (Tiket, Excel lama, atau Qty pembelian). |
 | `sumber_dipakai` | Kode sumber yang disetujui: `tiket`, `excel`, atau `pembelian`. |
 | `direvisi` / `koreksi` | Penanda keputusan beserta alasan, pembuat, dan waktu; keputusan dapat dibatalkan. |
@@ -128,3 +128,19 @@ Keputusan **tidak menimpa** `tiket_baris`, `pembelian`, atau angka Excel lama.
 Untuk selisih bulanan Jul/Agu 2026, sumber yang dipilih juga menjadi
 `sumber_intake` pada `GET /api/ringkasan-elemen`; bulan tanpa keputusan tetap
 memakai urutan lama: tiket (bila wajar) → referensi rekonsiliasi → pembelian.
+
+
+## Kepatuhan vendor sampling
+
+| Istilah | Arti |
+|---------|------|
+| `Tepat Waktu` / `Terlambat` | Status yang **sudah tersimpan** di sheet Log/Summary workbook. Modul tidak menghitung ulang. |
+| `Tanpa Data Waktu*` / `Tanpa Ada Perwakilan` | Kunjungan tanpa data waktu/perwakilan. Masuk `Total Kunjungan`, tetapi tidak masuk pembilang `% Tepat Waktu`. |
+| `Total Kunjungan` | `Tepat Waktu + Terlambat + Tanpa Data Waktu` sesuai baris TOTAL sheet Summary. |
+| `% Tepat Waktu` | `Tepat Waktu ÷ (Tepat Waktu + Terlambat)`; baris tanpa data waktu tidak ikut pembilang maupun penyebut. |
+| `Selisih Waktu (Menit)` | Angka menit dari workbook. Formula Agu/Sep: `≥ 40 = Tepat Waktu`; Okt/Nov: `≥ 40 = Terlambat`. Header menulis "Min. 30 menit", tetapi nilai 40 menit dari formula dipertahankan. |
+
+Sumber: `Laporan_Monitoring_Vendor_RM_Purchasing (1).xlsx` (8 sheet: 4 Log + 4 Summary).
+Endpoint `GET /api/kepatuhan-vendor-sampling?bulan=yyyy-mm` mengembalikan
+metadata, KPI, ringkasan vendor, dan log; `format=xlsx` mengekspor sheet
+`Summary` dan `Log Monitoring` untuk periode terpilih.

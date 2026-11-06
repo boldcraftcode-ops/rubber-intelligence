@@ -50,7 +50,7 @@ Menu kiri dikelompokkan supaya tidak perlu membaca 16 baris sekaligus:
 
 - 📊 **Analitik** — Margin Performance, Intake Analisis, Stok, Stok vs Margin
 - 💰 **Harga & Perencanaan** — Aturan Harga, Simulasi, Perencanaan
-- 🛡️ **Pengawasan & Kontrol** — Alarm, Rekonsiliasi, Kualitas Data
+- 🛡️ **Pengawasan & Kontrol** — Alarm, Rekonsiliasi, Kualitas Data, Kepatuhan vendor sampling
 - 🗂️ **Master Data** — Master Vendor, Grade & Harga
 - 📥 **Input Data** — Input Harian, Unggah Data
 - ⚙️ **Administrasi** — Database, Pengguna (hanya terlihat oleh admin)
@@ -278,6 +278,32 @@ Efek keputusan:
    pada kartu **RM Stock – Intake vs Pricing**. Memilih Excel lama mengubah
    angka intake bulanan itu ke nilai Excel; memilih Tiket memakai angka
    referensi tiket. Modul lain tidak diubah.
+
+## 3i. Kepatuhan vendor sampling
+
+Menu **Pengawasan & Kontrol → Kepatuhan vendor sampling** membaca workbook
+`Laporan_Monitoring_Vendor_RM_Purchasing (1).xlsx` yang disalin dari GitHub ke
+akar repo. Delapan sheet di dalamnya dipasangkan otomatis menjadi empat
+periode: **Agustus, September, Oktober, November 2026**; setiap periode punya
+satu sheet `Log Monitoring ...` dan satu sheet `Summary ...`.
+
+Halaman menyediakan:
+
+- pilihan periode, pencarian vendor/catatan, tombol **Refresh**, dan
+  **Ekspor Excel** untuk periode aktif (sheet `Summary` + `Log Monitoring`);
+- kartu angka kunci: Total kunjungan, Tepat waktu, Terlambat, Tanpa data waktu,
+  dan % Tepat waktu;
+- tabel perbandingan empat bulan, tabel `Summary` per vendor, serta tabel log
+  detail mengikuti jumlah kolom aslinya (16 kolom untuk Agu/Sep, 19 kolom
+  untuk Okt/Nov).
+
+Data **ditampilkan apa adanya** dari workbook melalui
+`GET /api/kepatuhan-vendor-sampling`. Tidak ada tabel database, unggahan,
+perhitungan ulang, atau koreksi otomatis. Perlu diperhatikan: header log
+menulis *"Min. 30 menit"*, tetapi formula yang tersimpan memakai ambang
+**40 menit** dengan arah yang berbeda — Agu/Sep `selisih ≥ 40 = Tepat Waktu`,
+Okt/Nov `selisih ≥ 40 = Terlambat`. Perbedaan itu sengaja dijelaskan di layar
+dan tidak diam-diam diseragamkan.
 
 ## 4. Mengimpor data (tiket, stok, pembelian, dll.)
 
