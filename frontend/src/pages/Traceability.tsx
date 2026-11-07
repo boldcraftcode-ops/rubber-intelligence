@@ -520,9 +520,6 @@ export default function Traceability() {
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h2 className="text-lg font-semibold text-[#1D2434]">Traceability</h2>
-          <p className="mt-1 max-w-3xl text-xs leading-relaxed text-[#64676C]">
-            Volume Dry dari tiket tervalidasi dan dideduplikasi hanya bila seluruh baris sumber identik. Nama wilayah dicocokkan ke SCDF; Code sengaja kosong karena file referensi tidak menyediakan kode administrasi.
-          </p>
         </div>
         <div className="flex flex-wrap gap-2">
           <a className={kelasTombol} href={downloadUrl("/api/traceability", exportQuery)}>⬇ Ekspor Excel</a>
@@ -541,7 +538,6 @@ export default function Traceability() {
         </div>
       </div>
       <div aria-live="polite" className="text-xs">
-        <p className="text-[#64676C]">Unduh file lewat tombol <b>Unduh belum termapping</b>, isi kolom <b>SCDF District</b> dan <b>SCDF Sub-district</b> bersama-sama, lalu unggah file .xlsx di sini. Jangan ubah kolom sumber; pasangan target divalidasi terhadap SCDF dalam Kabupaten/Kota sumber yang sama. Baris dengan alasan Asal Getah tidak valid atau tanpa lokasi sumber biarkan kosong dan perbaiki dari data intake. Pemetaan tersimpan dapat dihapus dari detail Supplier Actors.</p>
         {imporMapping.isSuccess && <p className="mt-1 rounded-sm border border-[#A6F4C5] bg-[#ECFDF3] px-3 py-2 text-[#027A48]">{imporMapping.data.pesan} {imporMapping.data.baris_mapping_diisi} baris Excel terisi; {imporMapping.data.lokasi_dipetakan} lokasi unik diproses, {imporMapping.data.baris_direvisi} koreksi direvisi ({imporMapping.data.koreksi_baru} baru, {imporMapping.data.koreksi_diperbarui} diperbarui, {imporMapping.data.koreksi_tidak_berubah} sudah sama).</p>}
         {imporMapping.error && <p className="mt-1 whitespace-pre-line rounded-sm border border-[#FECACA] bg-[#FEF2F2] px-3 py-2 text-[#B42318]">{(imporMapping.error as Error).message}</p>}
       </div>
