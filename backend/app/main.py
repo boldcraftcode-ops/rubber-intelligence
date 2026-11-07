@@ -272,6 +272,7 @@ def buat_app(engine: Engine | None = None) -> FastAPI:
                     "vendor-profil",
                     "master-collector",
                     "kepatuhan-vendor-sampling",
+                    "traceability-tree",
                 ],
                 # versi kode ikut dilaporkan supaya mudah membandingkan
                 # folder yang dijalankan dengan kode terbaru di repo

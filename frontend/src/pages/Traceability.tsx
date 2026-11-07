@@ -90,97 +90,61 @@ function Kpi({ title, value, unit, note, onClick, active = false }: {
 }
 
 /* --------------------------------------------------------------------------
-   Tree node view: ilustrasi rantai pasok karet Pabrik -> T1 -> T2.
-   Data di sini contoh statis sesuai struktur yang diminta pemilik, BUKAN
-   agregasi tiket/intake. K5 sengaja punya dua sambungan (V2 dan V3) untuk
-   menunjukkan satu kolektor yang menyuplai dua vendor tanpa menggandakan
-   volume node: volume K5 adalah jumlah dua jalur tersebut.
+   Tree node view: Pabrik -> T1 vendor -> T2 kolektor.
+   Sumbernya DATA ASLI dari endpoint /api/traceability/tree (tiket_baris +
+   Master Vendor + Master Collector), bukan lagi contoh statis. Kode tier
+   sengaja dipertahankan: T1 = vendor, T2 = kolektor.
 -------------------------------------------------------------------------- */
 type ArahPohon = "vertikal" | "horizontal";
-type TierPohon = "pabrik" | "t1" | "t2";
+type TierPohon = "PABRIK" | "T1" | "T2";
 type TitikPohon = { x: number; y: number };
 type SimpulPohon = {
-  id: string; nama: string; tier: TierPohon; volumeKg: number;
+  id: string; kode: string; nama: string; tier: TierPohon; label: string;
+  volume_kg: number; tickets?: number; parents?: string[];
 };
-type SambunganPohon = { dari: string; ke: string; volumeKg: number };
+type SambunganPohon = { dari: string; ke: string; volume_kg: number };
+type DataPohon = {
+  sumber: string; filters: Record<string, any>; years: number[];
+  kode_tier: Record<string, string>; nodes: SimpulPohon[];
+  edges: SambunganPohon[]; anak_t1: Record<string, string[]>;
+  meta: Record<string, any>; catatan: string;
+};
 
 const WARNA_TIER: Record<TierPohon, string> = {
-  pabrik: "#14532D",
-  t1: "#175CD3",
-  t2: "#F79009",
+  PABRIK: "#14532D",
+  T1: "#175CD3",
+  T2: "#F79009",
 };
 
-const ID_T1 = ["V1", "V2", "V3", "V4"];
-const ID_T2 = ["K1", "K2", "K3", "K4", "K5", "K6", "K7", "K8", "K9", "K10"];
-
-/* K5 masuk ke V2 dan V3: satu kolektor, dua vendor. */
-const ANAK_T1: Record<string, string[]> = {
-  V1: ["K1", "K2", "K3", "K4"],
-  V2: ["K5"],
-  V3: ["K6", "K7", "K5"],
-  V4: ["K8", "K9", "K10"],
-};
-
-const SAMBUNGAN_PABRIK: SambunganPohon[] = [
-  { dari: "PABRIK", ke: "V1", volumeKg: 30_000 },
-  { dari: "PABRIK", ke: "V2", volumeKg: 18_000 },
-  { dari: "PABRIK", ke: "V3", volumeKg: 24_000 },
-  { dari: "PABRIK", ke: "V4", volumeKg: 28_000 },
-];
-
-const SAMBUNGAN_T1: SambunganPohon[] = [
-  { dari: "V1", ke: "K1", volumeKg: 9_000 },
-  { dari: "V1", ke: "K2", volumeKg: 8_000 },
-  { dari: "V1", ke: "K3", volumeKg: 7_000 },
-  { dari: "V1", ke: "K4", volumeKg: 6_000 },
-  { dari: "V2", ke: "K5", volumeKg: 18_000 },
-  { dari: "V3", ke: "K6", volumeKg: 9_000 },
-  { dari: "V3", ke: "K7", volumeKg: 7_000 },
-  { dari: "V3", ke: "K5", volumeKg: 8_000 },
-  { dari: "V4", ke: "K8", volumeKg: 12_000 },
-  { dari: "V4", ke: "K9", volumeKg: 9_000 },
-  { dari: "V4", ke: "K10", volumeKg: 7_000 },
-];
-
-const SEMUA_SAMBUNGAN = [...SAMBUNGAN_PABRIK, ...SAMBUNGAN_T1];
-const VOLUME_MIN = Math.min(...SEMUA_SAMBUNGAN.map((s) => s.volumeKg));
-const VOLUME_MAKS = Math.max(...SEMUA_SAMBUNGAN.map((s) => s.volumeKg));
-const VOLUME_PABRIK = SAMBUNGAN_PABRIK.reduce((n, s) => n + s.volumeKg, 0);
-const VOLUME_T1: Record<string, number> = Object.fromEntries(
-  SAMBUNGAN_PABRIK.map((s) => [s.ke, s.volumeKg]));
-const VOLUME_T2: Record<string, number> = {};
-for (const s of SAMBUNGAN_T1) {
-  VOLUME_T2[s.ke] = (VOLUME_T2[s.ke] ?? 0) + s.volumeKg;
+function lebarGaris(volumeKg: number, min: number, maks: number): number {
+  const rentang = maks - min || 1;
+  return 1.6 + ((volumeKg - min) / rentang) * 6;
 }
 
-const SIMPUL_POHON: SimpulPohon[] = [
-  { id: "PABRIK", nama: "Pabrik", tier: "pabrik", volumeKg: VOLUME_PABRIK },
-  ...ID_T1.map((id) => ({ id, nama: id, tier: "t1" as const, volumeKg: VOLUME_T1[id] })),
-  ...ID_T2.map((id) => ({ id, nama: id, tier: "t2" as const, volumeKg: VOLUME_T2[id] })),
-];
-
-function lebarGaris(volumeKg: number): number {
-  const rentang = VOLUME_MAKS - VOLUME_MIN || 1;
-  return 1.6 + ((volumeKg - VOLUME_MIN) / rentang) * 6;
-}
-
-function posisiPohon(arah: ArahPohon): {
-  viewBox: string; pos: Record<string, TitikPohon>;
-} {
+function posisiPohon(arah: ArahPohon, nodes: SimpulPohon[]) {
+  const t1 = nodes.filter((n) => n.tier === "T1");
+  const t2 = nodes.filter((n) => n.tier === "T2");
+  const pos: Record<string, TitikPohon> = {};
   if (arah === "horizontal") {
-    const yT1 = [90, 230, 370, 510];
-    const yT2 = [40, 100, 160, 220, 280, 340, 400, 460, 520, 580];
-    const pos: Record<string, TitikPohon> = { PABRIK: { x: 90, y: 310 } };
-    ID_T1.forEach((id, i) => { pos[id] = { x: 330, y: yT1[i] }; });
-    ID_T2.forEach((id, i) => { pos[id] = { x: 720, y: yT2[i] }; });
-    return { viewBox: "0 0 1000 620", pos };
+    const tinggi = Math.max(620, t1.length * 64, t2.length * 54);
+    pos.PABRIK = { x: 90, y: tinggi / 2 };
+    t1.forEach((n, i) => {
+      pos[n.id] = { x: 330, y: tinggi * (i + 1) / (t1.length + 1) };
+    });
+    t2.forEach((n, i) => {
+      pos[n.id] = { x: 720, y: tinggi * (i + 1) / (t2.length + 1) };
+    });
+    return { viewBox: `0 0 1000 ${tinggi}`, pos, lebar: 1000, tinggi };
   }
-  const xT1 = [160, 390, 620, 850];
-  const xT2 = [80, 170, 260, 350, 440, 530, 620, 710, 800, 890];
-  const pos: Record<string, TitikPohon> = { PABRIK: { x: 500, y: 70 } };
-  ID_T1.forEach((id, i) => { pos[id] = { x: xT1[i], y: 220 }; });
-  ID_T2.forEach((id, i) => { pos[id] = { x: xT2[i], y: 420 }; });
-  return { viewBox: "0 0 1000 520", pos };
+  const lebar = Math.max(1000, t1.length * 170, t2.length * 120);
+  pos.PABRIK = { x: lebar / 2, y: 70 };
+  t1.forEach((n, i) => {
+    pos[n.id] = { x: lebar * (i + 1) / (t1.length + 1), y: 220 };
+  });
+  t2.forEach((n, i) => {
+    pos[n.id] = { x: lebar * (i + 1) / (t2.length + 1), y: 420 };
+  });
+  return { viewBox: `0 0 ${lebar} 520`, pos, lebar, tinggi: 520 };
 }
 
 function jalurLengkung(a: TitikPohon, b: TitikPohon, arah: ArahPohon): string {
@@ -192,26 +156,60 @@ function jalurLengkung(a: TitikPohon, b: TitikPohon, arah: ArahPohon): string {
   return `M ${a.x} ${a.y} C ${a.x} ${a.y + dy * 0.55}, ${b.x} ${b.y - dy * 0.55}, ${b.x} ${b.y}`;
 }
 
-function PohonRantaiPasok() {
+function PohonRantaiPasok({ query, aktif }: { query: string; aktif: boolean }) {
   const [arah, setArah] = useState<ArahPohon>("vertikal");
+  const [batas, setBatas] = useState<number>(8);
   const [t1Terpilih, setT1Terpilih] = useState<string | null>(null);
-  const { viewBox, pos } = useMemo(() => posisiPohon(arah), [arah]);
+  const url = `/api/traceability/tree${query ? `?${query}&` : "?"}batas=${batas}`;
+  const pohon = useQuery<DataPohon>({
+    queryKey: ["traceability-tree", query, batas],
+    queryFn: () => ambilJson(url),
+    enabled: aktif,
+    staleTime: 60_000,
+  });
+
+  const data = pohon.data;
+  const { viewBox, pos, lebar, tinggi } = useMemo(
+    () => posisiPohon(arah, data?.nodes ?? []), [arah, data?.nodes]);
+  const minVolume = useMemo(() => {
+    const nilai = (data?.edges ?? []).map((e) => e.volume_kg);
+    return nilai.length ? Math.min(...nilai) : 0;
+  }, [data?.edges]);
+  const maksVolume = useMemo(() => {
+    const nilai = (data?.edges ?? []).map((e) => e.volume_kg);
+    return nilai.length ? Math.max(...nilai) : 1;
+  }, [data?.edges]);
   const t2Sorot = useMemo(
-    () => new Set(t1Terpilih ? ANAK_T1[t1Terpilih] ?? [] : []),
-    [t1Terpilih]);
+    () => new Set(t1Terpilih ? data?.anak_t1?.[t1Terpilih] ?? [] : []),
+    [t1Terpilih, data?.anak_t1]);
   const sambunganSorot = useMemo<Set<string> | null>(() => {
     if (!t1Terpilih) return null;
     const hasil = new Set<string>([`PABRIK>${t1Terpilih}`]);
-    for (const s of SAMBUNGAN_T1) {
-      if (s.dari === t1Terpilih) hasil.add(`${s.dari}>${s.ke}`);
+    for (const e of data?.edges ?? []) {
+      if (e.dari === t1Terpilih) hasil.add(`${e.dari}>${e.ke}`);
     }
     return hasil;
-  }, [t1Terpilih]);
+  }, [t1Terpilih, data?.edges]);
 
-  const anak = t1Terpilih ? ANAK_T1[t1Terpilih] ?? [] : [];
-  const volumeTerpilih = t1Terpilih ? VOLUME_T1[t1Terpilih] ?? 0 : 0;
+  const anak = t1Terpilih ? data?.anak_t1?.[t1Terpilih] ?? [] : [];
+  const simpulTerpilih = data?.nodes.find((n) => n.id === t1Terpilih);
   const pilihT1 = (id: string) =>
     setT1Terpilih((sebelumnya) => sebelumnya === id ? null : id);
+  const padat = Math.max(data?.meta?.total_t1 ?? 0, data?.meta?.total_t2 ?? 0) > 12;
+
+  if (!aktif) return null;
+  if (pohon.isLoading) {
+    return <p className="p-4 text-sm text-[#64676C]">⏳ Memuat data rantai pasok…</p>;
+  }
+  if (pohon.error) {
+    return (
+      <div className="m-4 rounded-sm border border-[#FECACA] bg-[#FEF2F2] px-3 py-2 text-xs text-[#B91C1C]">
+        Gagal memuat data asli: {(pohon.error as Error).message}
+        <button className="ml-2 underline" onClick={() => pohon.refetch()}>Coba lagi</button>
+      </div>
+    );
+  }
+  if (!data) return null;
 
   return (
     <div className="p-4">
@@ -219,17 +217,34 @@ function PohonRantaiPasok() {
         <div>
           <h2 className="text-base font-semibold text-[#1D2434]">Tree node view</h2>
           <p className="mt-0.5 text-xs text-[#64676C]">
-            Traceability rantai pasok karet · Pabrik → Tier 1 vendor → Tier 2 kolektor
+            Traceability rantai pasok karet · <b>data asli</b> · Pabrik → T1 vendor → T2 kolektor
+          </p>
+          <p className="mt-0.5 text-[10px] text-[#9AA0A6]">
+            Sumber: {data.sumber} · Tahun {data.filters.year ?? "terbaru"} · Periode {data.filters.period}
+            {data.filters.supplier ? ` · Supplier ${data.filters.supplier}` : ""}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-1.5">
-          <span className="mr-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-[#64676C]">Arah</span>
+          <label className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-[#64676C]">
+            T1
+            <select className="rounded-sm border border-[#D1D5DB] bg-white px-1.5 py-1 text-[11px] font-normal normal-case text-[#1D2434]"
+                    value={batas} onChange={(e) => { setBatas(Number(e.target.value)); setT1Terpilih(null); }}>
+              <option value={4}>4 terbesar</option>
+              <option value={8}>8 terbesar</option>
+              <option value={12}>12 terbesar</option>
+              <option value={0}>Semua</option>
+            </select>
+          </label>
           <button type="button"
             className={`rounded-sm px-2.5 py-1 text-[11px] font-semibold ${arah === "vertikal" ? "bg-[#1D2434] text-white" : "border border-[#E4E5E8] text-[#64676C] hover:bg-[#F8F8F8]"}`}
-            onClick={() => setArah("vertikal")}>Vertikal · atas → bawah</button>
+            onClick={() => setArah("vertikal")}>Vertikal</button>
           <button type="button"
             className={`rounded-sm px-2.5 py-1 text-[11px] font-semibold ${arah === "horizontal" ? "bg-[#1D2434] text-white" : "border border-[#E4E5E8] text-[#64676C] hover:bg-[#F8F8F8]"}`}
-            onClick={() => setArah("horizontal")}>Horizontal · kiri → kanan</button>
+            onClick={() => setArah("horizontal")}>Horizontal</button>
+          <button type="button" className="rounded-sm border border-[#E4E5E8] px-2.5 py-1 text-[11px] font-semibold text-[#64676C] hover:bg-[#F8F8F8]"
+                  disabled={pohon.isFetching} onClick={() => pohon.refetch()}>
+            {pohon.isFetching ? "⏳ Memuat…" : "↻ Refresh"}
+          </button>
           {t1Terpilih && (
             <button type="button" className="rounded-sm border border-[#E4E5E8] px-2.5 py-1 text-[11px] font-semibold text-[#64676C] hover:bg-[#F8F8F8]"
               onClick={() => setT1Terpilih(null)}>Reset sorotan</button>
@@ -238,67 +253,74 @@ function PohonRantaiPasok() {
       </div>
 
       <div className="mb-3 flex flex-wrap gap-x-5 gap-y-1 text-[11px] text-[#64676C]">
-        {(["pabrik", "t1", "t2"] as TierPohon[]).map((tier) => (
+        {(["PABRIK", "T1", "T2"] as TierPohon[]).map((tier) => (
           <span key={tier} className="flex items-center gap-1.5">
             <i className="inline-block h-3 w-3 rounded-full" style={{ background: WARNA_TIER[tier] }} />
-            {tier === "pabrik" ? "Pabrik (root)" : tier === "t1" ? "Tier 1 · vendor" : "Tier 2 · kolektor"}
+            {tier} · {data.kode_tier[tier]}
           </span>
         ))}
         <span>Garis makin tebal = volume makin besar</span>
+        <span>{data.meta.total_t1} T1 · {data.meta.total_t2} T2</span>
+        {data.meta.terpotong > 0 && <span>{data.meta.terpotong} T1 lain tidak ditampilkan</span>}
       </div>
 
-      <div className="rounded-sm border border-[#E4E5E8] bg-white p-2">
+      <div className="overflow-x-auto rounded-sm border border-[#E4E5E8] bg-white p-2">
         <svg viewBox={viewBox} preserveAspectRatio="xMidYMid meet"
-             className="w-full" style={{ height: arah === "vertikal" ? 520 : 600 }}
-             role="img" aria-label="Pohon rantai pasok karet: satu pabrik, empat vendor T1, sepuluh kolektor T2">
-          {SEMUA_SAMBUNGAN.map((s) => {
-            const kunci = `${s.dari}>${s.ke}`;
+             className="w-full"
+             style={{ height: arah === "vertikal" ? 520 : Math.min(900, tinggi),
+                      minWidth: arah === "vertikal" ? Math.min(1800, lebar) : undefined }}
+             role="img" aria-label="Pohon rantai pasok karet dari data asli">
+          {data.edges.map((e) => {
+            const a = pos[e.dari], b = pos[e.ke];
+            if (!a || !b) return null;
+            const kunci = `${e.dari}>${e.ke}`;
             const disorot = sambunganSorot?.has(kunci) ?? false;
             const redup = Boolean(t1Terpilih) && !disorot;
             return (
               <path key={kunci}
-                d={jalurLengkung(pos[s.dari], pos[s.ke], arah)}
+                d={jalurLengkung(a, b, arah)}
                 fill="none"
                 stroke={redup ? "#E4E5E8" : t1Terpilih ? "#175CD3" : "#CBD5E1"}
-                strokeWidth={lebarGaris(s.volumeKg)}
+                strokeWidth={lebarGaris(e.volume_kg, minVolume, maksVolume)}
                 strokeLinecap="round"
                 opacity={redup ? 0.35 : 1}>
-                <title>{`${s.dari} → ${s.ke}: ${fmtAngka(s.volumeKg, 0)} kg`}</title>
+                <title>{`${e.dari} → ${e.ke}: ${fmtAngka(e.volume_kg, 0)} kg`}</title>
               </path>
             );
           })}
-          {SIMPUL_POHON.map((s) => {
-            const p = pos[s.id];
-            const radius = s.tier === "pabrik" ? 42 : s.tier === "t1" ? 34 : 29;
-            const terpilih = s.id === t1Terpilih;
-            const sorot = terpilih || t2Sorot.has(s.id);
-            const redup = Boolean(t1Terpilih) && s.tier !== "pabrik" && !sorot;
-            const bolehKlik = s.tier === "t1";
+          {data.nodes.map((n) => {
+            const p = pos[n.id];
+            if (!p) return null;
+            const radius = n.tier === "PABRIK" ? 42 : padat ? 24 : 32;
+            const terpilih = n.id === t1Terpilih;
+            const sorot = terpilih || t2Sorot.has(n.id);
+            const redup = Boolean(t1Terpilih) && n.tier !== "PABRIK" && !sorot;
+            const bolehKlik = n.tier === "T1";
             return (
-              <g key={s.id}
+              <g key={n.id}
                 opacity={redup ? 0.28 : 1}
                 style={{ cursor: bolehKlik ? "pointer" : "default" }}
                 role={bolehKlik ? "button" : undefined}
                 tabIndex={bolehKlik ? 0 : undefined}
                 aria-pressed={bolehKlik ? terpilih : undefined}
-                aria-label={bolehKlik ? `Sorot T2 di bawah ${s.id}` : undefined}
-                onClick={bolehKlik ? () => pilihT1(s.id) : undefined}
+                aria-label={bolehKlik ? `Sorot T2 di bawah ${n.kode}` : undefined}
+                onClick={bolehKlik ? () => pilihT1(n.id) : undefined}
                 onKeyDown={bolehKlik ? (e) => {
-                  if (e.key === "Enter" || e.key === " ") { e.preventDefault(); pilihT1(s.id); }
+                  if (e.key === "Enter" || e.key === " ") { e.preventDefault(); pilihT1(n.id); }
                 } : undefined}>
-                <title>{`${s.nama} · ${fmtAngka(s.volumeKg, 0)} kg`}</title>
+                <title>{`${n.tier} · ${n.kode} · ${n.nama} · ${fmtAngka(n.volume_kg, 0)} kg`}</title>
                 {sorot && <circle cx={p.x} cy={p.y} r={radius + 7}
                   fill="none" stroke="#FF1313" strokeWidth={2.5} opacity={0.95} />}
                 <circle cx={p.x} cy={p.y} r={radius}
-                  fill={WARNA_TIER[s.tier]} stroke="#FFFFFF" strokeWidth={3}
+                  fill={WARNA_TIER[n.tier]} stroke="#FFFFFF" strokeWidth={3}
                   style={{ filter: sorot ? "drop-shadow(0 2px 4px rgba(29,36,52,0.25))" : undefined }} />
                 <text x={p.x} y={p.y - 4} textAnchor="middle" dominantBaseline="middle"
-                  fontFamily="Arial, Helvetica, sans-serif" fontSize={s.tier === "pabrik" ? 12 : 11}
-                  fontWeight={700} fill="#FFFFFF" pointerEvents="none">{s.nama}</text>
+                  fontFamily="Arial, Helvetica, sans-serif" fontSize={padat ? 9 : 11}
+                  fontWeight={700} fill="#FFFFFF" pointerEvents="none">{n.label}</text>
                 <text x={p.x} y={p.y + 11} textAnchor="middle" dominantBaseline="middle"
-                  fontFamily="Arial, Helvetica, sans-serif" fontSize={9}
+                  fontFamily="Arial, Helvetica, sans-serif" fontSize={padat ? 8 : 9}
                   fontWeight={600} fill="#FFFFFF" pointerEvents="none">
-                  {fmtAngka(s.volumeKg, 0)} kg
+                  {fmtAngka(n.volume_kg, 0)} kg
                 </text>
               </g>
             );
@@ -308,17 +330,20 @@ function PohonRantaiPasok() {
 
       <div className="mt-3 grid gap-3 text-[11px] leading-relaxed text-[#64676C] md:grid-cols-2">
         <p className="rounded-sm bg-[#F8F8F8] p-3">
-          <b className="text-[#1D2434]">Interaksi.</b> Klik node T1 untuk menyorot semua T2 di bawahnya;
+          <b className="text-[#1D2434]">Interaksi.</b> Klik node <b>T1</b> untuk menyorot semua <b>T2</b> di bawahnya;
           klik lagi atau tekan <b>Reset sorotan</b> untuk kembali.{" "}
           {t1Terpilih ? (
-            <>Saat ini <b>{t1Terpilih}</b> menyorot {anak.length} node T2: <b>{anak.join(", ")}</b> · volume {fmtAngka(volumeTerpilih, 0)} kg.</>
+            <>Saat ini <b>{t1Terpilih}</b> ({simpulTerpilih?.nama ?? t1Terpilih}) menyorot {anak.length} node T2
+              {anak.length ? `: ${anak.join(", ")}` : ""} · volume {fmtAngka(simpulTerpilih?.volume_kg ?? 0, 0)} kg.</>
           ) : "Belum ada T1 dipilih."}
         </p>
         <p className="rounded-sm bg-[#F8F8F8] p-3">
-          <b className="text-[#1D2434]">Catatan data.</b> Ini diagram contoh statis sesuai struktur yang
-          diminta, bukan agregasi tiket/intake. <b>K5</b> menyuplai <b>V2</b> dan <b>V3</b>; volume node K5
-          {" "}{fmtAngka(VOLUME_T2.K5, 0)} kg adalah gabungan 18.000 kg + 8.000 kg, sehingga tidak dihitung
-          dua kali sebagai dua kolektor.
+          <b className="text-[#1D2434]">Catatan data.</b> {data.catatan}{" "}
+          Kode tier <b>tidak ditukar</b>: <b>T1 = vendor</b>, <b>T2 = kolektor</b>. Volume pabrik{" "}
+          {fmtAngka(data.meta.volume_pabrik_kg, 0)} kg; volume T1 tanpa kolektor tercatat{" "}
+          {fmtAngka(data.meta.volume_tanpa_kolektor_kg, 0)} kg.
+          {data.meta.total_t2 === 0 && " Belum ada kolektor T2 yang cocok pada filter ini."}
+          {data.meta.ambiguous_lane_count > 0 && ` ${data.meta.ambiguous_lane_count} lintasan memiliki beberapa kolektor cocok; volume tetap tidak digandakan.`}
         </p>
       </div>
     </div>
@@ -644,7 +669,7 @@ export default function Traceability() {
             <p className="px-4 py-2 text-[10px] leading-relaxed text-[#9AA0A6]">Tier T1 dipakai untuk vendor; T2 dipakai saat ada kolektor berafiliasi ke vendor itu yang desanya cocok dengan desa Asal Getah. Kolektor tidak dibuat baris terpisah: desa, kolektor, dan vendor dihitung sebagai satu supplier actor (satu rantai). Rantai ini inferensi dari data intake, bukan catatan transaksi jual-beli. Terminal dan tujuan penjualan tidak tercatat di intake/master. Klik nama supplier untuk melihat rincian Asal Getah. Sourcing types diisi langsung dari dropdown (Direct Smallholder / Indirect Smallholder / Own Plantation); bila belum diisi, klasifikasi Master Vendor dipakai sebagai fallback. Supplier class di detail berbasis Dry (MT) per supplier per bulan; ringkasan distribusi kelas tersedia di menu Master Vendor. * Flag produsen langsung bersifat sementara.</p>
           </div>
         ) : (
-          <PohonRantaiPasok />
+          <PohonRantaiPasok query={query} aktif={tab === "pohon"} />
         )}
       </div>
       {gapLevel && (

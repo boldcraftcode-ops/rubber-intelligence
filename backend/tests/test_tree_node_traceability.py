@@ -1,8 +1,8 @@
 """Tab Tree node view pada modul Traceability.
 
-Tes sumber ini menjaga struktur diagram yang diminta pemilik: satu pabrik,
-4 vendor T1, 10 kolektor T2, K5 menyuplai dua vendor, serta interaksi klik T1.
-Tidak ada endpoint/table backend baru; diagram murni komponen React.
+Setelah koreksi pemilik, diagram **tidak lagi memakai contoh statis**.
+Sumbernya endpoint data asli `/api/traceability/tree`; kode tier tetap
+T1 = vendor dan T2 = kolektor.
 """
 from pathlib import Path
 
@@ -10,48 +10,45 @@ AKAR = Path(__file__).resolve().parents[2]
 SUMBER = (AKAR / "frontend/src/pages/Traceability.tsx").read_text(encoding="utf-8")
 
 
-def test_tab_ketiga_ada_di_sebelah_supplier_actors():
+def test_tab_ketiga_dan_sumber_data_asli():
     assert 'useState<"regions" | "actors" | "pohon">' in SUMBER
-    assert 'onClick={() => setTab("actors")}' in SUMBER
     assert 'onClick={() => setTab("pohon")}' in SUMBER
     assert '>Tree node view</button>' in SUMBER
-    assert '<PohonRantaiPasok />' in SUMBER
-    assert 'tab === "actors" ? (' in SUMBER
+    assert '<PohonRantaiPasok query={query} aktif={tab === "pohon"} />' in SUMBER
+    assert '/api/traceability/tree' in SUMBER
+    assert 'traceability-tree' in SUMBER
+    assert '<b>data asli</b>' in SUMBER
+    assert 'data.sumber' in SUMBER
 
 
-def test_struktur_pabrik_t1_t2():
-    assert 'const ID_T1 = ["V1", "V2", "V3", "V4"];' in SUMBER
-    assert 'const ID_T2 = ["K1", "K2", "K3", "K4", "K5", "K6", "K7", "K8", "K9", "K10"];' in SUMBER
-    assert 'V1: ["K1", "K2", "K3", "K4"]' in SUMBER
-    assert 'V2: ["K5"]' in SUMBER
-    assert 'V3: ["K6", "K7", "K5"]' in SUMBER
-    assert 'V4: ["K8", "K9", "K10"]' in SUMBER
-    # K5 = satu kolektor, dua vendor: dua sambungan masuk ke node yang sama.
-    assert SUMBER.count('ke: "K5"') == 2
-    assert 'volume node K5' in SUMBER
-    assert 'tidak dihitung' in SUMBER
+def test_contoh_statis_sudah_dihapus():
+    assert 'const ID_T1 = ["V1", "V2", "V3", "V4"];' not in SUMBER
+    assert 'const ID_T2 = ["K1", "K2", "K3", "K4", "K5"' not in SUMBER
+    assert 'Ini diagram contoh statis' not in SUMBER
+    assert 'volume node K5' not in SUMBER
+    assert 'K5 juga menyuplai' not in SUMBER
 
 
-def test_tampilan_sesuai_permintaan():
-    assert 'pabrik: "#14532D"' in SUMBER
-    assert 't1: "#175CD3"' in SUMBER
-    assert 't2: "#F79009"' in SUMBER
+def test_kode_tier_tidak_ditukar():
+    assert 'type TierPohon = "PABRIK" | "T1" | "T2";' in SUMBER
+    assert 'PABRIK: "#14532D"' in SUMBER
+    assert 'T1: "#175CD3"' in SUMBER
+    assert 'T2: "#F79009"' in SUMBER
+    assert 'data.kode_tier[tier]' in SUMBER
+    assert '<b>T1 = vendor</b>' in SUMBER
+    assert '<b>T2 = kolektor</b>' in SUMBER
+    assert 'T1 = vendor, T2 = kolektor' in SUMBER
+
+
+def test_tampilan_dan_interaksi_tetap():
     assert 'function jalurLengkung' in SUMBER
-    assert 'C ${a.x}' in SUMBER or 'C ${a.x + dx' in SUMBER
-    assert 'strokeWidth={lebarGaris(s.volumeKg)}' in SUMBER
     assert 'function lebarGaris' in SUMBER
+    assert 'strokeWidth={lebarGaris(e.volume_kg, minVolume, maksVolume)}' in SUMBER
     assert '<circle cx={p.x} cy={p.y} r={radius}' in SUMBER
-    assert '{fmtAngka(s.volumeKg, 0)} kg' in SUMBER
+    assert '{fmtAngka(n.volume_kg, 0)} kg' in SUMBER
     assert 'fontFamily="Arial, Helvetica, sans-serif"' in SUMBER
-    assert 'bg-white' in SUMBER
-
-
-def test_arah_dan_interaksi_klik_t1():
-    assert 'useState<ArahPohon>("vertikal")' in SUMBER
     assert 'setArah("horizontal")' in SUMBER
     assert 'setArah("vertikal")' in SUMBER
-    assert 'const pilihT1' in SUMBER
-    assert 'onClick={bolehKlik ? () => pilihT1(s.id) : undefined}' in SUMBER
     assert 'const t2Sorot' in SUMBER
     assert 'const sambunganSorot' in SUMBER
-    assert 'Klik node T1 untuk menyorot semua T2 di bawahnya' in SUMBER
+    assert 'Klik node <b>T1</b> untuk menyorot semua <b>T2</b>' in SUMBER

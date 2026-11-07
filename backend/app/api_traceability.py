@@ -764,6 +764,142 @@ def pasang_router_traceability(app, ambil_session):
             ),
         }
 
+    @router.get("/tree")
+    @router.get("/pohon", include_in_schema=False)
+    def pohon_rantai_pasok(
+        tahun: int | None = None,
+        periode: str = "ALL",
+        supplier: str | None = None,
+        eudr: str = Query("all", pattern="^(all|eudr|non_eudr)$"),
+        include_latex: bool = False,
+        batas: int = Query(8, ge=0, le=100,
+                           description="Jumlah T1 terbesar; 0 = semua vendor"),
+        session: Session = dep):
+        """Pohon rantai pasok dari data intake + master, bukan contoh statis.
+
+        Kode tier sengaja dipertahankan: **T1 = vendor**, **T2 = kolektor**.
+        Pabrik hanya simpul akar visual; volumenya adalah jumlah Dry (kg)
+        vendor T1 yang tampil. Volume T2 berasal dari lintasan
+        ``_supply_chain_lanes`` sehingga tidak dihitung berulang saat satu
+        desa cocok dengan beberapa kolektor.
+        """
+        years, effective_year, base = filter_data(
+            session, tahun, periode, supplier, eudr, include_latex)
+        semua = actors(session, base)
+        semua.sort(key=lambda a: (
+            -float(a.get("period_turnover_mt") or 0),
+            str(a.get("supplier_code") or "")))
+        dipilih = semua if batas == 0 else semua[:batas]
+
+        nodus: list[dict] = [{
+            "id": "PABRIK", "kode": "PABRIK", "nama": "Pabrik",
+            "tier": "PABRIK", "label": "Pabrik", "volume_kg": 0.0,
+            "tickets": 0, "parents": [],
+        }]
+        sambungan: list[dict] = []
+        t2_map: dict[str, dict] = {}
+        anak_t1: dict[str, list[str]] = {}
+        ambiguous = 0
+        langsung_kg = 0.0
+
+        for a in dipilih:
+            kode = str(a.get("supplier_code") or "")
+            if not kode:
+                continue
+            nama = str(a.get("supplier") or kode)
+            kg = round(float(a.get("period_turnover_mt") or 0) * 1000, 1)
+            if kg <= 0:
+                continue
+            tiket = int(a.get("tickets") or 0)
+            nodus.append({
+                "id": kode, "kode": kode, "nama": nama, "tier": "T1",
+                "label": kode, "volume_kg": kg, "tickets": tiket,
+                "parents": ["PABRIK"],
+            })
+            sambungan.append({"dari": "PABRIK", "ke": kode, "volume_kg": kg})
+
+            origins = _actor_origins(session, base, kode)
+            rantai = _supply_chain_lanes(session, kode, origins)
+            ambiguous += int(rantai.get("ambiguous_lane_count") or 0)
+            per_kolektor: dict[str, float] = {}
+            info_kolektor: dict[str, dict] = {}
+            for lane in rantai.get("lanes") or []:
+                for c in lane.get("collectors") or []:
+                    ck_info = str(c.get("kode") or "")
+                    if ck_info:
+                        info_kolektor.setdefault(ck_info, {
+                            "nama": c.get("nama") or ck_info,
+                            "desa": c.get("desa"),
+                            "match": c.get("match"),
+                        })
+                c = lane.get("collector")
+                if not c:
+                    continue
+                ck = str(c.get("kode") or "")
+                if not ck:
+                    continue
+                per_kolektor[ck] = (per_kolektor.get(ck, 0.0)
+                                    + float(lane.get("dry_mt") or 0) * 1000)
+
+            anak: list[str] = []
+            for ck, nilai in sorted(per_kolektor.items(), key=lambda x: -x[1]):
+                kg_c = round(nilai, 1)
+                if kg_c <= 0:
+                    continue
+                info = info_kolektor.get(ck, {})
+                rek = t2_map.setdefault(ck, {
+                    "id": ck, "kode": ck,
+                    "nama": info.get("nama") or ck,
+                    "tier": "T2", "label": ck,
+                    "volume_kg": 0.0, "desa": info.get("desa"),
+                    "match": info.get("match"), "parents": [],
+                })
+                rek["volume_kg"] = round(rek["volume_kg"] + kg_c, 1)
+                if kode not in rek["parents"]:
+                    rek["parents"].append(kode)
+                sambungan.append({"dari": kode, "ke": ck, "volume_kg": kg_c})
+                anak.append(ck)
+            anak_t1[kode] = anak
+            langsung_kg += max(0.0, kg - sum(per_kolektor.values()))
+
+        t2_nodes = sorted(t2_map.values(),
+                          key=lambda n: (-float(n["volume_kg"]), str(n["kode"])))
+        nodus.extend(t2_nodes)
+        root_kg = round(sum(float(n["volume_kg"]) for n in nodus
+                            if n["tier"] == "T1"), 1)
+        nodus[0]["volume_kg"] = root_kg
+        nodus[0]["tickets"] = sum(int(n.get("tickets") or 0) for n in nodus
+                                  if n["tier"] == "T1")
+        return {
+            "sumber": "tiket_baris + Master Vendor + Master Collector",
+            "filters": {
+                "year": effective_year, "period": periode.upper(),
+                "supplier": supplier, "eudr": eudr,
+                "include_latex": include_latex, "batas": batas,
+            },
+            "years": years,
+            "kode_tier": {"PABRIK": "Pabrik", "T1": "Vendor", "T2": "Kolektor"},
+            "nodes": nodus,
+            "edges": sambungan,
+            "anak_t1": anak_t1,
+            "meta": {
+                "total_t1": len([n for n in nodus if n["tier"] == "T1"]),
+                "total_t2": len(t2_nodes),
+                "total_t1_semua": len(semua),
+                "terpotong": max(0, len(semua) - len(dipilih)),
+                "volume_pabrik_kg": root_kg,
+                "volume_tanpa_kolektor_kg": round(langsung_kg, 1),
+                "ambiguous_lane_count": ambiguous,
+            },
+            "catatan": (
+                "Data asli dari tiket intake dan master; T1 tetap vendor, T2 tetap "
+                "kolektor. Pabrik adalah simpul akar visual. Volume memakai Dry (kg) "
+                "pada filter halaman. Sebagian volume T1 dapat langsung masuk tanpa "
+                "kolektor tercatat; volume T2 adalah jumlah lintasan yang mempunyai "
+                "kolektor, bukan volume vendor yang diduplikasi."
+            ),
+        }
+
     @router.get("/actors/{supplier_code}")
     def detail_supplier_actor(supplier_code: str, tahun: int | None = None,
                               periode: str = "ALL", eudr: str = "all",
