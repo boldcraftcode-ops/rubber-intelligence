@@ -347,6 +347,25 @@ ada tabel database baru. Quick-fill ditujukan untuk nilai yang seragam;
 koreksi yang berbeda-beda per baris tetap lebih cocok lewat alur Excel
 pratinjau + konfirmasi.
 
+## 3k. Bar intake pada peta provinsi (sejak 08/11/2026)
+
+Buka **Intake Analisis**, lalu kartu **Sebaran Intake per Provinsi Indonesia**
+dan pilih lapisan **Intake tercatat**. Centang **Bar per wilayah** (bawaan: aktif):
+setiap provinsi yang punya `kg_total > 0` dan namanya cocok dengan batas peta
+mendapat satu **bar oranye vertikal** di titik tengah daratan terbesarnya. Titik
+bar dihitung dari geometri `indonesia-provinsi.geojson`, bukan koordinat yang
+diketik manual, sehingga bar tetap mengikuti bentuk peta bila berkas peta
+diganti. Titik kecil putih di kaki bar menandai provinsi yang dimaksud.
+
+Tinggi bar memakai **skala logaritmik** relatif terhadap intake terkecil dan
+terbesar pada periode terpilih supaya provinsi bernilai kecil tidak hilang;
+warna choropleth biru tetap memakai skala warna lamanya. Arahkan kursor ke
+provinsi untuk membaca angka Dry yang pasti. Matikan centang **Bar per wilayah**
+bila ingin melihat peta warna saja. Bar **tidak** muncul pada lapisan **Sentra
+produksi**, dan provinsi yang belum cocok dengan batas peta tetap tercantum di
+panel **Belum terpetakan ke batas peta** tanpa bar. Tidak ada endpoint, tabel,
+atau agregasi backend yang berubah.
+
 ## 4. Mengimpor data (tiket, stok, pembelian, dll.)
 
 Selain lewat tab **Unggah Data**, impor bisa dijalankan dari terminal
