@@ -1,8 +1,9 @@
 """Bar intake per provinsi pada kartu 'Sebaran Intake per Provinsi Indonesia'.
 
 Perubahan ini murni presentasi SVG di frontend: bar oranye diletakkan pada
-titik tengah cincin poligon terbesar tiap provinsi yang punya intake. Tidak ada
-endpoint, agregasi, tabel, atau data sumber yang berubah.
+titik tengah cincin poligon terbesar tiap provinsi yang punya intake, dan
+pemilik punya opsi centang eksplisit untuk memakai grafik bar atau tidak.
+Tidak ada endpoint, agregasi, tabel, atau data sumber yang berubah.
 """
 from pathlib import Path
 
@@ -13,21 +14,40 @@ def _teks(rel: str) -> str:
     return (AKAR / rel).read_text(encoding="utf-8")
 
 
-def test_peta_menggambar_bar_hanya_untuk_intake_positif_dan_toggle_aktif():
-    """Bar muncul di lapisan intake, bisa disembunyikan, dan tidak hardcoded."""
+def test_peta_menggambar_bar_hanya_untuk_intake_positif():
+    """Bar muncul di lapisan intake dan tidak hardcoded."""
     peta = _teks("frontend/src/pages/PetaIntake.tsx")
 
     assert 'const WARNA_BAR = "#EA580C";' in peta
-    assert "const [tampilBar, setTampilBar] = useState(true);" in peta
-    assert "Bar per wilayah" in peta
     assert 'data-testid="bar-intake"' in peta
-    assert 'mode === "intake" && tampilBar && barRows.length > 0' in peta
+    assert 'mode === "intake" && pakaiGrafikBar && barRows.length > 0' in peta
     assert "if (!row || row.kg_total <= 0) return [];" in peta
     assert "<rect" in peta and "<circle" in peta
 
     # Toggle tidak boleh menghilangkan Refresh pada mode tanpa input periode.
     assert peta.count("<TombolRefreshKartu />") == 2
     assert "aksi={<TombolRefreshKartu />}" in peta
+
+
+def test_opsi_centang_pakai_grafik_bar_atau_tidak():
+    """Satu checkbox eksplisit: centang = pakai, kosong = tanpa grafik bar."""
+    peta = _teks("frontend/src/pages/PetaIntake.tsx")
+
+    assert "const [pakaiGrafikBar, setPakaiGrafikBar] = useState(true);" in peta
+    assert 'type="checkbox"' in peta
+    assert "checked={pakaiGrafikBar}" in peta
+    assert "setPakaiGrafikBar(e.target.checked)" in peta
+    assert 'aria-label="Opsi pakai grafik bar atau tidak"' in peta
+    assert "Pakai grafik bar" in peta
+    assert "Centang aktif: bar oranye tampil di tiap provinsi ber-intake." in peta
+    assert "Centang kosong: tanpa grafik bar, peta warna saja." in peta
+    assert "Grafik bar dimatikan" in peta
+    assert "centang 'Pakai grafik bar' untuk menampilkannya kembali." in peta
+    assert '" dengan grafik bar per provinsi" : " tanpa grafik bar"' in peta
+
+    # Label lama/state lama sudah tidak dipakai.
+    assert "Bar per wilayah" not in peta
+    assert "tampilBar" not in peta
 
 
 def test_pusat_bar_dihitung_dari_geometri_dan_skala_logaritmik():
@@ -68,15 +88,20 @@ def fmt_angka_masih_dipakai(peta: str) -> bool:
     return "fmtAngka(bar.kg, 0)" in peta and "fmtAngka(value, 0)" in peta
 
 
-def test_kartu_induk_dan_dokumentasi_menyebut_bar():
+def test_kartu_induk_dan_dokumentasi_menyebut_opsi_centang():
     """Keterangan kartu dan panduan pemakaian mengikuti perubahan UI."""
     analisis = _teks("frontend/src/pages/Analisis.tsx")
     cara = _teks("docs/CARA_MENJALANKAN.md")
     serah = _teks("docs/SERAH_TERIMA.md")
 
-    assert "bar oranye muncul pada provinsi yang punya intake" in analisis
+    assert "opsi centang 'Pakai grafik bar'" in analisis
+    assert "bisa dimatikan" in analisis
     assert "## 3k. Bar intake pada peta provinsi" in cara
-    assert "Bar per wilayah" in cara
+    assert "Opsi centang `Pakai grafik bar`" in cara
+    assert "pakai grafik bar atau tidak" in cara
+    assert "Kosongkan centang" in cara
+    assert "Grafik bar dimatikan" in cara
     assert "indonesia-provinsi.geojson" in cara
     assert "skala logaritmik" in cara
     assert "| 2026-11-08 | **Bar intake ditambahkan di peta provinsi**" in serah
+    assert "| 2026-11-08 | **Opsi centang eksplisit untuk grafik bar**" in serah

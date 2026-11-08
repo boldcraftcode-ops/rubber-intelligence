@@ -350,7 +350,10 @@ pratinjau + konfirmasi.
 ## 3k. Bar intake pada peta provinsi (sejak 08/11/2026)
 
 Buka **Intake Analisis**, lalu kartu **Sebaran Intake per Provinsi Indonesia**
-dan pilih lapisan **Intake tercatat**. Centang **Bar per wilayah** (bawaan: aktif):
+dan pilih lapisan **Intake tercatat**. **Opsi centang `Pakai grafik bar`**
+(bawaan: dicentang) memilih **pakai grafik bar atau tidak**. Centang aktif
+berarti bar dipakai; centang kosong berarti tanpa grafik bar. Label kecil di
+bawah checkbox menegaskan keadaan yang sedang dipilih. Saat dicentang,
 setiap provinsi yang punya `kg_total > 0` dan namanya cocok dengan batas peta
 mendapat satu **bar oranye vertikal** di titik tengah daratan terbesarnya. Titik
 bar dihitung dari geometri `indonesia-provinsi.geojson`, bukan koordinat yang
@@ -360,8 +363,10 @@ diganti. Titik kecil putih di kaki bar menandai provinsi yang dimaksud.
 Tinggi bar memakai **skala logaritmik** relatif terhadap intake terkecil dan
 terbesar pada periode terpilih supaya provinsi bernilai kecil tidak hilang;
 warna choropleth biru tetap memakai skala warna lamanya. Arahkan kursor ke
-provinsi untuk membaca angka Dry yang pasti. Matikan centang **Bar per wilayah**
-bila ingin melihat peta warna saja. Bar **tidak** muncul pada lapisan **Sentra
+provinsi untuk membaca angka Dry yang pasti. Kosongkan centang **Pakai grafik
+bar** bila ingin **tanpa grafik bar**, yaitu peta warna saja; legenda berubah
+menjadi **Grafik bar dimatikan** dan catatan kaki menjelaskan cara
+mengaktifkannya kembali. Bar **tidak** muncul pada lapisan **Sentra
 produksi**, dan provinsi yang belum cocok dengan batas peta tetap tercantum di
 panel **Belum terpetakan ke batas peta** tanpa bar. Tidak ada endpoint, tabel,
 atau agregasi backend yang berubah.

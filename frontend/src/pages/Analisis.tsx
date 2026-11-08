@@ -1762,7 +1762,7 @@ export default function Analisis() {
       <div className="lg:col-span-2"><KartuMuatSaatDiminta
         letakRefresh="filter"
         judul="Sebaran Intake per Provinsi Indonesia"
-        keterangan="Peta intake Dry per provinsi atau lapisan sentra produksi karet kering; bar oranye muncul pada provinsi yang punya intake, rata-rata intake wilayah dihitung dari tiket internal. Data penjualan pasar per provinsi belum tersedia pada sumber resmi."
+        keterangan="Peta intake Dry per provinsi atau lapisan sentra produksi karet kering; opsi centang 'Pakai grafik bar' menampilkan bar oranye pada provinsi yang punya intake dan bisa dimatikan, rata-rata intake wilayah dihitung dari tiket internal. Data penjualan pasar per provinsi belum tersedia pada sumber resmi."
         anak={<PetaIntake />}
       /></div>
       <KartuMuatSaatDiminta letakRefresh="filter" judul="Tonase (drill-down)" keterangan="Memuat rincian tonase hanya setelah Anda meminta." anak={<KartuTonase />} />

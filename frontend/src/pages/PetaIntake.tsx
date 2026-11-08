@@ -111,7 +111,7 @@ export default function PetaIntake() {
   const [dari, setDari] = useState("");
   const [sampai, setSampai] = useState("");
   const [mode, setMode] = useState<ModePeta>("intake");
-  const [tampilBar, setTampilBar] = useState(true);
+  const [pakaiGrafikBar, setPakaiGrafikBar] = useState(true);
   const params = new URLSearchParams({ dimensi: "provinsi" });
   if (dari) params.set("dari", `${dari}-01`);
   if (sampai) params.set("sampai", akhirBulan(sampai));
@@ -244,7 +244,7 @@ export default function PetaIntake() {
 
   return (
     <Kartu idMetrik="peta_intake_provinsi" judul="Sebaran Intake per Provinsi Indonesia"
-      keterangan="Peta sebaran intake karet berdasarkan provinsi yang tercatat pada tiket; warna semakin gelap menunjukkan intake Dry yang semakin besar, dan bar oranye muncul di setiap provinsi yang punya intake."
+      keterangan="Peta sebaran intake karet berdasarkan provinsi yang tercatat pada tiket; warna semakin gelap menunjukkan intake Dry yang semakin besar, dan opsi centang 'Pakai grafik bar' menambah bar oranye di setiap provinsi yang punya intake."
       urlEkspor={url}
       anak={
         <>
@@ -260,10 +260,16 @@ export default function PetaIntake() {
               </button>
             </div>
             {mode === "intake" && (
-              <label className="inline-flex items-center gap-1.5 text-xs text-[#475467]" aria-label="Tampilkan bar intake per wilayah">
-                <input type="checkbox" checked={tampilBar} onChange={(e) => setTampilBar(e.target.checked)}
-                  className="h-3.5 w-3.5 accent-[#EA580C]" />
-                Bar per wilayah
+              <label className="inline-flex items-start gap-2 rounded-sm border border-[#E4E5E8] bg-white px-3 py-1.5 text-xs text-[#1D2434] shadow-sm"
+                aria-label="Opsi pakai grafik bar atau tidak">
+                <input type="checkbox" checked={pakaiGrafikBar} onChange={(e) => setPakaiGrafikBar(e.target.checked)}
+                  className="mt-0.5 h-3.5 w-3.5 accent-[#EA580C]" />
+                <span>
+                  <span className="block font-semibold">Pakai grafik bar</span>
+                  <span className="block text-[10px] font-normal text-[#64676C]">
+                    {pakaiGrafikBar ? "Centang aktif: bar oranye tampil di tiap provinsi ber-intake." : "Centang kosong: tanpa grafik bar, peta warna saja."}
+                  </span>
+                </span>
               </label>
             )}
             {mode === "intake" ? (
@@ -303,7 +309,7 @@ export default function PetaIntake() {
               </div>
               <div className="grid gap-4 xl:grid-cols-[minmax(0,2fr)_minmax(250px,1fr)]">
                 <div className="min-w-0 overflow-x-auto rounded-sm border border-[#E4E5E8] bg-[#F8FAFC] p-2">
-                  <svg viewBox={`0 0 ${LEBAR} ${TINGGI}`} role="img" aria-label={mode === "intake" ? `Peta intake Indonesia untuk periode ${period}${tampilBar ? " dengan bar per provinsi berintake" : ""}` : `Peta sentra produksi karet kering tahun ${potensi.data?.tahun_produksi ?? ""}`} className="h-auto min-h-[250px] w-full min-w-[620px]">
+                  <svg viewBox={`0 0 ${LEBAR} ${TINGGI}`} role="img" aria-label={mode === "intake" ? `Peta intake Indonesia untuk periode ${period}${pakaiGrafikBar ? " dengan grafik bar per provinsi" : " tanpa grafik bar"}` : `Peta sentra produksi karet kering tahun ${potensi.data?.tahun_produksi ?? ""}`} className="h-auto min-h-[250px] w-full min-w-[620px]">
                     {nilai.mapped.map(({ feature, row }) => {
                       const production = produksiByName.get(namaBaku(feature.properties.PROVINSI));
                       const productionTon = production?.ton ?? null;
@@ -321,7 +327,7 @@ export default function PetaIntake() {
                         </path>
                       );
                     })}
-                    {mode === "intake" && tampilBar && barRows.length > 0 && (
+                    {mode === "intake" && pakaiGrafikBar && barRows.length > 0 && (
                       <g data-testid="bar-intake" aria-hidden="true" pointerEvents="none">
                         {barRows.map((bar) => (
                           <g key={bar.kunci}>
@@ -349,16 +355,18 @@ export default function PetaIntake() {
                     <span className="ml-3 inline-flex items-center gap-1"><span className="h-3 w-5 rounded-sm" style={{ backgroundColor: WARNA_KOSONG }} />{mode === "intake" ? "Belum ada data" : "Bukan sentra / data tidak tersedia"}</span>
                     {mode === "intake" && (
                       <span className="ml-3 inline-flex items-center gap-1">
-                        <span className="h-3 w-2.5 rounded-sm border border-white" style={{ backgroundColor: WARNA_BAR }} />
-                        Bar intake
+                        <span className="h-3 w-2.5 rounded-sm border border-white" style={{ backgroundColor: pakaiGrafikBar ? WARNA_BAR : WARNA_KOSONG }} />
+                        {pakaiGrafikBar ? "Bar intake" : "Grafik bar dimatikan"}
                       </span>
                     )}
                   </div>
                   <p className="px-2 pb-1 text-[10px] text-[#7B818A]">
                     Skala warna relatif terhadap provinsi dengan data pada lapisan terpilih. Arahkan kursor ke provinsi untuk melihat nilainya.
-                    {mode === "intake" && tampilBar
+                    {mode === "intake" && pakaiGrafikBar
                       ? " Tinggi bar memakai skala logaritmik relatif terhadap intake terkecil/terbesar agar provinsi bernilai kecil tetap terlihat; bar hanya muncul pada provinsi yang cocok dengan batas peta. Angka pasti tetap ada pada tooltip provinsi."
-                      : ""}
+                      : mode === "intake"
+                        ? " Grafik bar sedang dimatikan; centang 'Pakai grafik bar' untuk menampilkannya kembali."
+                        : ""}
                   </p>
                 </div>
                 <aside className="min-w-0">
