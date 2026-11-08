@@ -259,14 +259,20 @@ Pada kedua kartu **Rekonsiliasi**, baris yang berselisih memiliki dropdown
 - kartu **Pemeriksaan harian**: pilih **Dry tiket** atau **Qty pembelian**
   untuk tanggal yang berselisih lebih dari 1 kg.
 
-Isi **Alasan revisi** bila perlu, lalu tekan **Simpan revisi**. Selisih asli
-tetap terlihat (dicoret) dan di sampingnya muncul **0 setelah revisi**, status
-berubah hijau, serta nilai yang dipakai ditampilkan lengkap dengan pembuat
-dan waktu keputusan. **Data tiket/pembelian/Excel asli tidak diubah**; yang
-tersimpan adalah keputusan pada tabel `rekonsiliasi_koreksi` plus jejak di
-audit log. Karena itu keputusan bisa diganti lewat **Perbarui revisi** atau
-dikembalikan ke kondisi semula lewat **Batalkan revisi**. Hanya **admin** yang
-bisa menyimpan/membatalkan; pengguna lain tetap bisa membaca statusnya.
+Isi **Alasan revisi** bila perlu, lalu tekan **Simpan revisi**. Setelah
+tersimpan, baris **tidak lagi menampilkan form besar**: formatnya kembali
+ringkas seperti baris lain, kolom **Selisih** memakai nilai efektif (`0`) dengan
+tanda kecil **Direvisi**, dan kolom **Status/Keputusan** memakai badge hijau
+**✓ Direvisi · Histori** plus nilai yang dipakai, pembuat, dan waktu. Selisih
+asli tetap menjadi histori di tooltip, ekspor Excel, dan audit log, bukan lagi
+angka besar yang dicoret di sel utama.
+
+**Data tiket/pembelian/Excel asli tidak diubah**; yang tersimpan adalah
+keputusan pada tabel `rekonsiliasi_koreksi` plus jejak di audit log. Karena itu
+keputusan tetap bisa diganti lewat tombol kecil **Revisi** (form hanya muncul
+saat tombol itu ditekan, lalu bisa ditutup) atau dikembalikan ke kondisi semula
+lewat tombol kecil **Batal**. Hanya **admin** yang bisa menyimpan/membatalkan;
+pengguna lain tetap bisa membaca statusnya tanpa tombol aksi.
 
 Efek keputusan:
 

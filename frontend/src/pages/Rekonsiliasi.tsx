@@ -20,11 +20,25 @@ function Selisih({ baris, satuan }: { baris: Baris; satuan: "kg" | "ton" }) {
     </span>;
   }
   return (
-    <span className="font-mono">
-      <span className="text-[#9AA0A6] line-through">{fmtAngka(asli, desimal)}</span>
-      <br />
-      <span className="font-semibold text-[#15803D]">{fmtAngka(efektif, desimal)}</span>
-      <span className="ml-1 text-[10px] text-[#64676C]">{t("setelah revisi")}</span>
+    <span className="font-mono font-semibold text-[#15803D]"
+          title={`${t("Selisih asli")} ${fmtAngka(asli, desimal)} ${satuan} · ${t("setelah revisi")} ${fmtAngka(efektif, desimal)} ${satuan}`}>
+      {fmtAngka(efektif, desimal)}
+      <span className="ml-1 align-middle text-[9px] font-semibold uppercase tracking-wider text-[#15803D]">
+        · {t("Direvisi")}
+      </span>
+    </span>
+  );
+}
+
+function TandaRevisi({ baris, satuan }: { baris: Baris; satuan: "kg" | "ton" }) {
+  const { t } = useBahasa();
+  const desimal = satuan === "kg" ? 1 : 3;
+  const asli = baris[`selisih_${satuan}`];
+  const efektif = baris[`selisih_efektif_${satuan}`];
+  return (
+    <span className="inline-flex items-center gap-1 rounded-sm border border-[#A6F4C5] bg-[#ECFDF3] px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-[#027A48]"
+          title={`${t("Selisih asli")} ${fmtAngka(asli, desimal)} ${satuan} → ${fmtAngka(efektif, desimal)} ${satuan}`}>
+      ✓ {t("Direvisi")} · {t("Histori")}
     </span>
   );
 }
@@ -40,8 +54,11 @@ function KeteranganKeputusan({ baris, satuan }: {
   }
   return (
     <div className="text-xs">
-      <span className="font-semibold text-[#15803D]">{baris.status}</span>
-      <p className="mt-0.5 text-[#64676C]">
+      <div className="flex flex-wrap items-center gap-1.5">
+        <TandaRevisi baris={baris} satuan={satuan} />
+        <span className="font-semibold text-[#15803D]">{baris.status}</span>
+      </div>
+      <p className="mt-0.5 text-[10px] leading-relaxed text-[#64676C]">
         {t("Nilai dipakai")}: <b className="font-mono text-[#1D2434]">
           {fmtAngka(nilai, desimal)} {satuan}
         </b>
@@ -49,7 +66,7 @@ function KeteranganKeputusan({ baris, satuan }: {
         {baris.koreksi?.pada && <> · {baris.koreksi.pada}</>}
       </p>
       {baris.koreksi?.alasan && (
-        <p className="mt-0.5 text-[#64676C]">
+        <p className="mt-0.5 text-[10px] text-[#64676C]">
           {t("Alasan")}: {baris.koreksi.alasan}
         </p>
       )}
@@ -57,12 +74,48 @@ function KeteranganKeputusan({ baris, satuan }: {
   );
 }
 
-function FormKeputusan({ baris, jenis, satuan, bisa, sedang, simpan, batal }: {
+function RingkasanRevisi({ baris, jenis, satuan, bisa, sedang, buka, batal }: {
+  baris: Baris; jenis: "harian" | "diketahui"; satuan: "kg" | "ton";
+  bisa: boolean; sedang: boolean; buka: () => void; batal: (v: any) => void;
+}) {
+  const { t } = useBahasa();
+  return (
+    <div className="flex flex-wrap items-center gap-1.5">
+      <TandaRevisi baris={baris} satuan={satuan} />
+      {bisa ? (
+        <>
+          <button type="button" className={kelasTombolKecil}
+                  disabled={sedang} onClick={buka}>
+            {t("Revisi")}
+          </button>
+          <button type="button"
+                  className="rounded-sm border border-[#FECACA] px-2 py-1 text-[11px] font-semibold text-[#B42318] hover:bg-[#FEF2F2] disabled:cursor-not-allowed disabled:opacity-50"
+                  disabled={sedang}
+                  title={t("Batalkan revisi")}
+                  onClick={() => {
+                    if (window.confirm(`${t("Batalkan revisi")}? ${t("Selisih asli akan kembali ditampilkan.")}`)) {
+                      batal({ jenis, kunci: baris.kunci });
+                    }
+                  }}>
+            {t("Batal")}
+          </button>
+        </>
+      ) : (
+        <span className="text-[10px] text-[#64676C]">
+          {t("Hanya admin yang dapat menyimpan revisi.")}
+        </span>
+      )}
+    </div>
+  );
+}
+
+function FormKeputusan({ baris, jenis, satuan, bisa, sedang, epoch, simpan, batal }: {
   baris: Baris;
   jenis: "harian" | "diketahui";
   satuan: "kg" | "ton";
   bisa: boolean;
   sedang: boolean;
+  epoch: number;
   simpan: (v: any) => void;
   batal: (v: any) => void;
 }) {
@@ -71,12 +124,21 @@ function FormKeputusan({ baris, jenis, satuan, bisa, sedang, simpan, batal }: {
   const desimal = satuan === "kg" ? 0 : 3;
   const [pilih, setPilih] = useState<string>(baris.sumber_dipakai ?? "");
   const [alasan, setAlasan] = useState<string>(baris.koreksi?.alasan ?? "");
+  const [modeUbah, setModeUbah] = useState(false);
 
   useEffect(() => {
     setPilih(baris.sumber_dipakai ?? "");
     setAlasan(baris.koreksi?.alasan ?? "");
   }, [baris.kunci, baris.sumber_dipakai, baris.koreksi?.alasan]);
+  useEffect(() => {
+    setModeUbah(false);
+  }, [baris.kunci, baris.koreksi?.pada, baris.direvisi, epoch]);
 
+  if (baris.direvisi && !modeUbah) {
+    return <RingkasanRevisi baris={baris} jenis={jenis} satuan={satuan}
+                             bisa={bisa} sedang={sedang}
+                             buka={() => setModeUbah(true)} batal={batal} />;
+  }
   if (!bisa) {
     return <span className="text-[11px] text-[#64676C]">
       {t("Hanya admin yang dapat menyimpan revisi.")}
@@ -121,14 +183,18 @@ function FormKeputusan({ baris, jenis, satuan, bisa, sedang, simpan, batal }: {
           ? t("Perbarui revisi") : t("Simpan revisi")}
       </button>
       {baris.direvisi && (
-        <button
-          type="button"
-          className={`${kelasTombolKecil} disabled:opacity-50`}
-          disabled={sedang}
-          onClick={() => batal({ jenis, kunci: baris.kunci })}
-        >
-          {t("Batalkan revisi")}
-        </button>
+        <>
+          <button type="button" className={kelasTombolKecil}
+                  disabled={sedang} onClick={() => setModeUbah(false)}>
+            {t("Tutup")}
+          </button>
+          <button type="button"
+                  className="rounded-sm border border-[#FECACA] px-2 py-1 text-[11px] font-semibold text-[#B42318] hover:bg-[#FEF2F2] disabled:opacity-50"
+                  disabled={sedang}
+                  onClick={() => batal({ jenis, kunci: baris.kunci })}>
+            {t("Batalkan revisi")}
+          </button>
+        </>
       )}
     </div>
   );
@@ -138,6 +204,7 @@ export default function Rekonsiliasi() {
   const { t } = useBahasa();
   const qc = useQueryClient();
   const [pesan, setPesan] = useState<Pesan>(null);
+  const [epochRevisi, setEpochRevisi] = useState(0);
   const q = useQuery({
     queryKey: ["rekonsiliasi"],
     queryFn: () => ambilJson("/api/rekonsiliasi"),
@@ -153,6 +220,7 @@ export default function Rekonsiliasi() {
     mutationFn: (v: any) => kirimMetode("/api/rekonsiliasi/keputusan", "POST", v),
     onSuccess: (d: any) => {
       setPesan({ jenis: "sukses", teks: d.pesan });
+      setEpochRevisi((n) => n + 1);
       segarkan();
     },
     onError: (e: unknown) => setPesan({ jenis: "galat", teks: pesanGalat(e) }),
@@ -163,6 +231,7 @@ export default function Rekonsiliasi() {
       `&kunci=${encodeURIComponent(v.kunci)}`, "DELETE"),
     onSuccess: (d: any) => {
       setPesan({ jenis: "sukses", teks: d.pesan });
+      setEpochRevisi((n) => n + 1);
       segarkan();
     },
     onError: (e: unknown) => setPesan({ jenis: "galat", teks: pesanGalat(e) }),
@@ -210,7 +279,8 @@ export default function Rekonsiliasi() {
               </thead>
               <tbody>
                 {diketahui.map((d: Baris) => (
-                  <tr key={d.kunci} className="border-b border-[#EDEFF2] align-top">
+                  <tr key={d.kunci}
+                      className={`border-b border-[#EDEFF2] align-top ${d.direvisi ? "border-l-2 border-l-[#15803D] bg-[#FBFFFC]" : ""}`}>
                     <td className="py-1.5 font-medium">{d.periode}</td>
                     <td className="text-right font-mono">{fmtAngka(d.tiket_ton, 3)}</td>
                     <td className="text-right font-mono">{fmtAngka(d.excel_ton, 3)}</td>
@@ -218,7 +288,7 @@ export default function Rekonsiliasi() {
                     <td className="pl-3"><KeteranganKeputusan baris={d} satuan="ton" /></td>
                     <td className="pl-3 py-1.5">
                       <FormKeputusan baris={d} jenis="diketahui" satuan="ton"
-                                     bisa={bisa} sedang={sedang}
+                                     bisa={bisa} sedang={sedang} epoch={epochRevisi}
                                      simpan={(v) => simpan.mutate(v)}
                                      batal={(v) => batal.mutate(v)} />
                     </td>
@@ -272,7 +342,7 @@ export default function Rekonsiliasi() {
                 <tbody>
                   {harian.map((h: Baris) => (
                     <tr key={h.kunci}
-                        className={`border-b border-[#EDEFF2] align-top ${h.cocok ? "" : "bg-[#FFFBEB]"}`}>
+                        className={`border-b border-[#EDEFF2] align-top ${h.cocok ? "" : "bg-[#FFFBEB]"} ${h.direvisi ? "border-l-2 border-l-[#15803D]" : ""}`}>
                       <td className="py-1">{fmtTanggal(h.tanggal)}</td>
                       <td className="text-right font-mono">{fmtAngka(h.dry_tiket_kg, 0)}</td>
                       <td className="text-right font-mono">{fmtAngka(h.qty_pembelian_kg, 0)}</td>
@@ -283,7 +353,7 @@ export default function Rekonsiliasi() {
                           <span className="text-[11px] text-[#15803D]">{t("Cocok")}</span>
                         ) : (
                           <FormKeputusan baris={h} jenis="harian" satuan="kg"
-                                         bisa={bisa} sedang={sedang}
+                                         bisa={bisa} sedang={sedang} epoch={epochRevisi}
                                          simpan={(v) => simpan.mutate(v)}
                                          batal={(v) => batal.mutate(v)} />
                         )}
