@@ -388,18 +388,6 @@ function PanelQuickFill({ terpilih, rows, epoch, onBersihkan, onSelesai }: {
                   onClick={() => pratinjau.mutate()}>
             {pratinjau.isPending ? "Memeriksa…" : "Pratinjau"}
           </button>
-          {token && hasil?.status === "siap" && (
-            <button type="button" className={kelasTombol}
-                    disabled={terapkan.isPending} onClick={konfirmasiTerapkan}>
-              {terapkan.isPending ? "Menyimpan…" : `Terapkan ${hasil.berubah} perubahan`}
-            </button>
-          )}
-          {token && (
-            <button type="button" className={kelasTombolKecil}
-                    disabled={batal.isPending} onClick={() => batal.mutate(token)}>
-              Batalkan pratinjau
-            </button>
-          )}
         </div>
       </div>
 
@@ -409,6 +397,7 @@ function PanelQuickFill({ terpilih, rows, epoch, onBersihkan, onSelesai }: {
           : "Ticket No, Asal Getah, sidik sumber, dan file unggahan asli tetap tidak berubah."}
         {wajib && kosongkan === false && ""}
         {hasil?.kedaluwarsa_detik ? ` Pratinjau berlaku ${Math.round(hasil.kedaluwarsa_detik / 60)} menit.` : ""}
+        {hasil?.status === "siap" && token && " Tombol konfirmasi ada di blok hijau di bawah tabel diff."}
       </p>
       {wajib && (
         <p className="mt-1 text-[10px] text-[#B45309]">
@@ -462,6 +451,31 @@ function PanelQuickFill({ terpilih, rows, epoch, onBersihkan, onSelesai }: {
                 </p>
               )}
             </div>
+          )}
+          {hasil.status === "siap" && token ? (
+            <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-sm border border-[#BBF7D0] bg-[#F0FDF4] px-3 py-2">
+              <div>
+                <p className="text-xs font-semibold text-[#15803D]">Konfirmasi pratinjau</p>
+                <p className="mt-0.5 text-[11px] leading-relaxed text-[#475569]">
+                  Klik <b>Konfirmasi &amp; terapkan {hasil.berubah} perubahan</b>, lalu pilih <b>OK</b> pada dialog browser.
+                  Token berlaku {Math.round((hasil.kedaluwarsa_detik ?? 900) / 60)} menit dan hanya sekali pakai.
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                <button type="button" className={kelasTombol}
+                        disabled={terapkan.isPending} onClick={konfirmasiTerapkan}>
+                  {terapkan.isPending ? "Menyimpan…" : `Konfirmasi & terapkan ${hasil.berubah} perubahan`}
+                </button>
+                <button type="button" className={kelasTombolKecil}
+                        disabled={batal.isPending} onClick={() => batal.mutate(token)}>
+                  Batalkan pratinjau
+                </button>
+              </div>
+            </div>
+          ) : (
+            <p className="mt-2 text-[11px] text-[#B42318]">
+              Pratinjau belum bisa dikonfirmasi. Perbaiki baris yang ditolak, lalu tekan <b>Pratinjau</b> lagi.
+            </p>
           )}
         </div>
       )}

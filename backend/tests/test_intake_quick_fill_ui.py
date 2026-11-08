@@ -13,7 +13,9 @@ def test_panel_dan_endpoint_quick_fill_ada():
     assert "/api/intake/quick-fill/terapkan" in SUMBER
     assert '"DELETE"' in SUMBER
     assert "Pratinjau" in SUMBER
-    assert "Terapkan ${hasil.berubah} perubahan" in SUMBER
+    assert "Konfirmasi pratinjau" in SUMBER
+    assert "Konfirmasi & terapkan ${hasil.berubah} perubahan" in SUMBER
+    assert "Tombol konfirmasi ada di blok hijau di bawah tabel diff." in SUMBER
     assert "Hapus pilihan" in SUMBER
 
 

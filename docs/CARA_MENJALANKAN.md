@@ -323,11 +323,15 @@ wilayah yang sudah tersimpan.
 
 Tekan **Pratinjau** dulu. Endpoint `POST /api/intake/quick-fill/pratinjau`
 menghitung diff `sebelumnya → sesudah` per baris dan menolak baris yang tidak
-valid tanpa menyimpan apa pun. Bila semua valid, token pratinjau berlaku 15
-menit dan tombol **Terapkan** muncul. Konfirmasi eksplisit lewat
-`POST /api/intake/quick-fill/terapkan` menyimpan **semua baris atau tidak ada**
-dalam satu transaksi; token sekali pakai dan pendaftaran ditolak bila ada baris
-yang berubah sejak pratinjau. Endpoint ini **admin-only** bila login lokal aktif.
+valid tanpa menyimpan apa pun. Bila semua valid, di **bagian bawah kartu hasil
+pratinjau** muncul blok hijau **Konfirmasi pratinjau** berisi tombol
+**Konfirmasi & terapkan X perubahan** dan **Batalkan pratinjau**. Klik tombol
+konfirmasi, lalu pilih **OK** pada dialog browser. Token pratinjau berlaku 15
+menit. `POST /api/intake/quick-fill/terapkan` menyimpan **semua baris atau tidak
+ada** dalam satu transaksi; token sekali pakai dan pendaftaran ditolak bila ada
+baris yang berubah sejak pratinjau. Endpoint ini **admin-only** bila login lokal
+aktif. Bila status pratinjau `ada_galat`, blok konfirmasi tidak muncul: perbaiki
+baris yang ditolak lalu pratinjau ulang.
 
 Setiap baris dicatat di audit log dengan aksi `ubah_massal` dan diff
 `sebelumnya`/`sesudah`; mart dan alarm disegarkan sekali di akhir. Yang sengaja
