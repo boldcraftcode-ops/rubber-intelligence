@@ -1,4 +1,4 @@
-import { type FormEvent, useEffect, useState } from "react";
+import { type FormEvent, useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ambilJson, fmtAngka, fmtTanggal, kelasInput, kelasLabel,
@@ -35,6 +35,25 @@ type FilterIntake = { tahun: string; provinsi: string; supplier: string };
 type HasilDaftar = { baris: IntakeBaris[]; total: number; page: number; page_size: number; pages: number };
 type OpsiWilayah = { value: string; label: string };
 type ResponsOpsiWilayah = { options: OpsiWilayah[]; available?: boolean; catatan?: string };
+type BarisPratinjau = {
+  id: number; ticket_no: string; line_seq: number;
+  sebelumnya: string | number | null; sesudah: string | number | null;
+  berubah: boolean;
+};
+type GalatPratinjau = {
+  id: number; ticket_no: string; line_seq: number; alasan: string;
+};
+type HasilPratinjau = {
+  status: "siap" | "ada_galat";
+  token: string | null;
+  kolom: string;
+  jumlah: number;
+  berubah: number;
+  baris: BarisPratinjau[];
+  galat: GalatPratinjau[];
+  pesan: string;
+  kedaluwarsa_detik?: number;
+};
 
 const LABEL: Record<string, string> = {
   ticket_date: "Tanggal tiket",
@@ -61,6 +80,8 @@ const KOLOM_FORM = [
   "wet_kg", "sample_kg", "reject_kg", "drc_pct", "dry_kg", "provinsi", "kabupaten",
   "kecamatan", "desa", "bin", "location",
 ];
+const KOLOM_QUICK_FILL = KOLOM_FORM;
+
 const KELOMPOK = [
   { label: "Informasi tiket", kolom: ["ticket_date", "kode_vendor", "nama_vendor_asli", "vehicle_no", "item_code", "drc_date"] },
   { label: "Berat & kualitas", kolom: ["wet_kg", "sample_kg", "reject_kg", "drc_pct", "dry_kg"] },
@@ -237,6 +258,217 @@ function ModalEdit({ row, tutup, simpan, menyimpan, error }: {
   );
 }
 
+function PanelQuickFill({ terpilih, rows, epoch, onBersihkan, onSelesai }: {
+  terpilih: number[]; rows: IntakeBaris[]; epoch: number;
+  onBersihkan: () => void; onSelesai: (pesan: string) => Promise<void>;
+}) {
+  const [kolom, setKolom] = useState("kode_vendor");
+  const [nilai, setNilai] = useState("");
+  const [kosongkan, setKosongkan] = useState(false);
+  const [hasil, setHasil] = useState<HasilPratinjau | null>(null);
+  const [token, setToken] = useState<string | null>(null);
+  const [galat, setGalat] = useState<string | null>(null);
+  const angka = ["wet_kg", "sample_kg", "reject_kg", "drc_pct", "dry_kg"].includes(kolom);
+  const tanggal = kolom === "ticket_date" || kolom === "drc_date";
+  const wajib = kolom === "ticket_date" || kolom === "kode_vendor";
+  const wilayah = ["provinsi", "kabupaten", "kecamatan", "desa"].includes(kolom);
+  const diHalamanIni = rows.filter((r) => terpilih.includes(r.id)).length;
+  const diHalamanLain = terpilih.length - diHalamanIni;
+
+  const pratinjau = useMutation({
+    mutationFn: () => kirimMetode("/api/intake/quick-fill/pratinjau", "POST", {
+      ids: terpilih, kolom, nilai, kosongkan,
+    }) as Promise<HasilPratinjau>,
+    onSuccess: (data) => {
+      setHasil(data);
+      setToken(data.token);
+      setGalat(null);
+    },
+    onError: (e: Error) => {
+      setHasil(null);
+      setToken(null);
+      setGalat(e.message);
+    },
+  });
+  const terapkan = useMutation({
+    mutationFn: (t: string) => kirimMetode("/api/intake/quick-fill/terapkan", "POST", {
+      token: t,
+    }) as Promise<{ pesan: string }>,
+    onSuccess: async (data) => {
+      setHasil(null);
+      setToken(null);
+      setGalat(null);
+      await onSelesai(data.pesan);
+    },
+    onError: (e: Error) => {
+      setHasil(null);
+      setToken(null);
+      setGalat(e.message);
+    },
+  });
+  const batal = useMutation({
+    mutationFn: (t: string) => kirimMetode(
+      `/api/intake/quick-fill/pratinjau/${encodeURIComponent(t)}`, "DELETE"),
+    onSuccess: () => {
+      setHasil(null);
+      setToken(null);
+      setGalat(null);
+    },
+  });
+
+  useEffect(() => {
+    setHasil(null);
+    setToken(null);
+    setGalat(null);
+  }, [terpilih, epoch, kolom, nilai, kosongkan]);
+
+  if (terpilih.length === 0) return null;
+
+  const ubahKolom = (k: string) => {
+    setKolom(k);
+    setNilai("");
+    setKosongkan(false);
+  };
+  const tampil = (v: string | number | null) => {
+    if (v === null || v === "") return "—";
+    if (angka && typeof v === "number") return fmtAngka(v, 3);
+    return String(v);
+  };
+  const konfirmasiTerapkan = () => {
+    if (!token || !hasil || hasil.status !== "siap") return;
+    const ok = window.confirm(
+      `Terapkan ${hasil.berubah} perubahan pada ${hasil.jumlah} baris untuk kolom ${LABEL[kolom]}?\n\n` +
+      "Perubahan tercatat per baris di audit log, menyegarkan ringkasan/alarm, dan tidak dibatalkan otomatis. " +
+      "Lanjutkan hanya bila pratinjau sudah benar.");
+    if (ok) terapkan.mutate(token);
+  };
+
+  return (
+    <section className="mt-4 rounded-sm border border-[#D7E7FF] bg-[#F8FBFF] p-3">
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div>
+          <h3 className="text-sm font-semibold text-[#1D2434]">Quick-fill koreksi intake</h3>
+          <p className="mt-0.5 text-[11px] leading-relaxed text-[#64676C]">
+            <b>{terpilih.length}</b> baris dipilih · {diHalamanIni} di halaman ini
+            {diHalamanLain > 0 && ` · ${diHalamanLain} di halaman lain`}.
+            Pilihan tetap tersimpan saat berpindah halaman; ubah <b>satu kolom</b> lalu pratinjau dulu.
+          </p>
+        </div>
+        <button type="button" className={kelasTombolKecil} onClick={onBersihkan}>Hapus pilihan</button>
+      </div>
+
+      <div className="mt-3 grid grid-cols-1 items-end gap-2 md:grid-cols-[minmax(180px,1fr)_minmax(200px,1.2fr)_auto_auto]">
+        <label className="block">
+          <span className={kelasLabel}>Kolom yang diubah</span>
+          <select className={kelasInput} value={kolom} onChange={(e) => ubahKolom(e.target.value)}>
+            {KOLOM_QUICK_FILL.map((k) => <option key={k} value={k}>{LABEL[k]}</option>)}
+          </select>
+        </label>
+        <label className="block">
+          <span className={kelasLabel}>Nilai baru</span>
+          <input className={kelasInput}
+                 type={tanggal ? "date" : angka ? "number" : "text"}
+                 min={angka ? "0" : undefined}
+                 max={kolom === "drc_pct" ? "100" : undefined}
+                 step={angka ? (kolom === "drc_pct" ? "0.01" : "0.001") : undefined}
+                 value={nilai}
+                 disabled={kosongkan}
+                 onChange={(e) => setNilai(e.target.value)}
+                 placeholder={kosongkan ? "Dikosongkan" : "Isi nilai yang sama untuk semua baris"} />
+        </label>
+        <label className="flex items-center gap-1.5 pb-2 text-[11px] text-[#64676C]">
+          <input type="checkbox" checked={kosongkan}
+                 disabled={wajib}
+                 onChange={(e) => setKosongkan(e.target.checked)} />
+          Kosongkan nilai
+        </label>
+        <div className="flex flex-wrap gap-1.5 pb-0.5">
+          <button type="button" className={kelasTombolKecil}
+                  disabled={pratinjau.isPending || (!kosongkan && nilai.trim() === "")}
+                  onClick={() => pratinjau.mutate()}>
+            {pratinjau.isPending ? "Memeriksa…" : "Pratinjau"}
+          </button>
+          {token && hasil?.status === "siap" && (
+            <button type="button" className={kelasTombol}
+                    disabled={terapkan.isPending} onClick={konfirmasiTerapkan}>
+              {terapkan.isPending ? "Menyimpan…" : `Terapkan ${hasil.berubah} perubahan`}
+            </button>
+          )}
+          {token && (
+            <button type="button" className={kelasTombolKecil}
+                    disabled={batal.isPending} onClick={() => batal.mutate(token)}>
+              Batalkan pratinjau
+            </button>
+          )}
+        </div>
+      </div>
+
+      <p className="mt-2 text-[10px] leading-relaxed text-[#64676C]">
+        Hanya admin yang dapat menerapkan. {wilayah
+          ? "Kolom wilayah divalidasi per baris terhadap SCDF; ketik nama persis sesuai referensi."
+          : "Ticket No, Asal Getah, sidik sumber, dan file unggahan asli tetap tidak berubah."}
+        {wajib && kosongkan === false && ""}
+        {hasil?.kedaluwarsa_detik ? ` Pratinjau berlaku ${Math.round(hasil.kedaluwarsa_detik / 60)} menit.` : ""}
+      </p>
+      {wajib && (
+        <p className="mt-1 text-[10px] text-[#B45309]">
+          {LABEL[kolom]} wajib diisi, jadi opsi “Kosongkan nilai” tidak tersedia untuk kolom ini.
+        </p>
+      )}
+      {galat && <p role="alert" className="mt-2 rounded-sm border border-[#FECACA] bg-[#FEF2F2] px-3 py-2 text-xs text-[#B91C1C]">{galat}</p>}
+
+      {hasil && (
+        <div className="mt-3 rounded-sm border border-[#E4E5E8] bg-white p-3">
+          <p className={`text-xs font-semibold ${hasil.status === "siap" ? "text-[#15803D]" : "text-[#B42318]"}`}>
+            {hasil.pesan}
+          </p>
+          {hasil.galat.length > 0 && (
+            <ul className="mt-2 list-disc pl-5 text-[11px] text-[#B42318]">
+              {hasil.galat.slice(0, 8).map((g) => (
+                <li key={g.id}>{g.ticket_no} · baris {g.line_seq}: {g.alasan}</li>
+              ))}
+              {hasil.galat.length > 8 && <li>…{hasil.galat.length - 8} baris lain ditolak.</li>}
+            </ul>
+          )}
+          {hasil.baris.length > 0 && (
+            <div className="mt-2 overflow-x-auto">
+              <table className="w-full min-w-[560px] border-collapse text-[11px]">
+                <thead className="bg-[#F8F8F8] text-left uppercase tracking-wider text-[#64676C]">
+                  <tr>
+                    <th className="px-2 py-1.5">Tiket / baris</th>
+                    <th className="px-2 py-1.5">Sebelumnya</th>
+                    <th className="px-2 py-1.5">Sesudah</th>
+                    <th className="px-2 py-1.5">Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {hasil.baris.slice(0, 20).map((b) => (
+                    <tr key={b.id} className="border-t border-[#EDEFF2]">
+                      <td className="px-2 py-1.5 font-mono">{b.ticket_no} · {b.line_seq}</td>
+                      <td className="px-2 py-1.5">{tampil(b.sebelumnya)}</td>
+                      <td className="px-2 py-1.5 font-semibold">{tampil(b.sesudah)}</td>
+                      <td className="px-2 py-1.5">
+                        <span className={b.berubah ? "text-[#15803D]" : "text-[#9AA0A6]"}>
+                          {b.berubah ? "Berubah" : "Sudah sama"}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {hasil.baris.length > 20 && (
+                <p className="mt-1 text-[10px] text-[#64676C]">
+                  Menampilkan 20 dari {hasil.baris.length} baris; ringkasan lengkap ada di pesan di atas.
+                </p>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+    </section>
+  );
+}
+
 export default function IntakeData() {
   const qc = useQueryClient();
   const [filterDraft, setFilterDraft] = useState<FilterIntake>({ tahun: "", provinsi: "", supplier: "" });
@@ -264,6 +496,9 @@ export default function IntakeData() {
   const [edit, setEdit] = useState<IntakeBaris | null>(null);
   const [pesan, setPesan] = useState<{ ok: boolean; teks: string } | null>(null);
   const [galatEdit, setGalatEdit] = useState<string | null>(null);
+  const [terpilih, setTerpilih] = useState<Set<number>>(() => new Set());
+  const [quickFillEpoch, setQuickFillEpoch] = useState(0);
+  const terpilihIds = useMemo(() => Array.from(terpilih), [terpilih]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -272,6 +507,11 @@ export default function IntakeData() {
     }, 250);
     return () => window.clearTimeout(timer);
   }, [cariInput]);
+
+  useEffect(() => {
+    setTerpilih(new Set());
+    setQuickFillEpoch((n) => n + 1);
+  }, [filterAktif, cari]);
 
   const params = new URLSearchParams({ page: String(page), page_size: "50" });
   if (filterAktif?.tahun) params.set("tahun", filterAktif.tahun);
@@ -350,14 +590,21 @@ export default function IntakeData() {
       setPesan({ ok: true, teks: data.pesan });
       setEdit(null);
       setGalatEdit(null);
+      setQuickFillEpoch((n) => n + 1);
       await invalidasiDataTurunan();
     },
     onError: (error: Error) => setGalatEdit(error.message),
   });
   const hapus = useMutation({
     mutationFn: (id: number) => kirimMetode(`/api/intake/${id}`, "DELETE"),
-    onSuccess: async (data) => {
+    onSuccess: async (data, id) => {
       setPesan({ ok: true, teks: data.pesan });
+      setTerpilih((sebelum) => {
+        const berikut = new Set(sebelum);
+        berikut.delete(id);
+        return berikut;
+      });
+      setQuickFillEpoch((n) => n + 1);
       if ((daftar.data?.baris.length ?? 0) === 1 && page > 1) setPage((n) => Math.max(1, n - 1));
       await invalidasiDataTurunan();
     },
@@ -372,6 +619,26 @@ export default function IntakeData() {
   const rows = filterAktif ? (daftar.data?.baris ?? []) : [];
   const total = filterAktif ? (daftar.data?.total ?? 0) : 0;
   const pages = filterAktif ? (daftar.data?.pages ?? 0) : 0;
+  const semuaHalamanTerpilih = rows.length > 0 && rows.every((r) => terpilih.has(r.id));
+  const toggleBaris = (id: number) => setTerpilih((sebelum) => {
+    const berikut = new Set(sebelum);
+    if (berikut.has(id)) berikut.delete(id); else berikut.add(id);
+    return berikut;
+  });
+  const toggleSemuaHalaman = () => setTerpilih((sebelum) => {
+    const berikut = new Set(sebelum);
+    if (semuaHalamanTerpilih) rows.forEach((r) => berikut.delete(r.id));
+    else rows.forEach((r) => berikut.add(r.id));
+    return berikut;
+  });
+  const bersihkanPilihan = () => setTerpilih(new Set());
+  const selesaiQuickFill = async (pesan: string) => {
+    setPesan({ ok: true, teks: pesan });
+    setTerpilih(new Set());
+    setQuickFillEpoch((n) => n + 1);
+    await invalidasiDataTurunan();
+  };
+
   const labelFilterAktif = filterAktif ? [
     filterAktif.tahun && `Tahun ${filterAktif.tahun}`,
     filterAktif.provinsi && `Provinsi ${filterAktif.provinsi}`,
@@ -467,6 +734,10 @@ export default function IntakeData() {
             {daftar.isFetching && !daftar.isLoading && <span className="pb-2 text-xs text-[#64676C]">Memperbarui hasil…</span>}
           </div>
         )}
+        {filterAktif && rows.length > 0 && (
+          <PanelQuickFill terpilih={terpilihIds} rows={rows} epoch={quickFillEpoch}
+                          onBersihkan={bersihkanPilihan} onSelesai={selesaiQuickFill} />
+        )}
         {pesan && <p role="status" className={`mt-3 rounded-sm border px-3 py-2 text-sm ${pesan.ok ? "border-[#BBF7D0] bg-[#F0FDF4] text-[#15803D]" : "border-[#FECACA] bg-[#FEF2F2] text-[#B91C1C]"}`}>{pesan.teks}</p>}
         {filterAktif && daftar.error && <p role="alert" className="mt-3 rounded-sm border border-[#FECACA] bg-[#FEF2F2] px-3 py-2 text-sm text-[#B91C1C]">{(daftar.error as Error).message}</p>}
 
@@ -474,6 +745,11 @@ export default function IntakeData() {
           <table className="w-full min-w-[1120px] border-collapse text-xs">
             <thead className="sticky top-0 bg-[#F8F8F8] text-left text-[10px] uppercase tracking-wider text-[#64676C]">
               <tr>
+                <th className="w-8 px-3 py-2">
+                  <input type="checkbox" checked={semuaHalamanTerpilih}
+                         onChange={toggleSemuaHalaman}
+                         aria-label="Pilih semua baris di halaman ini" />
+                </th>
                 <th className="px-3 py-2">Tanggal</th>
                 <th className="px-3 py-2">Ticket No / baris</th>
                 <th className="px-3 py-2">Supplier</th>
@@ -488,17 +764,22 @@ export default function IntakeData() {
             </thead>
             <tbody>
               {!filterAktif ? (
-                <tr><td colSpan={10} className="px-3 py-10 text-center text-sm text-[#64676C]">
+                <tr><td colSpan={11} className="px-3 py-10 text-center text-sm text-[#64676C]">
                   Pilih satu atau beberapa filter, lalu tekan <b>Tampilkan Data</b>. Belum ada baris intake yang dimuat.
                 </td></tr>
               ) : daftar.isLoading ? (
-                <tr><td colSpan={10} className="px-3 py-10 text-center text-sm text-[#64676C]">Memuat hasil filter…</td></tr>
+                <tr><td colSpan={11} className="px-3 py-10 text-center text-sm text-[#64676C]">Memuat hasil filter…</td></tr>
               ) : rows.length === 0 ? (
-                <tr><td colSpan={10} className="px-3 py-10 text-center text-sm text-[#64676C]">
+                <tr><td colSpan={11} className="px-3 py-10 text-center text-sm text-[#64676C]">
                   {cari ? `Tidak ada intake yang cocok dengan “${cari}”.` : "Tidak ada intake yang cocok dengan filter yang dipilih."}
                 </td></tr>
               ) : rows.map((row) => (
                 <tr key={row.id} className="border-t border-[#EDEFF2] hover:bg-[#FAFAFA]">
+                  <td className="px-3 py-2">
+                    <input type="checkbox" checked={terpilih.has(row.id)}
+                           onChange={() => toggleBaris(row.id)}
+                           aria-label={`Pilih ${row.ticket_no} baris ${row.line_seq}`} />
+                  </td>
                   <td className="whitespace-nowrap px-3 py-2">{row.ticket_date ? fmtTanggal(row.ticket_date) : "—"}</td>
                   <td className="px-3 py-2 font-mono font-semibold text-[#1D2434]">
                     {row.ticket_no}<span className="ml-1 font-sans text-[10px] font-normal text-[#9AA0A6]">· {row.line_seq}</span>

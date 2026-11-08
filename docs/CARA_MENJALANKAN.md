@@ -305,6 +305,38 @@ menulis *"Min. 30 menit"*, tetapi formula yang tersimpan memakai ambang
 Okt/Nov `selisih ≥ 40 = Terlambat`. Perbedaan itu sengaja dijelaskan di layar
 dan tidak diam-diam diseragamkan.
 
+## 3j. Quick-fill koreksi intake (sejak 07/11/2026)
+
+Di menu **Data Intake Details — Penerimaan Karet**, setelah filter diterapkan,
+centang beberapa baris pada kolom paling kiri. Tombol **Pilih semua baris di
+halaman ini** memilih 50 baris yang sedang tampil; pilihan tetap tersimpan saat
+berpindah halaman, tetapi dibersihkan bila filter atau pencarian diubah. Panel
+**Quick-fill koreksi intake** lalu muncul.
+
+Isi **satu kolom** yang sama untuk semua baris terpilih — 17 kolom operasional
+yang sama dengan modal Edit, termasuk tanggal, kode/nama supplier, kendaraan,
+grade, berat/DRC, wilayah, Bin, dan Location. Kolom opsional bisa dikosongkan
+lewat checkbox **Kosongkan nilai**; `Tanggal tiket` dan `Kode supplier` wajib
+diisi sehingga tidak bisa dikosongkan. Untuk kolom wilayah, ketik nama persis
+sesuai referensi **SCDF** karena validasi dilakukan per baris terhadap induk
+wilayah yang sudah tersimpan.
+
+Tekan **Pratinjau** dulu. Endpoint `POST /api/intake/quick-fill/pratinjau`
+menghitung diff `sebelumnya → sesudah` per baris dan menolak baris yang tidak
+valid tanpa menyimpan apa pun. Bila semua valid, token pratinjau berlaku 15
+menit dan tombol **Terapkan** muncul. Konfirmasi eksplisit lewat
+`POST /api/intake/quick-fill/terapkan` menyimpan **semua baris atau tidak ada**
+dalam satu transaksi; token sekali pakai dan pendaftaran ditolak bila ada baris
+yang berubah sejak pratinjau. Endpoint ini **admin-only** bila login lokal aktif.
+
+Setiap baris dicatat di audit log dengan aksi `ubah_massal` dan diff
+`sebelumnya`/`sesudah`; mart dan alarm disegarkan sekali di akhir. Yang sengaja
+tidak berubah: `ticket_no`, `line_seq`, `asal_getah`, `source_fingerprint`,
+`unggahan_id`, `peringatan`, `Pembelian`, `RawUnggahan`, dan `RawBaris`. Tidak
+ada tabel database baru. Quick-fill ditujukan untuk nilai yang seragam;
+koreksi yang berbeda-beda per baris tetap lebih cocok lewat alur Excel
+pratinjau + konfirmasi.
+
 ## 4. Mengimpor data (tiket, stok, pembelian, dll.)
 
 Selain lewat tab **Unggah Data**, impor bisa dijalankan dari terminal

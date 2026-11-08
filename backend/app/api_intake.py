@@ -7,14 +7,17 @@ layar ini; koreksi hanya memperbarui kolom operasional yang dipilih.
 from __future__ import annotations
 
 import datetime as dt
+import secrets
+import threading
+import time
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
-from .auth_lokal import info_pengguna
+from .auth_lokal import info_pengguna, wajib_admin
 from .core.alarm import catat_audit, evaluasi_alarm
 from .core.traceability import normalisasi_kabupaten, normalisasi_teks_wilayah
 from .mart import bangun_mart
@@ -42,6 +45,58 @@ class IntakeUbah(BaseModel):
 
 
 _KOLOM_UBAH = tuple(IntakeUbah.model_fields)
+_KOLOM_CEPAT = _KOLOM_UBAH
+_KOLOM_WAJIB = ("ticket_date", "kode_vendor")
+_KOLOM_NUMERIK = {"wet_kg", "sample_kg", "reject_kg", "drc_pct", "dry_kg"}
+_KOLOM_DESIMAL = {"wet_kg", "sample_kg", "reject_kg", "dry_kg"}
+_BATAS_QUICK_FILL = 500
+_UMUR_PRATINJAU = 15 * 60  # detik
+#: Token pratinjau quick-fill. Hanya di memori proses; tidak ada tabel baru.
+_PRATINJAU_QUICK_FILL: dict[str, dict] = {}
+_KUNCI_QUICK_FILL = threading.Lock()
+
+
+class QuickFillMasuk(BaseModel):
+    ids: list[int] = Field(min_length=1, max_length=_BATAS_QUICK_FILL)
+    kolom: str
+    nilai: str | None = None
+    kosongkan: bool = False
+
+
+class QuickFillTerapkan(BaseModel):
+    token: str = Field(min_length=1, max_length=200)
+
+
+def _nilai_tampil(nilai):
+    if isinstance(nilai, dt.date):
+        return nilai.isoformat()
+    if isinstance(nilai, Decimal):
+        return float(nilai)
+    return nilai
+
+
+def _nilai_akhir(kolom: str, nilai):
+    if isinstance(nilai, str):
+        return nilai.strip() or None
+    if nilai is not None and kolom in _KOLOM_NUMERIK:
+        return float(nilai)
+    return nilai
+
+
+def _nilai_db(kolom: str, nilai):
+    if nilai is not None and kolom in _KOLOM_DESIMAL:
+        return Decimal(str(nilai))
+    return nilai
+
+
+def _bersih_pratinjau() -> None:
+    batas = time.time() - _UMUR_PRATINJAU
+    with _KUNCI_QUICK_FILL:
+        for token, entri in list(_PRATINJAU_QUICK_FILL.items()):
+            if entri["dibuat"] < batas:
+                _PRATINJAU_QUICK_FILL.pop(token, None)
+
+
 _KOLOM_CARI = (
     TiketBaris.ticket_no, TiketBaris.kode_vendor, TiketBaris.nama_vendor_asli,
     TiketBaris.vehicle_no, TiketBaris.item_code, TiketBaris.provinsi,
@@ -130,6 +185,97 @@ def pasang_router_intake(app, ambil_session):
             norm = normalisasi_teks_wilayah(provinsi)
             return query.where(ReferensiWilayahTrace.provinsi_norm == norm)
         return query
+
+    def _validasi_perubahan(row: TiketBaris, perubahan: dict, session: Session) -> dict:
+        """Validasi koreksi tanpa mengubah baris. Mengembalikan perubahan ternormalisasi."""
+        if not perubahan:
+            raise HTTPException(422, "Tidak ada perubahan untuk disimpan.")
+        if "ticket_date" in perubahan and perubahan["ticket_date"] is None:
+            raise HTTPException(422, "Tanggal tiket wajib diisi.")
+        if "kode_vendor" in perubahan:
+            kode = (perubahan["kode_vendor"] or "").strip().upper()
+            if not kode:
+                raise HTTPException(422, "Kode supplier wajib diisi.")
+            perubahan["kode_vendor"] = kode
+
+        kolom_wilayah = ("provinsi", "kabupaten", "kecamatan", "desa")
+        wilayah_baru = {
+            kolom: (perubahan.get(kolom, getattr(row, kolom)) or "").strip()
+            for kolom in kolom_wilayah
+        }
+        wilayah_berubah = any(
+            kolom in perubahan and wilayah_baru[kolom] != (getattr(row, kolom) or "").strip()
+            for kolom in kolom_wilayah
+        )
+        if wilayah_berubah:
+            pastikan_referensi_scdf(session)
+            ada_provinsi_scdf = provinsi_tersedia(session)
+            provinsi_norm = normalisasi_teks_wilayah(wilayah_baru["provinsi"])
+            kabupaten_norm = normalisasi_kabupaten(wilayah_baru["kabupaten"])
+            kecamatan_norm = normalisasi_teks_wilayah(wilayah_baru["kecamatan"])
+            desa_norm = normalisasi_teks_wilayah(wilayah_baru["desa"])
+
+            provinsi_diubah = (
+                "provinsi" in perubahan and
+                wilayah_baru["provinsi"] != (row.provinsi or "").strip()
+            )
+            if provinsi_diubah and wilayah_baru["provinsi"]:
+                if not ada_provinsi_scdf:
+                    raise HTTPException(422,
+                        "Provinsi tidak dapat dikoreksi: referensi SCDF yang termuat belum menyediakan Provinsi.")
+                if session.scalar(select(ReferensiWilayahTrace.id).where(
+                        ReferensiWilayahTrace.provinsi_norm == provinsi_norm).limit(1)) is None:
+                    raise HTTPException(422, "Provinsi tidak ditemukan pada referensi SCDF.")
+
+            if kabupaten_norm:
+                q_ref = select(ReferensiWilayahTrace.id).where(
+                    ReferensiWilayahTrace.kabupaten_norm == kabupaten_norm)
+                if ada_provinsi_scdf and provinsi_norm:
+                    q_ref = q_ref.where(ReferensiWilayahTrace.provinsi_norm == provinsi_norm)
+                if session.scalar(q_ref.limit(1)) is None:
+                    raise HTTPException(422, "Kabupaten/Kota tidak ditemukan pada referensi SCDF untuk Provinsi tersebut.")
+
+                if kecamatan_norm:
+                    q_ref = select(ReferensiWilayahTrace.id).where(
+                        ReferensiWilayahTrace.kabupaten_norm == kabupaten_norm,
+                        ReferensiWilayahTrace.kecamatan_norm == kecamatan_norm)
+                    if ada_provinsi_scdf and provinsi_norm:
+                        q_ref = q_ref.where(ReferensiWilayahTrace.provinsi_norm == provinsi_norm)
+                    if session.scalar(q_ref.limit(1)) is None:
+                        raise HTTPException(422, "Kecamatan tidak ditemukan pada Kabupaten/Kota di referensi SCDF.")
+
+                    if desa_norm:
+                        q_ref = select(ReferensiWilayahTrace.id).where(
+                            ReferensiWilayahTrace.kabupaten_norm == kabupaten_norm,
+                            ReferensiWilayahTrace.kecamatan_norm == kecamatan_norm,
+                            ReferensiWilayahTrace.desa_norm == desa_norm)
+                        if ada_provinsi_scdf and provinsi_norm:
+                            q_ref = q_ref.where(ReferensiWilayahTrace.provinsi_norm == provinsi_norm)
+                        if session.scalar(q_ref.limit(1)) is None:
+                            raise HTTPException(422, "Desa tidak ditemukan pada pasangan Kabupaten/Kecamatan di referensi SCDF.")
+        return perubahan
+
+    def _terapkan_perubahan(row: TiketBaris, perubahan: dict, session: Session):
+        """Terapkan koreksi tervalidasi; kembalikan (sebelumnya, sesudah) untuk audit."""
+        perubahan = _validasi_perubahan(row, perubahan, session)
+        sebelumnya: dict[str, object] = {}
+        sesudah: dict[str, object] = {}
+        for kolom, nilai in perubahan.items():
+            lama = getattr(row, kolom)
+            if isinstance(lama, Decimal):
+                lama = float(lama)
+            nilai = _nilai_akhir(kolom, nilai)
+            sebelumnya[kolom] = _nilai_tampil(lama)
+            sesudah[kolom] = _nilai_tampil(nilai)
+            setattr(row, kolom, _nilai_db(kolom, nilai))
+
+        if "wet_kg" in perubahan:
+            row.tiket_nol = row.wet_kg is not None and float(row.wet_kg) == 0
+        if any(k in perubahan for k in ("kabupaten", "kecamatan", "desa")):
+            row.kabupaten_norm = normalisasi_kabupaten(row.kabupaten)
+            row.kecamatan_norm = normalisasi_teks_wilayah(row.kecamatan)
+            row.desa_norm = normalisasi_teks_wilayah(row.desa)
+        return sebelumnya, sesudah
 
     @router.get("/options/scdf/provinsi")
     def pilihan_scdf_provinsi(session: Session = dep):
@@ -239,6 +385,135 @@ def pasang_router_intake(app, ambil_session):
             "pages": (total + page_size - 1) // page_size,
         }
 
+    @router.post("/quick-fill/pratinjau")
+    def pratinjau_quick_fill(data: QuickFillMasuk, request: Request,
+                             session: Session = dep):
+        """Hitung diff untuk satu kolom pada banyak baris; belum ada data disimpan."""
+        wajib_admin(request)
+        _bersih_pratinjau()
+        kolom = (data.kolom or "").strip()
+        if kolom not in _KOLOM_CEPAT:
+            raise HTTPException(422, "Kolom quick-fill tidak dikenal.")
+        ids = list(dict.fromkeys(data.ids))
+        if any(i <= 0 for i in ids):
+            raise HTTPException(422, "ID baris intake tidak valid.")
+        if data.kosongkan and kolom in _KOLOM_WAJIB:
+            raise HTTPException(422, f"Kolom {kolom} wajib diisi, tidak boleh dikosongkan.")
+        nilai_mentah = None if data.kosongkan else (data.nilai or "").strip()
+        if not data.kosongkan and nilai_mentah == "":
+            raise HTTPException(422, "Isi nilai baru atau centang 'Kosongkan nilai'.")
+        try:
+            model = IntakeUbah(**{kolom: nilai_mentah})
+        except ValidationError as e:
+            pesan = e.errors()[0].get("msg", "nilai tidak valid") if e.errors() else "nilai tidak valid"
+            raise HTTPException(422, f"Nilai untuk kolom {kolom} tidak valid: {pesan}") from e
+        perubahan = model.model_dump(exclude_unset=True)
+
+        rows = []
+        hilang = []
+        for row_id in ids:
+            row = session.get(TiketBaris, row_id)
+            if row is None:
+                hilang.append(row_id)
+            else:
+                rows.append(row)
+        if hilang:
+            raise HTTPException(404, f"Baris intake tidak ditemukan: {hilang[:5]}")
+
+        baris = []
+        galat = []
+        for row in rows:
+            perubahan_baris = dict(perubahan)
+            try:
+                _validasi_perubahan(row, perubahan_baris, session)
+            except HTTPException as e:
+                galat.append({
+                    "id": row.id, "ticket_no": row.ticket_no, "line_seq": row.line_seq,
+                    "alasan": str(e.detail),
+                })
+                continue
+            lama = _nilai_tampil(getattr(row, kolom))
+            baru = _nilai_tampil(_nilai_akhir(kolom, perubahan_baris[kolom]))
+            baris.append({
+                "id": row.id, "ticket_no": row.ticket_no, "line_seq": row.line_seq,
+                "sebelumnya": lama, "sesudah": baru, "berubah": lama != baru,
+            })
+
+        if galat:
+            return {
+                "status": "ada_galat", "token": None, "kolom": kolom,
+                "jumlah": len(ids), "berubah": sum(1 for b in baris if b["berubah"]),
+                "baris": baris, "galat": galat,
+                "pesan": f"{len(galat)} baris ditolak pada pratinjau; tidak ada perubahan disimpan.",
+            }
+
+        token = secrets.token_urlsafe(18)
+        with _KUNCI_QUICK_FILL:
+            _PRATINJAU_QUICK_FILL[token] = {
+                "ids": ids, "kolom": kolom, "perubahan": perubahan,
+                "sebelumnya": {b["id"]: b["sebelumnya"] for b in baris},
+                "dibuat": time.time(),
+            }
+        return {
+            "status": "siap", "token": token, "kolom": kolom,
+            "jumlah": len(ids), "berubah": sum(1 for b in baris if b["berubah"]),
+            "baris": baris, "galat": [],
+            "kedaluwarsa_detik": _UMUR_PRATINJAU,
+            "pesan": f"Pratinjau {len(ids)} baris siap. {sum(1 for b in baris if b['berubah'])} baris akan berubah; konfirmasi untuk menyimpan.",
+        }
+
+    @router.post("/quick-fill/terapkan")
+    def terapkan_quick_fill(data: QuickFillTerapkan, request: Request,
+                            session: Session = dep):
+        """Simpan seluruh pratinjau dalam satu transaksi; token hanya sekali pakai."""
+        wajib_admin(request)
+        _bersih_pratinjau()
+        with _KUNCI_QUICK_FILL:
+            entri = _PRATINJAU_QUICK_FILL.pop(data.token, None)
+        if entri is None:
+            raise HTTPException(404, "Pratinjau tidak ditemukan, kedaluwarsa, atau sudah diterapkan. Buat pratinjau baru.")
+
+        ids = entri["ids"]
+        kolom = entri["kolom"]
+        perubahan = entri["perubahan"]
+        sebelumnya = entri["sebelumnya"]
+        rows = []
+        for row_id in ids:
+            row = session.get(TiketBaris, row_id)
+            if row is None:
+                raise HTTPException(409, f"Baris {row_id} sudah tidak ada. Buat pratinjau baru.")
+            if _nilai_tampil(getattr(row, kolom)) != sebelumnya.get(row_id):
+                raise HTTPException(409, f"Data baris {row_id} berubah sejak pratinjau. Buat pratinjau baru.")
+            rows.append(row)
+
+        pengguna = info_pengguna(request) or {}
+        siapa = pengguna.get("sub") or "pengguna aplikasi"
+        for row in rows:
+            sebelum_baris, sesudah_baris = _terapkan_perubahan(row, dict(perubahan), session)
+            catat_audit(session, siapa, "ubah_massal", "intake_tiket", {
+                "token": data.token, "kolom": kolom,
+                "id": row.id, "ticket_no": row.ticket_no, "line_seq": row.line_seq,
+                "sebelumnya": sebelum_baris, "sesudah": sesudah_baris,
+            })
+        bangun_mart(session)
+        evaluasi_alarm(session)
+        session.commit()
+        return {
+            "status": "tersimpan", "jumlah": len(rows), "kolom": kolom,
+            "pesan": f"{len(rows)} baris intake diperbarui lewat quick-fill; ringkasan dan alarm disegarkan.",
+        }
+
+    @router.delete("/quick-fill/pratinjau/{token}")
+    def batalkan_quick_fill(token: str, request: Request):
+        wajib_admin(request)
+        _bersih_pratinjau()
+        with _KUNCI_QUICK_FILL:
+            ada = _PRATINJAU_QUICK_FILL.pop(token, None) is not None
+        return {
+            "status": "dibatalkan" if ada else "tidak_ada",
+            "pesan": "Pratinjau dibatalkan." if ada else "Pratinjau sudah tidak tersedia.",
+        }
+
     @router.put("/{row_id}")
     def ubah_intake(row_id: int, data: IntakeUbah, request: Request,
                     session: Session = dep):
@@ -247,96 +522,7 @@ def pasang_router_intake(app, ambil_session):
             raise HTTPException(404, "Baris intake tidak ditemukan.")
 
         perubahan = data.model_dump(exclude_unset=True)
-        if not perubahan:
-            raise HTTPException(422, "Tidak ada perubahan untuk disimpan.")
-
-        # Kolom kunci harus tetap tersedia dan tidak boleh dikosongkan.
-        if "ticket_date" in perubahan and perubahan["ticket_date"] is None:
-            raise HTTPException(422, "Tanggal tiket wajib diisi.")
-        if "kode_vendor" in perubahan:
-            kode = (perubahan["kode_vendor"] or "").strip().upper()
-            if not kode:
-                raise HTTPException(422, "Kode supplier wajib diisi.")
-            perubahan["kode_vendor"] = kode
-
-        kolom_wilayah = ("provinsi", "kabupaten", "kecamatan", "desa")
-        wilayah_baru = {
-            kolom: (perubahan.get(kolom, getattr(row, kolom)) or "").strip()
-            for kolom in kolom_wilayah
-        }
-        wilayah_berubah = any(
-            kolom in perubahan and wilayah_baru[kolom] != (getattr(row, kolom) or "").strip()
-            for kolom in kolom_wilayah
-        )
-        if wilayah_berubah:
-            pastikan_referensi_scdf(session)
-            ada_provinsi_scdf = provinsi_tersedia(session)
-            provinsi_norm = normalisasi_teks_wilayah(wilayah_baru["provinsi"])
-            kabupaten_norm = normalisasi_kabupaten(wilayah_baru["kabupaten"])
-            kecamatan_norm = normalisasi_teks_wilayah(wilayah_baru["kecamatan"])
-            desa_norm = normalisasi_teks_wilayah(wilayah_baru["desa"])
-
-            provinsi_diubah = (
-                "provinsi" in perubahan and
-                wilayah_baru["provinsi"] != (row.provinsi or "").strip()
-            )
-            if provinsi_diubah and wilayah_baru["provinsi"]:
-                if not ada_provinsi_scdf:
-                    raise HTTPException(422,
-                        "Provinsi tidak dapat dikoreksi: referensi SCDF yang termuat belum menyediakan Provinsi.")
-                if session.scalar(select(ReferensiWilayahTrace.id).where(
-                        ReferensiWilayahTrace.provinsi_norm == provinsi_norm).limit(1)) is None:
-                    raise HTTPException(422, "Provinsi tidak ditemukan pada referensi SCDF.")
-
-            if kabupaten_norm:
-                q_ref = select(ReferensiWilayahTrace.id).where(
-                    ReferensiWilayahTrace.kabupaten_norm == kabupaten_norm)
-                if ada_provinsi_scdf and provinsi_norm:
-                    q_ref = q_ref.where(ReferensiWilayahTrace.provinsi_norm == provinsi_norm)
-                if session.scalar(q_ref.limit(1)) is None:
-                    raise HTTPException(422, "Kabupaten/Kota tidak ditemukan pada referensi SCDF untuk Provinsi tersebut.")
-
-                if kecamatan_norm:
-                    q_ref = select(ReferensiWilayahTrace.id).where(
-                        ReferensiWilayahTrace.kabupaten_norm == kabupaten_norm,
-                        ReferensiWilayahTrace.kecamatan_norm == kecamatan_norm)
-                    if ada_provinsi_scdf and provinsi_norm:
-                        q_ref = q_ref.where(ReferensiWilayahTrace.provinsi_norm == provinsi_norm)
-                    if session.scalar(q_ref.limit(1)) is None:
-                        raise HTTPException(422, "Kecamatan tidak ditemukan pada Kabupaten/Kota di referensi SCDF.")
-
-                    if desa_norm:
-                        q_ref = select(ReferensiWilayahTrace.id).where(
-                            ReferensiWilayahTrace.kabupaten_norm == kabupaten_norm,
-                            ReferensiWilayahTrace.kecamatan_norm == kecamatan_norm,
-                            ReferensiWilayahTrace.desa_norm == desa_norm)
-                        if ada_provinsi_scdf and provinsi_norm:
-                            q_ref = q_ref.where(ReferensiWilayahTrace.provinsi_norm == provinsi_norm)
-                        if session.scalar(q_ref.limit(1)) is None:
-                            raise HTTPException(422, "Desa tidak ditemukan pada pasangan Kabupaten/Kecamatan di referensi SCDF.")
-
-        sebelumnya: dict[str, object] = {}
-        sesudah: dict[str, object] = {}
-        for kolom, nilai in perubahan.items():
-            lama = getattr(row, kolom)
-            if isinstance(lama, Decimal):
-                lama = float(lama)
-            if isinstance(nilai, str):
-                nilai = nilai.strip() or None
-            sebelumnya[kolom] = lama.isoformat() if isinstance(lama, dt.date) else lama
-            sesudah[kolom] = nilai.isoformat() if isinstance(nilai, dt.date) else nilai
-            nilai_db = (Decimal(str(nilai)) if nilai is not None and kolom in
-                        {"wet_kg", "sample_kg", "reject_kg", "dry_kg"} else nilai)
-            setattr(row, kolom, nilai_db)
-
-        if "wet_kg" in perubahan:
-            row.tiket_nol = row.wet_kg is not None and float(row.wet_kg) == 0
-        if any(k in perubahan for k in ("kabupaten", "kecamatan", "desa")):
-            # Kunci wilayah ikut diperbarui agar kartu penerimaan dan
-            # Regional Traceability membaca koreksi yang sama setelah disimpan.
-            row.kabupaten_norm = normalisasi_kabupaten(row.kabupaten)
-            row.kecamatan_norm = normalisasi_teks_wilayah(row.kecamatan)
-            row.desa_norm = normalisasi_teks_wilayah(row.desa)
+        sebelumnya, sesudah = _terapkan_perubahan(row, perubahan, session)
 
         pengguna = info_pengguna(request) or {}
         siapa = pengguna.get("sub") or "pengguna aplikasi"
