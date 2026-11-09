@@ -466,6 +466,7 @@ const KAMUS: Record<string, string> = {
   "Refresh": "Refresh",
   "Refresh periode ini": "Refresh this period",
   "sesuai periode": "for the selected period",
+  "Data dimuat otomatis": "Loaded automatically",
   "Preview lokal bila tersedia · pilih periode, lalu tekan Refresh pada kartu ini":
     "Local preview when available · choose a period, then press Refresh on this card",
   "Preview lokal bila tersedia · pilih periode, lalu tekan Refresh di sampingnya":

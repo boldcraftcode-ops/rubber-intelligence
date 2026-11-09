@@ -69,7 +69,10 @@ bukan lagi di kanan header kartu. Jadi tombol yang ditekan jelas memuat ulang
 data untuk periode yang baru dipilih pada kartu yang sama. Kartu yang memang
 tidak punya kontrol periode tetap memakai tombol **Refresh** di headernya.
 Mengubah periode tidak otomatis memanggil API; tekan Refresh di sampingnya
-untuk mengambil data terbaru.
+untuk mengambil data terbaru. **Pengecualian:** kartu **Angka kunci Margin
+Performance** memakai query tersendiri yang aktif sejak halaman dibuka, jadi
+datanya **auto tampil** dan kartu itu **tidak punya tombol Refresh**. Kartu
+lain tetap memakai Refresh seperti di atas.
 
 ## 3c. Membaca menu Stok vs Margin
 
@@ -693,6 +696,21 @@ Lalu buka `http://localhost:5173`. Sejak Fase 3 aplikasi punya lima tab:
 - setiap simpanan dicatat (siapa & kapan) dan langsung memperbarui
   perhitungan OP Margin. Menyimpan tanggal yang sama menimpa nilai lama
   dengan pemberitahuan, tidak menggandakan.
+
+## Kalau panel analisa terbuka tetapi datanya tidak muncul
+
+Gejala lama: **RCA · 5 Why**, **Margin Bridge**, **Days of Cover**, **Analisis
+tren & musiman**, dan **Analisis deskriptif & komposisi** terbuka, tetapi isinya
+kosong / hanya "Menghitung…". Bukan karena endpoint rusak: `/api/ringkasan-
+elemen/rca`, `/api/margin-bridge`, `/api/days-of-cover`,
+`/api/kartu/penerimaan/tren`, dan `/api/kartu/penerimaan/komposisi` semuanya
+menjawab 200. Penyebabnya panel-panel itu dulu memakai `useQueryKartu`, yang
+**menahan permintaan jaringan sampai tombol Refresh kartu ditekan**. Karena
+panel baru dipasang saat tombol analisa diklik, Refresh kartu tidak sempat
+mendaftarkan query panel itu. Sekarang panel analisa memakai `useQuery` biasa:
+saat panel dibuka, query langsung aktif dan memuat data. **5W1H** dan **Analisa
+semua data** memakai `Panel5W1H` yang memang sudah `useQuery` biasa; URL 5W1H
+pada kartu elemen juga dirapikan agar tidak menggabungkan dua `?`.
 
 ## Kalau ada tombol analisa yang bilang "Fitur ini tidak dikenali"
 

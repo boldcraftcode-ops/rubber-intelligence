@@ -140,7 +140,7 @@ function Telusur({ tahun, bulan, tutup }: { tahun: number; bulan: number; tutup:
 
 /* ---------- panel RCA 5 Why: angka dihitung server dari periode kartu ---------- */
 function PanelRCA({ url, tutup }: { url: string; tutup: () => void }) {
-  const q = useQueryKartu({ queryKey: ["rca-rm-stock-intake-pricing", url], queryFn: () => ambilJson(url) });
+  const q = useQuery({ queryKey: ["rca-rm-stock-intake-pricing", url], queryFn: () => ambilJson(url) });
   const fmt = (v: number | null | undefined, d = 2) => v == null ? "—" : fmtAngka(v, d);
   const delta = (v: number | null | undefined, d = 2) =>
     v == null ? "—" : `${v > 0 ? "+" : ""}${fmtAngka(v, d)}`;
@@ -263,7 +263,6 @@ function KartuElemen() {
   if (sampai) params.set("sampai", sampai);
   const qs = params.size ? "?" + params.toString() : "";
   const url = `/api/ringkasan-elemen${qs}`;
-  const urlAnalisa = `/api/ringkasan-elemen/analisa${qs}`;
 
   // Periode analisa: bawaan = filter kartu (bulan/tahun yang tampil di grafik),
   // tapi bisa diubah langsung di panel (periode awal & akhir).
@@ -342,7 +341,8 @@ function KartuElemen() {
         </p>
         {panel === "5w1h" && (
           <Panel5W1H judul={`${t("Analisa grafik")} — 5W1H`}
-                     url={urlAnalisa + qsPeriode} tutup={() => setPanel(null)} />
+                     url={`/api/ringkasan-elemen/analisa${qsPeriode}`}
+                     tutup={() => setPanel(null)} />
         )}
         {panel === "rca" && <PanelRCA url={urlRca} tutup={() => setPanel(null)} />}
         {panel === "bridge" && (
@@ -871,7 +871,7 @@ function PanelMarginBridge({ url, tutup, awal, akhir, ubah }: {
 }) {
   const { t } = useBahasa();
   const [rincian, setRincian] = useState(false);
-  const q = useQueryKartu({ queryKey: ["margin-bridge", url],
+  const q = useQuery({ queryKey: ["margin-bridge", url],
                        queryFn: () => ambilJson(url), retry: false });
   const d = q.data;
 
@@ -1171,7 +1171,7 @@ function PanelDaysOfCover({ url, tutup, awal, akhir, ubah }: {
   ubah: (a: string, b: string) => void;
 }) {
   const { t } = useBahasa();
-  const q = useQueryKartu({ queryKey: ["days-of-cover", url],
+  const q = useQuery({ queryKey: ["days-of-cover", url],
                        queryFn: () => ambilJson(url), retry: false });
   const d = q.data;
   const baris: any[] = d?.baris ?? [];
@@ -1616,6 +1616,18 @@ export default function Ringkasan({ ke }: { ke?: (tab: string) => void }) {
     enabled: ringkasanDiminta && thn !== null,
     staleTime: Infinity,
   });
+  // Kartu "Angka kunci" punya query sendiri yang AKTIF sejak halaman dibuka.
+  // Query `ringkas` di bawah tetap dikunci oleh Refresh kartu "OP Margin bulanan".
+  const ringkasOtomatis = useQuery({
+    queryKey: ["ringkasan-angka-kunci", thn],
+    queryFn: () => ambilJson(`/api/ringkasan/${thn}`),
+    enabled: thn !== null,
+    staleTime: Infinity,
+  });
+  const tahunKosongOtomatis = !tahunQ.isLoading &&
+    Array.isArray(tahunQ.data) && tahunQ.data.length === 0;
+  const galatOtomatis = ringkasOtomatis.error ?? tahunQ.error;
+  const siapOtomatis = !!ringkasOtomatis.data || !!galatOtomatis || tahunKosongOtomatis;
   const tahunKosong = ringkasanDiminta && !tahunQ.isLoading &&
     Array.isArray(tahunQ.data) && tahunQ.data.length === 0;
   const siapRingkasan = !!ringkas.data || !!ringkas.error || !!tahunQ.error || tahunKosong;
@@ -1631,16 +1643,15 @@ export default function Ringkasan({ ke }: { ke?: (tab: string) => void }) {
   return (
     <div className="grid gap-6">
       <KartuMuatSaatDiminta
+        otomatis
         judul="Angka kunci Margin Performance"
         keterangan="Indikator ringkas, margin, days of cover, dan perubahan harga."
-        siap={siapRingkasan}
-        setelahDiminta={() => setRingkasanDiminta(true)}
-        kunciRefreshTambahan={[["tahun"], ["ringkasan", thn]]}
-        anak={galatRingkasan
-          ? <p className="rounded-sm border border-[#E4E5E8] bg-[#F8F8F8] p-3 text-sm text-[#64676C]">{pesanGalat(galatRingkasan)}</p>
-          : tahunKosong
+        siap={siapOtomatis}
+        anak={galatOtomatis
+          ? <p className="rounded-sm border border-[#E4E5E8] bg-[#F8F8F8] p-3 text-sm text-[#64676C]">{pesanGalat(galatOtomatis)}</p>
+          : tahunKosongOtomatis
             ? <p className="rounded-sm border border-[#E4E5E8] bg-[#F8F8F8] p-3 text-sm text-[#64676C]">Belum ada data margin untuk ditampilkan.</p>
-            : <StripAngkaKunci thn={thn} data={ringkas.data} ke={ke} />}
+            : <StripAngkaKunci thn={thn} data={ringkasOtomatis.data} ke={ke} />}
       />
 
       <KartuMuatSaatDiminta

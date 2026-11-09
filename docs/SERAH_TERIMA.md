@@ -1331,6 +1331,8 @@ menjawab.
 
 | 2026-11-08 | **Caption panjang pada mode Edit Sourcing locations dibuang**: pesan **"Belum ada lokasi cocok dari intake tahun sebelumnya…"**, penjelasan **"Persentase adalah porsi volume Dry historis…"**, dan caption gabungan `basis`/`catatan` deteksi SCDF tidak lagi dirender. Judul **Rekomendasi dari intake tahun sebelumnya**, **Deteksi potensi salah ketik dari SCDF**, daftar rekomendasi/kandidat, status, tombol **Pakai**, **Simpan**, **Hapus pemetaan**, dan **Batal** tetap ada | pemilik mengutip dua caption dan memintanya dibuang. Perubahan murni presentasi: 3 baris JSX dihapus dan tes sumber UI diperbarui untuk memastikan caption tidak kembali; endpoint, field respons API, logika deteksi, koreksi, audit, dan data tidak diubah |
 
+| 2026-11-08 | **Angka kunci Margin Performance dibuat auto tampil tanpa tombol Refresh**: `KartuMuatSaatDiminta` mendapat prop `otomatis` yang membuat `useQueryKartu` tidak lagi menahan jaringan dan menyembunyikan Refresh; kartu memakai query `ringkasOtomatis` tersendiri sehingga kartu lain tetap on-demand. **Panel analisa diperbaiki**: RCA, Margin Bridge, Days of Cover, Analisis tren & musiman, dan Analisis deskriptif & komposisi beralih dari `useQueryKartu` ke `useQuery` biasa; URL 5W1H kartu elemen tidak lagi menggabungkan dua query string | pemilik meminta kartu angka kunci auto tampil serta menanyakan kenapa tombol analisa tidak memuat data. Diagnosis: endpoint backend 200, tetapi konteks Refresh kartu memaksa `enabled:false` pada query panel yang baru dipasang saat klik. Perubahan murni frontend + i18n + tes/docs; tidak ada endpoint, perhitungan, atau data yang diubah. Tombol Refresh kartu lain tetap dipertahankan |
+
 ---
 
 ## 15. Ringkasan satu paragraf

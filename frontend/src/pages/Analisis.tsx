@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import {
   Bar, BarChart, CartesianGrid, Legend, Line, LineChart, ResponsiveContainer,
   Tooltip, XAxis, YAxis,
@@ -275,7 +276,7 @@ export function AnalisisTren({ dari, sampai, modeEudr, bukaAwal = false }: {
   if (sampai) params.set("sampai", sampai);
   if (modeEudr !== "semua") params.set("eudr", String(modeEudr === "eudr"));
   const url = `/api/kartu/penerimaan/tren${params.size ? `?${params.toString()}` : ""}`;
-  const q = useQueryKartu({
+  const q = useQuery({
     queryKey: ["tren-penerimaan", url],
     queryFn: () => ambilJson(url),
     enabled: buka,
@@ -544,7 +545,7 @@ export function AnalisisKomposisi({ dari, sampai, modeEudr, dimensi,
   if (sampai) params.set("sampai", sampai);
   if (modeEudr !== "semua") params.set("eudr", String(modeEudr === "eudr"));
   const url = `/api/kartu/penerimaan/komposisi?${params.toString()}`;
-  const q = useQueryKartu({
+  const q = useQuery({
     queryKey: ["komposisi-penerimaan", url],
     queryFn: () => ambilJson(url),
     enabled: buka,
