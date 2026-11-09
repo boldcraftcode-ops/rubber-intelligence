@@ -15,7 +15,7 @@ def test_panel_deteksi_scdf_ada_di_mode_edit():
     assert '["traceability-origin-typo-scdf"' in teks
     assert 'typoScdf.data?.status === "potensi_salah_ketik"' in teks
     assert 'typoScdf.data?.status === "cocok"' in teks
-    assert "bukan rekomendasi pembelian terdahulu" in teks
+    assert "bukan rekomendasi pembelian terdahulu" not in teks
     assert "Skor kemiripan" in teks
 
 
@@ -29,7 +29,7 @@ def test_tombol_pakai_hanya_mengisi_dropdown_bukan_menyimpan():
     assert "setTargetSubdistrict(kandidat.desa_norm)" in blok
     assert "simpanKoreksi.mutate" not in blok
     assert "onClick={() => pakaiKandidatScdf(kandidat)}>Pakai</button>" in teks
-    assert "Klik Pakai hanya mengisi pilihan" in teks
+    assert "Klik Pakai hanya mengisi pilihan" not in teks
 
 
 def test_koreksi_lintas_induk_scdf_eksplisit_dan_intake_tidak_diubah():
@@ -58,3 +58,21 @@ def test_dropdown_menjaga_kandidat_yang_belum_masuk_opsi():
     assert "const opsiSubdistrict: any[] = subdistrictOptions.data?.options ?? [];" in teks
     assert "scdfDipakai?.kecamatan_norm === targetDistrict" in teks
     assert "scdfDipakai?.desa_norm === targetSubdistrict" in teks
+
+
+def test_caption_panjang_yang_diminta_dihapus_tidak_ada_lagi():
+    teks = _teks()
+    assert "Belum ada lokasi cocok dari intake tahun sebelumnya" not in teks
+    assert "Persentase adalah porsi volume Dry historis" not in teks
+    assert "Mohon verifikasi sebelum menyimpan" not in teks
+    assert "Membandingkan ejaan District dan Sub-district sumber" not in teks
+    assert "Skor kemiripan bukan probabilitas" not in teks
+    assert "Tombol Pakai hanya mengisi pilihan" not in teks
+    assert "Intake asli tetap tidak diubah" not in teks
+    assert "Deteksi ini membandingkan ejaan dengan SCDF" not in teks
+    assert "typoScdf.data?.basis" not in teks
+    assert "typoScdf.data?.catatan" not in teks
+    # Yang bukan caption tetap bertahan.
+    assert "Rekomendasi dari intake tahun sebelumnya" in teks
+    assert "Deteksi potensi salah ketik dari SCDF" in teks
+    assert "Skor kemiripan" in teks

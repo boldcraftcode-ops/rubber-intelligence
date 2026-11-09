@@ -927,8 +927,6 @@ export default function Traceability() {
                                   {historicalRecommendations.isLoading && <p className="mt-1 text-[10px] text-[#667085]">Menghitung pola historis…</p>}
                                   {(historicalRecommendations.data?.recommendations ?? []).slice(0, 3).map((recommendation: any) => <div key={recommendation.sub_district_norm} className="mt-1 flex items-center justify-between gap-2 text-[10px]"><span><b>{recommendation.sub_district}</b> · Keyakinan historis {fmtAngka(recommendation.confidence_pct, 1)}% · {recommendation.historical_tickets} tiket / {recommendation.historical_years} tahun</span><button className="shrink-0 rounded-sm border border-[#D1D5DB] bg-white px-1.5 py-0.5 font-semibold text-[#344054] hover:bg-[#F2F4F7]" onClick={() => pakaiRekomendasiHistoris(recommendation)}>Pakai</button></div>)}
                                   {historicalRecommendations.error && <p className="mt-1 text-[10px] text-[#B42318]">Gagal memuat rekomendasi historis: {(historicalRecommendations.error as Error).message}</p>}
-                                  {!historicalRecommendations.isLoading && !historicalRecommendations.error && !(historicalRecommendations.data?.recommendations?.length) && <p className="mt-1 text-[10px] text-[#667085]">Belum ada lokasi cocok dari intake tahun sebelumnya untuk supplier, Regency, dan District ini.</p>}
-                                  <p className="mt-1 text-[9px] leading-relaxed text-[#667085]">Persentase adalah porsi volume Dry historis pada supplier dan Regency/District yang sama, bukan probabilitas bahwa lokasi sekarang pasti benar. Mohon verifikasi sebelum menyimpan.</p>
                                 </div>
                                 <div className="rounded-sm border border-[#FDE68A] bg-[#FFFBEB] p-2">
                                   <p className="text-[10px] font-semibold text-[#92400E]">Deteksi potensi salah ketik dari SCDF</p>
@@ -942,7 +940,6 @@ export default function Traceability() {
                                   {typoScdf.data?.status === "tidak_ada_kandidat" && <p className="mt-1 text-[10px] text-[#667085]">{typoScdf.data.pesan} Periksa ejaan secara manual pada dropdown SCDF.</p>}
                                   {typoScdf.data?.status === "referensi_kosong" && <p className="mt-1 text-[10px] text-[#B54708]">{typoScdf.data.pesan}</p>}
                                   {typoScdf.data?.status === "sumber_tidak_lengkap" && <p className="mt-1 text-[10px] text-[#B54708]">District atau Sub-district sumber belum lengkap untuk dideteksi.</p>}
-                                  <p className="mt-1 text-[9px] leading-relaxed text-[#667085]">{typoScdf.data?.basis || "Deteksi ini membandingkan ejaan dengan SCDF, bukan rekomendasi pembelian terdahulu."} {typoScdf.data?.catatan || "Klik Pakai hanya mengisi pilihan; Simpan tetap keputusan pengguna."}</p>
                                 </div>
                                 {!subdistrictOptions.isLoading && !(subdistrictOptions.data?.options?.length) && <p className="text-[10px] text-[#B54708]">Tidak ada pilihan SCDF untuk Regency/District ini. Periksa parent location pada intake.</p>}
                                 <div className="flex flex-wrap gap-1">
