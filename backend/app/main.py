@@ -274,6 +274,7 @@ def buat_app(engine: Engine | None = None) -> FastAPI:
                     "kepatuhan-vendor-sampling",
                     "traceability-tree",
                     "intake-quick-fill",
+                    "intake-excel-diff",
                 ],
                 # versi kode ikut dilaporkan supaya mudah membandingkan
                 # folder yang dijalankan dengan kode terbaru di repo

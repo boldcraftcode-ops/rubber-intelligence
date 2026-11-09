@@ -38,7 +38,8 @@ def test_pratinjau_dan_konfirmasi_eksplisit():
     assert "sesudah" in SUMBER
 
 
-def test_health_dan_tidak_memakai_unggah_excel():
+def test_health_dan_endpoint_unggah_lama_tidak_dipakai():
     assert '"intake-quick-fill"' in UTAMA
-    assert "Unduh template koreksi" not in SUMBER
+    assert '"intake-excel-diff"' in UTAMA
+    # Alur Excel diff memakai endpoint intake sendiri, bukan endpoint unggah lama.
     assert "/api/unggah/pratinjau" not in SUMBER

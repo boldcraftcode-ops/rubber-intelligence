@@ -1,4 +1,4 @@
-import { type FormEvent, useEffect, useMemo, useState } from "react";
+import { type FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ambilJson, fmtAngka, fmtTanggal, kelasInput, kelasLabel,
@@ -50,6 +50,26 @@ type HasilPratinjau = {
   jumlah: number;
   berubah: number;
   baris: BarisPratinjau[];
+  galat: GalatPratinjau[];
+  pesan: string;
+  kedaluwarsa_detik?: number;
+};
+type PerubahanExcel = {
+  kolom: string; label: string;
+  sebelumnya: string | number | null; sesudah: string | number | null;
+};
+type BarisExcel = {
+  id: number; ticket_no: string; line_seq: number;
+  perubahan: PerubahanExcel[]; berubah: boolean;
+};
+type HasilExcel = {
+  status: "siap" | "ada_galat" | "kosong";
+  token: string | null;
+  nama_file: string;
+  jumlah: number;
+  berubah: number;
+  jumlah_perubahan: number;
+  baris: BarisExcel[];
   galat: GalatPratinjau[];
   pesan: string;
   kedaluwarsa_detik?: number;
@@ -483,6 +503,226 @@ function PanelQuickFill({ terpilih, rows, epoch, onBersihkan, onSelesai }: {
   );
 }
 
+function PanelExcelDiff({ filter, cari, epoch, onSelesai }: {
+  filter: FilterIntake; cari: string; epoch: number;
+  onSelesai: (pesan: string) => Promise<void>;
+}) {
+  const [berkas, setBerkas] = useState<File | null>(null);
+  const [hasil, setHasil] = useState<HasilExcel | null>(null);
+  const [token, setToken] = useState<string | null>(null);
+  const [galat, setGalat] = useState<string | null>(null);
+  const inputBerkas = useRef<HTMLInputElement>(null);
+
+  const params = new URLSearchParams();
+  if (filter.tahun) params.set("tahun", filter.tahun);
+  if (filter.provinsi) params.set("provinsi", filter.provinsi);
+  if (filter.supplier) params.set("supplier", filter.supplier);
+  if (cari) params.set("q", cari);
+  const urlBerisi = `/api/intake/excel-diff/template?${params.toString()}`;
+  const urlKosong = "/api/intake/excel-diff/template?kosong=1";
+
+  const bersihkanBerkas = () => {
+    setBerkas(null);
+    if (inputBerkas.current) inputBerkas.current.value = "";
+  };
+  const resetHasil = () => {
+    setHasil(null);
+    setToken(null);
+    setGalat(null);
+  };
+
+  const pratinjau = useMutation({
+    mutationFn: () => {
+      if (!berkas) throw new Error("Pilih file .xlsx terlebih dahulu.");
+      const form = new FormData();
+      form.append("file", berkas);
+      return kirimMetode("/api/intake/excel-diff/pratinjau", "POST", form) as Promise<HasilExcel>;
+    },
+    onSuccess: (data) => {
+      setHasil(data);
+      setToken(data.token);
+      setGalat(null);
+    },
+    onError: (e: Error) => {
+      resetHasil();
+      setGalat(e.message);
+    },
+  });
+  const terapkan = useMutation({
+    mutationFn: (t: string) => kirimMetode("/api/intake/excel-diff/terapkan", "POST", {
+      token: t,
+    }) as Promise<{ pesan: string }>,
+    onSuccess: async (data) => {
+      resetHasil();
+      bersihkanBerkas();
+      await onSelesai(data.pesan);
+    },
+    onError: (e: Error) => {
+      resetHasil();
+      setGalat(e.message);
+    },
+  });
+  const batal = useMutation({
+    mutationFn: (t: string) => kirimMetode(
+      `/api/intake/excel-diff/pratinjau/${encodeURIComponent(t)}`, "DELETE"),
+    onSuccess: () => {
+      resetHasil();
+      bersihkanBerkas();
+    },
+    onError: (e: Error) => setGalat(e.message),
+  });
+
+  useEffect(() => {
+    resetHasil();
+    bersihkanBerkas();
+  }, [epoch, filter, cari]);
+  useEffect(() => {
+    resetHasil();
+  }, [berkas]);
+
+  const tampil = (v: string | number | null) => {
+    if (v === null || v === "") return "—";
+    if (typeof v === "number") return fmtAngka(v, 3);
+    return String(v);
+  };
+  const diff = useMemo(() => (hasil?.baris ?? []).flatMap((b) =>
+    b.perubahan.map((p) => ({
+      kunci: `${b.id}-${p.kolom}`,
+      ticket: `${b.ticket_no} · ${b.line_seq}`,
+      ...p,
+    }))), [hasil]);
+  const konfirmasiTerapkan = () => {
+    if (!token || !hasil || hasil.status !== "siap" || hasil.berubah === 0) return;
+    const ok = window.confirm(
+      `Terapkan ${hasil.jumlah_perubahan} perubahan pada ${hasil.berubah} baris dari file ${hasil.nama_file}?\n\n` +
+      "Perubahan tercatat per baris di audit log, menyegarkan ringkasan/alarm, dan tidak dibatalkan otomatis. " +
+      "Lanjutkan hanya bila pratinjau sudah benar.");
+    if (ok) terapkan.mutate(token);
+  };
+
+  return (
+    <section className="mt-4 rounded-sm border border-[#D7E7FF] bg-[#F8FBFF] p-3">
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div>
+          <h3 className="text-sm font-semibold text-[#1D2434]">Excel diff koreksi intake</h3>
+          <p className="mt-0.5 max-w-3xl text-[11px] leading-relaxed text-[#64676C]">
+            Untuk koreksi yang <b>berbeda-beda per baris</b>. Unduh Excel berisi nilai lama sesuai filter,
+            ubah sel yang perlu, lalu unggah kembali untuk pratinjau dan konfirmasi.
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-1.5">
+          <a className={kelasTombolKecil} href={urlBerisi} download>Unduh Excel baris filter ini</a>
+          <a className={kelasTombolKecil} href={urlKosong} download>Unduh template kosong</a>
+        </div>
+      </div>
+
+      <div className="mt-3 grid grid-cols-1 items-end gap-2 md:grid-cols-[minmax(260px,1fr)_auto]">
+        <label className="block">
+          <span className={kelasLabel}>File koreksi .xlsx</span>
+          <input ref={inputBerkas} className={kelasInput} type="file"
+                 accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                 onChange={(e) => setBerkas(e.target.files?.[0] ?? null)} />
+        </label>
+        <div className="flex flex-wrap gap-1.5 pb-0.5">
+          <button type="button" className={kelasTombolKecil}
+                  disabled={!berkas || pratinjau.isPending}
+                  onClick={() => pratinjau.mutate()}>
+            {pratinjau.isPending ? "Memeriksa…" : "Pratinjau"}
+          </button>
+        </div>
+      </div>
+      {berkas && (
+        <p className="mt-1 text-[10px] text-[#64676C]">
+          Berkas: <b>{berkas.name}</b> · {(berkas.size / 1024).toFixed(1)} KB
+        </p>
+      )}
+      <p className="mt-2 text-[10px] leading-relaxed text-[#64676C]">
+        Maksimal 500 baris / 5 MB. Hanya admin yang dapat menerapkan. Nilai lama sudah terisi pada
+        unduhan utama; <b>sel kosong berarti menghapus nilai opsional</b>. Template kosong hanya
+        untuk melihat format. Ticket No, Baris, Asal Getah, sidik sumber, dan file unggahan asli
+        tetap tidak berubah.
+      </p>
+      {galat && <p role="alert" className="mt-2 rounded-sm border border-[#FECACA] bg-[#FEF2F2] px-3 py-2 text-xs text-[#B91C1C]">{galat}</p>}
+
+      {hasil && (
+        <div className="mt-3 rounded-sm border border-[#E4E5E8] bg-white p-3">
+          <p className={`text-xs font-semibold ${hasil.status === "siap" ? "text-[#15803D]" : hasil.status === "kosong" ? "text-[#B45309]" : "text-[#B42318]"}`}>
+            {hasil.pesan}
+          </p>
+          {hasil.galat.length > 0 && (
+            <ul className="mt-2 list-disc pl-5 text-[11px] text-[#B42318]">
+              {hasil.galat.slice(0, 8).map((g, i) => (
+                <li key={`${g.id}-${i}`}>{g.ticket_no} · baris {g.line_seq}: {g.alasan}</li>
+              ))}
+              {hasil.galat.length > 8 && <li>…{hasil.galat.length - 8} baris lain ditolak.</li>}
+            </ul>
+          )}
+          {diff.length > 0 && (
+            <div className="mt-2 overflow-x-auto">
+              <table className="w-full min-w-[640px] border-collapse text-[11px]">
+                <thead className="bg-[#F8F8F8] text-left uppercase tracking-wider text-[#64676C]">
+                  <tr>
+                    <th className="px-2 py-1.5">Tiket / baris</th>
+                    <th className="px-2 py-1.5">Kolom</th>
+                    <th className="px-2 py-1.5">Sebelumnya</th>
+                    <th className="px-2 py-1.5">Sesudah</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {diff.slice(0, 30).map((d) => (
+                    <tr key={d.kunci} className="border-t border-[#EDEFF2]">
+                      <td className="px-2 py-1.5 font-mono">{d.ticket}</td>
+                      <td className="px-2 py-1.5">{d.label}</td>
+                      <td className="px-2 py-1.5">{tampil(d.sebelumnya)}</td>
+                      <td className="px-2 py-1.5 font-semibold">{tampil(d.sesudah)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {diff.length > 30 && (
+                <p className="mt-1 text-[10px] text-[#64676C]">
+                  Menampilkan 30 dari {diff.length} perubahan; ringkasan lengkap ada di pesan di atas.
+                </p>
+              )}
+            </div>
+          )}
+          {hasil.status === "kosong" && (
+            <p className="mt-2 text-[11px] text-[#B45309]">
+              Tidak ada nilai yang berubah. Isi nilai baru pada Excel, lalu tekan <b>Pratinjau</b> lagi.
+            </p>
+          )}
+          {hasil.status === "siap" && token ? (
+            <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-sm border border-[#BBF7D0] bg-[#F0FDF4] px-3 py-2">
+              <div>
+                <p className="text-xs font-semibold text-[#15803D]">Konfirmasi pratinjau</p>
+                <p className="mt-0.5 text-[11px] leading-relaxed text-[#475569]">
+                  Klik <b>Konfirmasi &amp; terapkan {hasil.jumlah_perubahan} perubahan</b>, lalu pilih <b>OK</b> pada dialog browser.
+                  Token berlaku {Math.round((hasil.kedaluwarsa_detik ?? 900) / 60)} menit dan hanya sekali pakai.
+                  {hasil.status === "siap" && " Tombol konfirmasi ada di blok hijau di bawah tabel diff."}
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                <button type="button" className={kelasTombol}
+                        disabled={terapkan.isPending || hasil.berubah === 0} onClick={konfirmasiTerapkan}>
+                  {terapkan.isPending ? "Menyimpan…" : `Konfirmasi & terapkan ${hasil.jumlah_perubahan} perubahan`}
+                </button>
+                <button type="button" className={kelasTombolKecil}
+                        disabled={batal.isPending} onClick={() => batal.mutate(token)}>
+                  Batalkan pratinjau
+                </button>
+              </div>
+            </div>
+          ) : hasil.status === "ada_galat" ? (
+            <p className="mt-2 text-[11px] text-[#B42318]">
+              Pratinjau belum bisa dikonfirmasi. Perbaiki baris yang ditolak, lalu tekan <b>Pratinjau</b> lagi.
+            </p>
+          ) : null}
+        </div>
+      )}
+    </section>
+  );
+}
+
 export default function IntakeData() {
   const qc = useQueryClient();
   const [filterDraft, setFilterDraft] = useState<FilterIntake>({ tahun: "", provinsi: "", supplier: "" });
@@ -747,6 +987,10 @@ export default function IntakeData() {
             {cariInput && <button type="button" className={kelasTombolKecil} onClick={() => setCariInput("")}>Hapus pencarian</button>}
             {daftar.isFetching && !daftar.isLoading && <span className="pb-2 text-xs text-[#64676C]">Memperbarui hasil…</span>}
           </div>
+        )}
+        {filterAktif && (
+          <PanelExcelDiff filter={filterAktif} cari={cari} epoch={quickFillEpoch}
+                          onSelesai={selesaiQuickFill} />
         )}
         {filterAktif && rows.length > 0 && (
           <PanelQuickFill terpilih={terpilihIds} rows={rows} epoch={quickFillEpoch}

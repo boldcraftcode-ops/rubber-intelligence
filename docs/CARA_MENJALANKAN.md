@@ -344,8 +344,8 @@ Setiap baris dicatat di audit log dengan aksi `ubah_massal` dan diff
 tidak berubah: `ticket_no`, `line_seq`, `asal_getah`, `source_fingerprint`,
 `unggahan_id`, `peringatan`, `Pembelian`, `RawUnggahan`, dan `RawBaris`. Tidak
 ada tabel database baru. Quick-fill ditujukan untuk nilai yang seragam;
-koreksi yang berbeda-beda per baris tetap lebih cocok lewat alur Excel
-pratinjau + konfirmasi.
+koreksi yang berbeda-beda per baris kini memakai alur **Excel diff
+pratinjau + konfirmasi** di §3l.
 
 ## 3k. Bar intake pada peta provinsi (sejak 08/11/2026)
 
@@ -370,6 +370,44 @@ mengaktifkannya kembali. Bar **tidak** muncul pada lapisan **Sentra
 produksi**, dan provinsi yang belum cocok dengan batas peta tetap tercantum di
 panel **Belum terpetakan ke batas peta** tanpa bar. Tidak ada endpoint, tabel,
 atau agregasi backend yang berubah.
+
+## 3l. Excel diff pratinjau + konfirmasi di Data Intake Details (sejak 08/11/2026)
+
+Di menu **Data Intake Details — Penerimaan Karet**, setelah filter aktif muncul
+panel **Excel diff koreksi intake**. Alurnya:
+
+1. Klik **Unduh Excel baris filter ini**. File `.xlsx` berisi sheet **Koreksi**
+   dengan `ID`, `Ticket No`, `Baris`, dan **17 kolom operasional** yang sudah
+   terisi nilai lama sesuai database (maksimal 500 baris). Tombol **Unduh
+   template kosong** hanya untuk melihat format; jangan langsung dipakai
+   karena sel kosong diartikan menghapus nilai opsional.
+2. Ubah sel yang perlu pada Excel. **Biarkan nilai lama** bila tidak berubah;
+   **kosongkan sel** untuk menghapus nilai opsional. Jangan mengosongkan
+   `Tanggal tiket` atau `Kode supplier`. Jangan mengubah `ID`, `Ticket No`,
+   dan `Baris`.
+3. Unggah file itu lewat **File koreksi .xlsx**, lalu tekan **Pratinjau**.
+   `POST /api/intake/excel-diff/pratinjau` membaca sheet **Koreksi**,
+   mencocokkan header (nama label Indonesia maupun kode kolom), memeriksa
+   identitas tiket, memvalidasi `IntakeUbah` dan referensi **SCDF** per baris,
+   lalu menampilkan diff **sebelumnya → sesudah** per sel. Baris yang ditolak
+   ditampilkan dengan alasannya; **belum ada data tersimpan** dan token tidak
+   dibuat bila ada galat. Bila tidak ada nilai berubah, statusnya **kosong**.
+4. Bila status **siap**, scroll ke blok hijau **Konfirmasi pratinjau** di bawah
+   tabel diff. Klik **Konfirmasi & terapkan X perubahan**, lalu pilih **OK** pada
+   dialog browser. `POST /api/intake/excel-diff/terapkan` menyimpan **semua
+   perubahan atau tidak ada** dalam satu transaksi, mencatat audit
+   `ubah_massal` per baris dengan penanda `sumber: excel` dan `nama_file`, lalu
+   menyegarkan mart dan alarm sekali di akhir.
+5. **Batalkan pratinjau** memakai `DELETE /api/intake/excel-diff/pratinjau/{token}`.
+   Token di memori proses, berlaku **15 menit**, sekali pakai, dan hangus bila
+   data berubah sejak pratinjau sehingga permintaan ditolak `409`.
+
+`ticket_no`, `line_seq`, `asal_getah`, `source_fingerprint`, `unggahan_id`,
+`peringatan`, `Pembelian`, `RawUnggahan`, dan `RawBaris` tetap tidak diubah.
+Tidak ada tabel database baru. Endpoint lama `/api/unggah/pratinjau` tidak
+dipakai; Quick-fill, Edit/Hapus per baris, filter wajib, dan 50 baris per
+halaman tetap berjalan seperti sebelumnya. Hanya **admin** yang dapat
+membuat pratinjau, menerapkan, atau membatalkannya.
 
 ## 4. Mengimpor data (tiket, stok, pembelian, dll.)
 
