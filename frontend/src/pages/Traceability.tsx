@@ -51,6 +51,17 @@ const PILIHAN_SOURCING = [
   { kode: "own_plantation", label: "Own Plantation" },
 ];
 
+/* Kandidat ejaan SCDF untuk satu kombinasi District + Sub-district. */
+type KandidatScdf = {
+  ref_id: number; kabupaten: string; kabupaten_norm: string;
+  kecamatan: string; kecamatan_norm: string; desa: string; desa_norm: string;
+  district_score_pct: number; subdistrict_score_pct: number; score_pct: number;
+  same_regency: boolean; dapat_dipakai: boolean; alasan: string;
+};
+type ScdfDipakai = Pick<KandidatScdf,
+  "kabupaten" | "kabupaten_norm" | "kecamatan" | "kecamatan_norm" |
+  "desa" | "desa_norm">;
+
 const pengisi = () => {
   try { return localStorage.getItem("op-margin.pengisi") || "?"; } catch { return "?"; }
 };
@@ -359,7 +370,48 @@ export default function Traceability() {
   const [editingOrigin, setEditingOrigin] = useState<any | null>(null);
   const [targetDistrict, setTargetDistrict] = useState("");
   const [targetSubdistrict, setTargetSubdistrict] = useState("");
+  const [targetRegency, setTargetRegency] = useState("");
+  const [scdfDipakai, setScdfDipakai] = useState<ScdfDipakai | null>(null);
   const queryClient = useQueryClient();
+  const mulaiEditOrigin = (origin: any) => {
+    const kunci = origin.source_key || {};
+    setEditingOrigin(origin);
+    setTargetRegency(kunci.kabupaten_norm || "");
+    setTargetDistrict(origin.target_district_norm || kunci.kecamatan_norm || "");
+    setTargetSubdistrict(origin.target_subdistrict_norm || kunci.desa_norm || "");
+    setScdfDipakai(null);
+  };
+  const tutupEditOrigin = () => {
+    setEditingOrigin(null);
+    setTargetRegency("");
+    setTargetDistrict("");
+    setTargetSubdistrict("");
+    setScdfDipakai(null);
+  };
+  const pakaiKandidatScdf = (kandidat: KandidatScdf) => {
+    setTargetRegency(kandidat.kabupaten_norm);
+    setTargetDistrict(kandidat.kecamatan_norm);
+    setTargetSubdistrict(kandidat.desa_norm);
+    setScdfDipakai({
+      kabupaten: kandidat.kabupaten, kabupaten_norm: kandidat.kabupaten_norm,
+      kecamatan: kandidat.kecamatan, kecamatan_norm: kandidat.kecamatan_norm,
+      desa: kandidat.desa, desa_norm: kandidat.desa_norm,
+    });
+  };
+  const pakaiRekomendasiHistoris = (rekomendasi: any) => {
+    const kunci = editingOrigin?.source_key || {};
+    setTargetRegency(kunci.kabupaten_norm || "");
+    setTargetDistrict(editingOrigin?.target_district_norm || kunci.kecamatan_norm || "");
+    setTargetSubdistrict(rekomendasi.sub_district_norm);
+    setScdfDipakai(null);
+  };
+  const kembaliKeIndukSumber = () => {
+    const kunci = editingOrigin?.source_key || {};
+    setTargetRegency(kunci.kabupaten_norm || "");
+    setTargetDistrict(kunci.kecamatan_norm || "");
+    setTargetSubdistrict("");
+    setScdfDipakai(null);
+  };
   const query = paramsFilter(filters);
   const q = useQuery({
     queryKey: ["traceability", query],
@@ -375,19 +427,20 @@ export default function Traceability() {
     queryFn: () => ambilJson(`/api/traceability/actors/${encodeURIComponent(selectedActor!)}?${query}`),
     enabled: Boolean(selectedActor),
   });
+  const kabupatenPilihan = targetRegency || editingOrigin?.source_key?.kabupaten_norm || "";
   const districtOptions = useQuery({
-    queryKey: ["traceability-district-options", editingOrigin?.source_key?.kabupaten_norm],
+    queryKey: ["traceability-district-options", kabupatenPilihan],
     queryFn: () => {
-      const p = new URLSearchParams({ kabupaten_norm: editingOrigin.source_key.kabupaten_norm });
+      const p = new URLSearchParams({ kabupaten_norm: kabupatenPilihan });
       return ambilJson(`/api/traceability/locations/districts?${p}`);
     },
     enabled: Boolean(editingOrigin),
   });
   const subdistrictOptions = useQuery({
-    queryKey: ["traceability-subdistrict-options", editingOrigin?.source_key, targetDistrict],
+    queryKey: ["traceability-subdistrict-options", kabupatenPilihan, targetDistrict],
     queryFn: () => {
       const p = new URLSearchParams({
-        kabupaten_norm: editingOrigin.source_key.kabupaten_norm,
+        kabupaten_norm: kabupatenPilihan,
         kecamatan_norm: targetDistrict || editingOrigin.source_key.kecamatan_norm,
       });
       return ambilJson(`/api/traceability/locations/subdistricts?${p}`);
@@ -404,6 +457,20 @@ export default function Traceability() {
     },
     enabled: Boolean(editingOrigin && selectedActor),
   });
+  const typoScdf = useQuery({
+    queryKey: ["traceability-origin-typo-scdf", selectedActor, editingOrigin?.source_key],
+    queryFn: () => {
+      const p = new URLSearchParams({
+        source_kabupaten_norm: editingOrigin.source_key.kabupaten_norm || "",
+        source_kecamatan_norm: editingOrigin.source_key.kecamatan_norm || "",
+        source_desa_norm: editingOrigin.source_key.desa_norm || "",
+        source_kecamatan: editingOrigin.source_district || "",
+        source_desa: editingOrigin.source_sub_district || "",
+      });
+      return ambilJson(`/api/traceability/actors/${encodeURIComponent(selectedActor!)}/origin-typo-check?${p}`);
+    },
+    enabled: Boolean(editingOrigin && selectedActor),
+  });
   const simpanKoreksi = useMutation({
     mutationFn: ({ origin, target }: { origin: any; target: string | null }) =>
       ambilJson(`/api/traceability/actors/${encodeURIComponent(selectedActor!)}/origin-correction?${query}`, {
@@ -412,6 +479,7 @@ export default function Traceability() {
           source_kabupaten_norm: origin.source_key.kabupaten_norm,
           source_kecamatan_norm: origin.source_key.kecamatan_norm,
           source_desa_norm: origin.source_key.desa_norm,
+          target_kabupaten_norm: targetRegency || origin.source_key.kabupaten_norm,
           target_kecamatan_norm: targetDistrict || origin.source_key.kecamatan_norm,
           target_desa_norm: target,
         }),
@@ -422,8 +490,9 @@ export default function Traceability() {
         queryClient.invalidateQueries({ queryKey: ["traceability-actors"] }),
         queryClient.invalidateQueries({ queryKey: ["traceability-actor-detail"] }),
         queryClient.invalidateQueries({ queryKey: ["traceability-origin-recommendations"] }),
+        queryClient.invalidateQueries({ queryKey: ["traceability-origin-typo-scdf"] }),
       ]);
-      setEditingOrigin(null);
+      tutupEditOrigin();
     },
   });
   const imporMapping = useMutation({
@@ -462,6 +531,10 @@ export default function Traceability() {
     if (!filters.year && q.data?.year) setFilters((f) => ({ ...f, year: String(q.data.year) }));
   }, [filters.year, q.data?.year]);
 
+  const opsiDistrict: any[] = districtOptions.data?.options ?? [];
+  const districtAda = !targetDistrict || opsiDistrict.some((o) => o.value === targetDistrict);
+  const opsiSubdistrict: any[] = subdistrictOptions.data?.options ?? [];
+  const subdistrictAda = !targetSubdistrict || opsiSubdistrict.some((o) => o.value === targetSubdistrict);
   const exportQuery = useMemo(() => `${query}${query ? "&" : ""}format=xlsx`, [query]);
   const unmappedQuery = query;
   const toggle = (key: string) => setOpen((previous) => {
@@ -840,31 +913,48 @@ export default function Traceability() {
                                 <select className="w-full rounded-sm border border-[#D1D5DB] bg-white px-2 py-1 text-xs" value={targetDistrict} onChange={(e) => { setTargetDistrict(e.target.value); setTargetSubdistrict(""); }} disabled={districtOptions.isLoading}>
                                   <option value="">{districtOptions.isLoading ? "Memuat District SCDF…" : "Pilih District SCDF"}</option>
                                   {(districtOptions.data?.options ?? []).map((option: any) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                                  {!districtAda && scdfDipakai?.kecamatan_norm === targetDistrict && <option value={scdfDipakai.kecamatan_norm}>{scdfDipakai.kecamatan} · SCDF</option>}
                                 </select>
                                 {districtOptions.error && <p className="text-[10px] text-[#B42318]">Gagal memuat District SCDF: {(districtOptions.error as Error).message}</p>}
                                 <select className="w-full rounded-sm border border-[#D1D5DB] bg-white px-2 py-1 text-xs" value={targetSubdistrict} onChange={(e) => setTargetSubdistrict(e.target.value)} disabled={!targetDistrict || subdistrictOptions.isLoading}>
                                   <option value="">{!targetDistrict ? "Pilih District terlebih dahulu" : subdistrictOptions.isLoading ? "Memuat Sub-district SCDF…" : "Pilih Sub-district SCDF"}</option>
                                   {(subdistrictOptions.data?.options ?? []).map((option: any) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                                  {!subdistrictAda && scdfDipakai?.desa_norm === targetSubdistrict && <option value={scdfDipakai.desa_norm}>{scdfDipakai.desa} · SCDF</option>}
                                 </select>
+                                {targetRegency && editingOrigin && targetRegency !== (editingOrigin.source_key?.kabupaten_norm || "") && <p className="rounded-sm border border-[#FDE68A] bg-[#FFFBEB] px-2 py-1 text-[9px] leading-relaxed text-[#92400E]">Induk SCDF: <b>{scdfDipakai?.kabupaten || targetRegency}</b> — berbeda dari Kabupaten/Kota sumber. Pemetaan lintas induk tetap koreksi terkontrol; intake asli tidak diubah. <button type="button" className="font-semibold underline decoration-dotted underline-offset-2" onClick={kembaliKeIndukSumber}>Kembali ke induk sumber</button></p>}
                                 <div className="rounded-sm border border-[#D1D5DB] bg-[#F8FAFC] p-2">
                                   <p className="text-[10px] font-semibold text-[#344054]">Rekomendasi dari intake tahun sebelumnya{historicalRecommendations.data?.history_through ? ` (s.d. ${historicalRecommendations.data.history_through})` : ""}</p>
                                   {historicalRecommendations.isLoading && <p className="mt-1 text-[10px] text-[#667085]">Menghitung pola historis…</p>}
-                                  {(historicalRecommendations.data?.recommendations ?? []).slice(0, 3).map((recommendation: any) => <div key={recommendation.sub_district_norm} className="mt-1 flex items-center justify-between gap-2 text-[10px]"><span><b>{recommendation.sub_district}</b> · Keyakinan historis {fmtAngka(recommendation.confidence_pct, 1)}% · {recommendation.historical_tickets} tiket / {recommendation.historical_years} tahun</span><button className="shrink-0 rounded-sm border border-[#D1D5DB] bg-white px-1.5 py-0.5 font-semibold text-[#344054] hover:bg-[#F2F4F7]" onClick={() => setTargetSubdistrict(recommendation.sub_district_norm)}>Pakai</button></div>)}
+                                  {(historicalRecommendations.data?.recommendations ?? []).slice(0, 3).map((recommendation: any) => <div key={recommendation.sub_district_norm} className="mt-1 flex items-center justify-between gap-2 text-[10px]"><span><b>{recommendation.sub_district}</b> · Keyakinan historis {fmtAngka(recommendation.confidence_pct, 1)}% · {recommendation.historical_tickets} tiket / {recommendation.historical_years} tahun</span><button className="shrink-0 rounded-sm border border-[#D1D5DB] bg-white px-1.5 py-0.5 font-semibold text-[#344054] hover:bg-[#F2F4F7]" onClick={() => pakaiRekomendasiHistoris(recommendation)}>Pakai</button></div>)}
                                   {historicalRecommendations.error && <p className="mt-1 text-[10px] text-[#B42318]">Gagal memuat rekomendasi historis: {(historicalRecommendations.error as Error).message}</p>}
                                   {!historicalRecommendations.isLoading && !historicalRecommendations.error && !(historicalRecommendations.data?.recommendations?.length) && <p className="mt-1 text-[10px] text-[#667085]">Belum ada lokasi cocok dari intake tahun sebelumnya untuk supplier, Regency, dan District ini.</p>}
                                   <p className="mt-1 text-[9px] leading-relaxed text-[#667085]">Persentase adalah porsi volume Dry historis pada supplier dan Regency/District yang sama, bukan probabilitas bahwa lokasi sekarang pasti benar. Mohon verifikasi sebelum menyimpan.</p>
+                                </div>
+                                <div className="rounded-sm border border-[#FDE68A] bg-[#FFFBEB] p-2">
+                                  <p className="text-[10px] font-semibold text-[#92400E]">Deteksi potensi salah ketik dari SCDF</p>
+                                  {typoScdf.isLoading && <p className="mt-1 text-[10px] text-[#667085]">Membandingkan ejaan dengan referensi SCDF…</p>}
+                                  {typoScdf.error && <p className="mt-1 text-[10px] text-[#B42318]">Gagal memuat deteksi SCDF: {(typoScdf.error as Error).message}</p>}
+                                  {typoScdf.data?.status === "cocok" && <p className="mt-1 text-[10px] text-[#027A48]">{typoScdf.data.pesan}</p>}
+                                  {typoScdf.data?.status === "potensi_salah_ketik" && <>
+                                    <p className="mt-1 text-[10px] leading-relaxed text-[#92400E]">Nilai sumber berbeda dari ejaan resmi SCDF; periksa kandidat berikut. District: <b>{typoScdf.data?.source?.kecamatan || origin.source_district || "—"}</b> · Sub-district: <b>{typoScdf.data?.source?.desa || origin.source_sub_district || "—"}</b>.</p>
+                                    {(typoScdf.data?.candidates ?? []).slice(0, 3).map((kandidat: KandidatScdf) => <div key={kandidat.ref_id} className="mt-1 flex items-center justify-between gap-2 text-[10px]"><span><b>{kandidat.desa}</b> · {kandidat.kecamatan} · {kandidat.kabupaten} · Skor kemiripan {fmtAngka(kandidat.score_pct, 1)}%{!kandidat.same_regency && " · Induk SCDF berbeda"}<span className="block text-[9px] text-[#667085]">{kandidat.alasan}</span></span><button type="button" className="shrink-0 rounded-sm border border-[#D1D5DB] bg-white px-1.5 py-0.5 font-semibold text-[#344054] hover:bg-[#F2F4F7]" onClick={() => pakaiKandidatScdf(kandidat)}>Pakai</button></div>)}
+                                  </>}
+                                  {typoScdf.data?.status === "tidak_ada_kandidat" && <p className="mt-1 text-[10px] text-[#667085]">{typoScdf.data.pesan} Periksa ejaan secara manual pada dropdown SCDF.</p>}
+                                  {typoScdf.data?.status === "referensi_kosong" && <p className="mt-1 text-[10px] text-[#B54708]">{typoScdf.data.pesan}</p>}
+                                  {typoScdf.data?.status === "sumber_tidak_lengkap" && <p className="mt-1 text-[10px] text-[#B54708]">District atau Sub-district sumber belum lengkap untuk dideteksi.</p>}
+                                  <p className="mt-1 text-[9px] leading-relaxed text-[#667085]">{typoScdf.data?.basis || "Deteksi ini membandingkan ejaan dengan SCDF, bukan rekomendasi pembelian terdahulu."} {typoScdf.data?.catatan || "Klik Pakai hanya mengisi pilihan; Simpan tetap keputusan pengguna."}</p>
                                 </div>
                                 {!subdistrictOptions.isLoading && !(subdistrictOptions.data?.options?.length) && <p className="text-[10px] text-[#B54708]">Tidak ada pilihan SCDF untuk Regency/District ini. Periksa parent location pada intake.</p>}
                                 <div className="flex flex-wrap gap-1">
                                   <button className="rounded-sm bg-[#1D2434] px-2 py-1 text-[10px] font-semibold text-white disabled:opacity-50" disabled={!targetDistrict || !targetSubdistrict || simpanKoreksi.isPending} onClick={() => simpanKoreksi.mutate({ origin, target: targetSubdistrict })}>{simpanKoreksi.isPending ? "Menyimpan…" : "Simpan"}</button>
                                   {origin.manual_correction && <button className="rounded-sm border border-[#D1D5DB] px-2 py-1 text-[10px] text-[#B54708] disabled:opacity-50" disabled={simpanKoreksi.isPending} onClick={() => hapusPemetaan(origin)}>Hapus pemetaan</button>}
-                                  <button className="rounded-sm px-2 py-1 text-[10px] text-[#64676C] hover:bg-[#F8F8F8]" onClick={() => setEditingOrigin(null)}>Batal</button>
+                                  <button className="rounded-sm px-2 py-1 text-[10px] text-[#64676C] hover:bg-[#F8F8F8]" onClick={tutupEditOrigin}>Batal</button>
                                 </div>
                                 <p className="text-[9px] text-[#9AA0A6]">Koreksi berlaku untuk semua tiket dengan kombinasi lokasi sumber ini.</p>
                               </div> : <div className="flex items-start justify-between gap-2">
                                 <div><span>{origin.sub_district || "Unknown"}</span>{origin.manual_correction && <p className="text-[9px] text-[#9AA0A6]">Input: {origin.source_sub_district}</p>}</div>
                                 <div className="flex shrink-0 flex-col items-end gap-1">
-                                  <button className="text-[10px] font-semibold text-[#475467] underline decoration-dotted underline-offset-2 hover:text-[#B91C1C]" onClick={() => { setEditingOrigin(origin); setTargetDistrict(origin.target_district_norm || origin.source_key.kecamatan_norm || ""); setTargetSubdistrict(origin.target_subdistrict_norm || origin.source_key.desa_norm || ""); }}>Edit</button>
+                                  <button className="text-[10px] font-semibold text-[#475467] underline decoration-dotted underline-offset-2 hover:text-[#B91C1C]" onClick={() => mulaiEditOrigin(origin)}>Edit</button>
                                   {origin.manual_correction && <button className="text-[10px] font-semibold text-[#B42318] underline decoration-dotted underline-offset-2" disabled={simpanKoreksi.isPending} onClick={() => hapusPemetaan(origin)}>Hapus pemetaan</button>}
                                 </div>
                               </div>}

@@ -409,6 +409,43 @@ dipakai; Quick-fill, Edit/Hapus per baris, filter wajib, dan 50 baris per
 halaman tetap berjalan seperti sebelumnya. Hanya **admin** yang dapat
 membuat pratinjau, menerapkan, atau membatalkannya.
 
+## 3m. Deteksi salah ketik SCDF di Supplier Actor Details (sejak 08/11/2026)
+
+Pada menu **Traceability → Supplier Actors**, klik nama supplier, lalu di kartu
+**Sourcing locations from Asal Getah** tekan **Edit**. Di dalam mode Edit ada
+dua panel yang berbeda: **Rekomendasi dari intake tahun sebelumnya** (pola
+pembelian terdahulu) dan **Deteksi potensi salah ketik dari SCDF**. Panel
+kedua memanggil `GET /api/traceability/actors/{kode}/origin-typo-check` dan
+hanya membandingkan ejaan **District** serta **Sub-district** sumber dengan
+nama resmi pada referensi SCDF. Kabupaten/Kota sumber tidak ditebak salah
+ketik; nilainya tetap dipakai sebagai induk perbandingan.
+
+Perbandingan membakukan huruf, spasi, underscore, tanda baca, dan awalan umum
+seperti `Gampong`, `Keuchik`, `Desa`, serta `Kecamatan`. Jadi `D U M A I`,
+`GAM[PONG REUSAK`, atau `KEUCHIK BINTAH` dapat dibandingkan dengan ejaan SCDF
+yang lebih ringkas. Nama pendek memakai ambang kemiripan lebih tinggi supaya
+tidak banyak peringatan kebetulan. Bila pasangan District + Sub-district sudah
+persis ada pada SCDF untuk induk sumber, statusnya **`cocok`** dan tidak ada
+peringatan. Bila ditemukan ejaan mirip, panel menampilkan kandidat
+`Kabupaten/Kota · District · Sub-district`, skor kemiripan, dan rincian skor
+per level.
+
+Tombol **Pakai** hanya mengisi dropdown District/Sub-district; data **belum
+tersimpan** sampai tombol **Simpan** diklik. Skor kemiripan bukan probabilitas
+dan bukan vonis bahwa lokasi itu pasti benar. Bila kandidat berada di
+Kabupaten/Kota SCDF lain, UI menandai **Induk SCDF berbeda** dan menyediakan
+**Kembali ke induk sumber**. Pemetaan lintas induk tetap koreksi terkontrol:
+`PUT /api/traceability/actors/{kode}/origin-correction` menerima
+`target_kabupaten_norm`, mencatat audit, berlaku untuk semua tiket dengan
+kombinasi lokasi sumber yang sama, dan **tidak mengubah intake asli**. Status
+`tidak_ada_kandidat`, `referensi_kosong`, dan `sumber_tidak_lengkap` juga
+dijelaskan di panel, bukan diubah menjadi tebakan otomatis.
+
+Endpoint rekomendasi historis, dropdown District/Sub-district SCDF, **Hapus
+pemetaan**, ekspor, dan impor workbook belum termapping tetap berjalan seperti
+sebelumnya. Tidak ada tabel database baru. Health menambah fitur
+`traceability-scdf-typo`.
+
 ## 4. Mengimpor data (tiket, stok, pembelian, dll.)
 
 Selain lewat tab **Unggah Data**, impor bisa dijalankan dari terminal

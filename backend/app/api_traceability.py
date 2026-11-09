@@ -14,6 +14,9 @@ from sqlalchemy.orm import Session, aliased
 
 from .auth_lokal import info_pengguna, wajib_admin
 from .core.alarm import catat_audit
+from .core.deteksi_salah_ketik import (ambang_untuk, indeks_kandidat,
+                                       norma_mirip, skor_kemiripan,
+                                       skor_pasangan)
 from .core.kelas_intake import (KELAS_URUTAN, batas_untuk_layar,
                                  distribusi as distribusi_kelas,
                                  kelas as kelas_intake, kelas_tertinggi)
@@ -96,6 +99,7 @@ class KoreksiLokasiMasuk(BaseModel):
     source_kabupaten_norm: str = Field(max_length=120)
     source_kecamatan_norm: str = Field(max_length=120)
     source_desa_norm: str = Field(max_length=120)
+    target_kabupaten_norm: str | None = Field(default=None, max_length=120)
     target_kecamatan_norm: str | None = Field(default=None, max_length=120)
     target_desa_norm: str | None = Field(default=None, max_length=120)
 
@@ -675,6 +679,7 @@ def pasang_router_traceability(app, ambil_session):
                 (r["source_desa_norm"].title() if r["source_desa_norm"] else None),
                 "target_district_norm": r["ref_kecamatan_norm"] or r["source_kecamatan_norm"] or "",
                 "target_subdistrict_norm": r["ref_desa_norm"] or r["source_desa_norm"] or "",
+                "source_regency": r["source_kabupaten"] or r["source_kabupaten_norm"],
                 "source_district": r["source_kecamatan"] or r["source_kecamatan_norm"],
                 "source_sub_district": r["source_desa"] or r["source_desa_norm"],
                 "source_key": {
@@ -1125,6 +1130,168 @@ def pasang_router_traceability(app, ambil_session):
                       "probabilitas bahwa lokasi saat ini pasti benar."),
         }
 
+    @router.get("/actors/{supplier_code}/origin-typo-check")
+    def deteksi_salah_ketik_asal(
+            supplier_code: str,
+            source_kabupaten_norm: str = Query(..., max_length=120),
+            source_kecamatan_norm: str = Query(..., max_length=120),
+            source_desa_norm: str = Query(..., max_length=120),
+            source_kecamatan: str | None = Query(default=None, max_length=120),
+            source_desa: str | None = Query(default=None, max_length=120),
+            session: Session = dep):
+        """Bandingkan District/Sub-district sumber dengan ejaan resmi SCDF.
+
+        Ini PELENGKAP rekomendasi intake tahun sebelumnya, bukan turunan dari
+        riwayat pembelian. Tidak ada data yang disimpan. Kandidat boleh berada
+        di Kabupaten/Kota SCDF lain; induk sumber tidak ditebak salah ketik,
+        tetapi pemetaan lintas induk tetap bisa dipilih secara eksplisit.
+        """
+        muat_referensi_bawaan(session)
+        kab_sumber = normalisasi_kabupaten(source_kabupaten_norm) or ""
+        kec_sumber = normalisasi_teks_wilayah(source_kecamatan_norm) or ""
+        desa_sumber = normalisasi_teks_wilayah(source_desa_norm) or ""
+        sumber = {
+            "supplier_code": supplier_code,
+            "kabupaten_norm": kab_sumber,
+            "kecamatan_norm": kec_sumber,
+            "desa_norm": desa_sumber,
+            "kecamatan": source_kecamatan or kec_sumber,
+            "desa": source_desa or desa_sumber,
+        }
+        dasar = (
+            "Membandingkan ejaan District dan Sub-district sumber dengan nama "
+            "resmi pada referensi SCDF. Huruf, spasi, tanda baca, dan awalan "
+            "umum seperti Gampong/Keuchik dibakukan terlebih dahulu. Ini "
+            "bukan rekomendasi pembelian/intake tahun sebelumnya."
+        )
+        catatan = (
+            "Skor kemiripan bukan probabilitas dan bukan vonis lokasi benar. "
+            "Tombol Pakai hanya mengisi pilihan; data tersimpan setelah Simpan. "
+            "Intake asli tetap tidak diubah."
+        )
+        if not kec_sumber or not desa_sumber:
+            return {"status": "sumber_tidak_lengkap", "source": sumber,
+                    "checks": {}, "candidates": [], "basis": dasar,
+                    "catatan": catatan}
+        jumlah_ref = session.scalar(
+            select(func.count()).select_from(ReferensiWilayahTrace)) or 0
+        if not jumlah_ref:
+            return {"status": "referensi_kosong", "source": sumber,
+                    "checks": {}, "candidates": [], "basis": dasar,
+                    "pesan": "Referensi SCDF belum termuat.", "catatan": catatan}
+
+        ada_district = session.scalar(
+            select(ReferensiWilayahTrace.id)
+            .where(ReferensiWilayahTrace.kabupaten_norm == kab_sumber,
+                   ReferensiWilayahTrace.kecamatan_norm == kec_sumber)
+            .limit(1)) is not None
+        ada_subdistrict = session.scalar(
+            select(ReferensiWilayahTrace.id)
+            .where(ReferensiWilayahTrace.kabupaten_norm == kab_sumber,
+                   ReferensiWilayahTrace.kecamatan_norm == kec_sumber,
+                   ReferensiWilayahTrace.desa_norm == desa_sumber)
+            .limit(1)) is not None
+
+        baris_kec = session.execute(
+            select(ReferensiWilayahTrace.kecamatan_norm,
+                   func.min(ReferensiWilayahTrace.kecamatan).label("label"))
+            .group_by(ReferensiWilayahTrace.kecamatan_norm)).all()
+        baris_desa = session.execute(
+            select(ReferensiWilayahTrace.desa_norm,
+                   func.min(ReferensiWilayahTrace.desa).label("label"))
+            .group_by(ReferensiWilayahTrace.desa_norm)).all()
+        label_kec = {r[0]: r[1] for r in baris_kec if r[0] and r[1]}
+        label_desa = {r[0]: r[1] for r in baris_desa if r[0] and r[1]}
+        indeks_kec = indeks_kandidat(list(label_kec.items()))
+        indeks_desa = indeks_kandidat(list(label_desa.items()))
+        kec_mirip = norma_mirip(kec_sumber, indeks_kec, maksimal=18)
+        desa_mirip = norma_mirip(desa_sumber, indeks_desa, maksimal=24)
+        if kec_sumber in label_kec:
+            kec_mirip[kec_sumber] = 100.0
+        if desa_sumber in label_desa:
+            desa_mirip[desa_sumber] = 100.0
+        kec_mirip = dict(sorted(kec_mirip.items(),
+                                key=lambda kv: (-kv[1], kv[0]))[:18])
+        desa_mirip = dict(sorted(desa_mirip.items(),
+                                 key=lambda kv: (-kv[1], kv[0]))[:24])
+
+        def ringkasan(norm: str, peta: dict[str, str],
+                      mirip: dict[str, float], exact: bool) -> dict:
+            daftar = [{"norm": k, "label": peta.get(k, k), "score_pct": v}
+                      for k, v in list(mirip.items())[:3]]
+            return {"input": norm, "exact": exact, "best": daftar[0] if daftar else None,
+                    "candidates": daftar}
+
+        checks = {
+            "district": ringkasan(kec_sumber, label_kec, kec_mirip, ada_district),
+            "subdistrict": ringkasan(desa_sumber, label_desa, desa_mirip,
+                                     ada_subdistrict),
+        }
+        if ada_subdistrict:
+            return {"status": "cocok", "source": sumber, "checks": checks,
+                    "candidates": [], "basis": dasar,
+                    "pesan": "District dan Sub-district sumber sudah persis ada "
+                             "pada referensi SCDF untuk induk ini.",
+                    "catatan": catatan}
+
+        kandidat: list[dict] = []
+        if kec_mirip and desa_mirip:
+            calon = session.execute(
+                select(ReferensiWilayahTrace.id,
+                       ReferensiWilayahTrace.kabupaten_norm,
+                       ReferensiWilayahTrace.kabupaten,
+                       ReferensiWilayahTrace.kecamatan_norm,
+                       ReferensiWilayahTrace.kecamatan,
+                       ReferensiWilayahTrace.desa_norm,
+                       ReferensiWilayahTrace.desa)
+                .where(ReferensiWilayahTrace.kecamatan_norm.in_(list(kec_mirip)),
+                       ReferensiWilayahTrace.desa_norm.in_(list(desa_mirip)))
+                .limit(6000)).mappings()
+            ambang_kec = ambang_untuk(kec_sumber)
+            ambang_desa = ambang_untuk(desa_sumber)
+            seen: set[int] = set()
+            for r in calon:
+                if r["id"] in seen:
+                    continue
+                seen.add(r["id"])
+                skor_kec = skor_kemiripan(kec_sumber, r["kecamatan_norm"])
+                skor_desa = skor_kemiripan(desa_sumber, r["desa_norm"])
+                if skor_kec < ambang_kec and skor_desa < ambang_desa:
+                    continue
+                skor = skor_pasangan(skor_kec, skor_desa)
+                if skor < 60.0:
+                    continue
+                kandidat.append({
+                    "ref_id": r["id"],
+                    "kabupaten": r["kabupaten"],
+                    "kabupaten_norm": r["kabupaten_norm"],
+                    "kecamatan": r["kecamatan"],
+                    "kecamatan_norm": r["kecamatan_norm"],
+                    "desa": r["desa"],
+                    "desa_norm": r["desa_norm"],
+                    "district_score_pct": skor_kec,
+                    "subdistrict_score_pct": skor_desa,
+                    "score_pct": skor,
+                    "same_regency": r["kabupaten_norm"] == kab_sumber,
+                    "dapat_dipakai": True,
+                    "alasan": (f"District {skor_kec:.1f}% · "
+                               f"Sub-district {skor_desa:.1f}%"),
+                })
+        kandidat.sort(key=lambda c: (
+            not c["same_regency"], -c["score_pct"],
+            -c["subdistrict_score_pct"], c["kabupaten"], c["kecamatan"], c["desa"]))
+        total_kandidat = len(kandidat)
+        kandidat = kandidat[:6]
+        return {
+            "status": "potensi_salah_ketik" if kandidat else "tidak_ada_kandidat",
+            "source": sumber, "checks": checks, "candidates": kandidat,
+            "candidate_count": total_kandidat, "basis": dasar,
+            "pesan": ("Ditemukan ejaan SCDF yang mirip; periksa sebelum memakai."
+                      if kandidat else
+                      "Tidak ada ejaan SCDF yang cukup mirip untuk ditawarkan."),
+            "catatan": catatan,
+        }
+
     @router.put("/actors/{supplier_code}/origin-correction")
     def simpan_koreksi_asal(supplier_code: str, data: KoreksiLokasiMasuk,
                             request: Request, tahun: int | None = None,
@@ -1149,17 +1316,19 @@ def pasang_router_traceability(app, ambil_session):
             KoreksiWilayahTrace.source_kecamatan_norm == source_kec,
             KoreksiWilayahTrace.source_desa_norm == source_desa))
         sebelumnya = koreksi.target_ref_id if koreksi else None
+        target_kab_norm = normalisasi_kabupaten(
+            data.target_kabupaten_norm) or source_kab
         target_kec_norm = normalisasi_teks_wilayah(
             data.target_kecamatan_norm or source_kec)
         target_norm = normalisasi_teks_wilayah(data.target_desa_norm)
         if target_norm:
             target = session.scalar(select(ReferensiWilayahTrace).where(
-                ReferensiWilayahTrace.kabupaten_norm == source_kab,
+                ReferensiWilayahTrace.kabupaten_norm == target_kab_norm,
                 ReferensiWilayahTrace.kecamatan_norm == target_kec_norm,
                 ReferensiWilayahTrace.desa_norm == target_norm))
             if target is None:
                 raise HTTPException(422,
-                    "Pilih pasangan District dan Sub-district resmi SCDF pada Kabupaten/Kota sumber ini.")
+                    "Pilih pasangan Kabupaten/Kota, District, dan Sub-district resmi SCDF.")
             if koreksi is None:
                 koreksi = KoreksiWilayahTrace(
                     source_kabupaten_norm=source_kab,
@@ -1178,13 +1347,17 @@ def pasang_router_traceability(app, ambil_session):
                 "source": {"kabupaten": source_kab, "kecamatan": source_kec,
                            "desa": source_desa},
                 "target": {"id": target.id, "kabupaten": target.kabupaten,
-                           "kecamatan": target.kecamatan, "desa": target.desa},
+                           "kabupaten_norm": target_kab_norm,
+                           "kecamatan": target.kecamatan, "desa": target.desa,
+                           "berbeda_dari_induk_sumber": target_kab_norm != source_kab},
                 "sebelumnya_ref_id": sebelumnya,
             })
             session.commit()
             return {"status": "tersimpan", "manual_correction": True,
                     "target": {"kabupaten": target.kabupaten,
                                "kecamatan": target.kecamatan, "desa": target.desa},
+                    "induk_scdf": {"kabupaten": target.kabupaten,
+                                   "berbeda_dari_sumber": target_kab_norm != source_kab},
                     "scope": "Semua tiket dengan kombinasi lokasi sumber yang sama."}
 
         if koreksi:
