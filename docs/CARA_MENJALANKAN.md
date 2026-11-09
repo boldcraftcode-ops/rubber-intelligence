@@ -712,6 +712,19 @@ saat panel dibuka, query langsung aktif dan memuat data. **5W1H** dan **Analisa
 semua data** memakai `Panel5W1H` yang memang sudah `useQuery` biasa; URL 5W1H
 pada kartu elemen juga dirapikan agar tidak menggabungkan dua `?`.
 
+### Arah grafik pada Analisis deskriptif & komposisi
+
+Pada panel **Analisis deskriptif & komposisi — penerimaan karet**, grafik
+**Porsi (%)** memakai batang berdiri/vertikal: nama kategori di sumbu bawah dan
+persentase di sumbu kiri. Label kategori dimiringkan agar 12 batang tetap
+terbaca; nama lengkap muncul di tooltip, dan tabel di bawahnya tetap memuat
+label asli. **Share EUDR vs biasa** sengaja tetap berupa grafik garis bulanan.
+
+Catatan untuk pengembang: prop Recharts berlawanan dengan kesan namanya —
+`layout="horizontal"` menghasilkan **batang vertikal**, sedangkan
+`layout="vertical"` menghasilkan **batang horizontal**. Jangan membaliknya
+hanya berdasarkan nama prop.
+
 ## Kalau ada tombol analisa yang bilang "Fitur ini tidak dikenali"
 
 Gejalanya: misalnya **Margin Bridge** atau **Days of Cover** tidak mau terbuka

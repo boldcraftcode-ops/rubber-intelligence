@@ -559,7 +559,8 @@ export function AnalisisKomposisi({ dari, sampai, modeEudr, dimensi,
     "Share EUDR (%)": m.eudr_pct,
   }));
   const grafikPorsi = baris.slice(0, 12).map((b: any) => ({
-    nama: b.label.length > 22 ? b.label.slice(0, 22) + "…" : b.label,
+    nama: b.label.length > 12 ? b.label.slice(0, 11) + "…" : b.label,
+    namaLengkap: b.label,
     "Porsi (%)": b.porsi_pct,
   }));
 
@@ -647,19 +648,26 @@ export function AnalisisKomposisi({ dari, sampai, modeEudr, dimensi,
                       {d.konsentrasi.label}.
                     </p>
 
-                    {/* ---- grafik porsi ---- */}
+                    {/* ---- grafik porsi: batang berdiri/vertikal ----
+                         Di Recharts, layout="horizontal" menempatkan kategori
+                         di sumbu X dan angka di sumbu Y, sehingga batangnya
+                         berdiri. layout="vertical" justru membuat batang
+                         mendatar; jangan tertukar bila ingin direvisi lagi. */}
                     {grafikPorsi.length > 1 && (
-                      <div style={{ height: Math.max(160, grafikPorsi.length * 28 + 40) }}
+                      <div style={{ height: Math.max(280, grafikPorsi.length * 26 + 120) }}
                            className="mt-3">
                         <AlatGrafik id="analisis-04"><ResponsiveContainer>
-                          <BarChart data={grafikPorsi} layout="vertical"
-                                    margin={{ top: 5, right: 20, bottom: 5, left: 10 }}>
+                          <BarChart data={grafikPorsi} layout="horizontal"
+                                    margin={{ top: 5, right: 20, bottom: 90, left: 10 }}>
                             <CartesianGrid strokeDasharray="3 3" />
-                            <XAxis type="number" fontSize={10} unit="%"
+                            <XAxis type="category" dataKey="nama" fontSize={10}
+                                   interval={0} angle={-45} textAnchor="end" height={90} />
+                            <YAxis type="number" fontSize={10} unit="%"
                                    tickFormatter={(v) => fmtAngka(v as number, 0)} />
-                            <YAxis type="category" dataKey="nama" width={150} fontSize={10} />
-                            <Tooltip formatter={(v: any) => [fmtAngka(v as number, 2) + "%", "Porsi"]} />
-                            <Bar dataKey="Porsi (%)" fill="#1D2434" />
+                            <Tooltip formatter={(v: any) => [fmtAngka(v as number, 2) + "%", "Porsi"]}
+                                     labelFormatter={(label: any, payload: any) =>
+                                       payload?.[0]?.payload?.namaLengkap ?? label} />
+                            <Bar dataKey="Porsi (%)" fill="#1D2434" maxBarSize={48} />
                           </BarChart>
                         </ResponsiveContainer></AlatGrafik>
                       </div>

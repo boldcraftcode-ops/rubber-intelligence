@@ -1333,6 +1333,8 @@ menjawab.
 
 | 2026-11-08 | **Angka kunci Margin Performance dibuat auto tampil tanpa tombol Refresh**: `KartuMuatSaatDiminta` mendapat prop `otomatis` yang membuat `useQueryKartu` tidak lagi menahan jaringan dan menyembunyikan Refresh; kartu memakai query `ringkasOtomatis` tersendiri sehingga kartu lain tetap on-demand. **Panel analisa diperbaiki**: RCA, Margin Bridge, Days of Cover, Analisis tren & musiman, dan Analisis deskriptif & komposisi beralih dari `useQueryKartu` ke `useQuery` biasa; URL 5W1H kartu elemen tidak lagi menggabungkan dua query string | pemilik meminta kartu angka kunci auto tampil serta menanyakan kenapa tombol analisa tidak memuat data. Diagnosis: endpoint backend 200, tetapi konteks Refresh kartu memaksa `enabled:false` pada query panel yang baru dipasang saat klik. Perubahan murni frontend + i18n + tes/docs; tidak ada endpoint, perhitungan, atau data yang diubah. Tombol Refresh kartu lain tetap dipertahankan |
 
+| 2026-11-05 | **Grafik Porsi (%) di panel Analisis deskriptif & komposisi — penerimaan karet dibuat vertikal**: `BarChart` memakai `layout="horizontal"` (kategori di X, persentase di Y), label dimiringkan −45°, nama lengkap tetap muncul di tooltip, dan tabel tetap memuat label asli. **Share EUDR vs biasa** tetap grafik garis bulanan | pemilik mengklarifikasi bahwa yang diinginkan adalah semua grafik di panel itu berbentuk vertikal, kecuali **Share EUDR vs biasa**. Istilah prop Recharts berlawanan dengan tampilannya: `layout="vertical"` justru membuat batang mendatar. Perubahan murni presentasi; agregasi, endpoint, filter dimensi, tabel Pareto/ABC, dan data tidak berubah |
+
 ---
 
 ## 15. Ringkasan satu paragraf
