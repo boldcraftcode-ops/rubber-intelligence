@@ -278,6 +278,7 @@ def buat_app(engine: Engine | None = None) -> FastAPI:
                     "intake-quick-fill",
                     "intake-excel-diff",
                     "kartu-konsistensi-intake-vendor",
+                    "kartu-ringkasan-vendor-trip",
                 ],
                 # versi kode ikut dilaporkan supaya mudah membandingkan
                 # folder yang dijalankan dengan kode terbaru di repo

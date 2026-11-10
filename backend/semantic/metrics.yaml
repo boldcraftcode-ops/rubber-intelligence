@@ -290,24 +290,31 @@ kartu:
       menjadi baris detail dan semua bulan terpilih menjadi kolom; pengaman
       1.200 bulan (100 tahun). Grafik di layar tetap dibatasi agar terbaca.
   konsistensi_intake_vendor:
-    judul: Konsistensi intake harian/bulanan vendor
+    judul: Laporan Ringkasan Vendor (Trip)
     cara_dihitung: >
-      Untuk setiap vendor dihitung jumlah tanggal unik dengan tiket intake
-      (Ticket Date, tiket nol tidak dihitung) pada rentang tanggal persis yang
-      dipilih. Dasar penilaian adalah SEMUA HARI KALENDER: tiap tanggal dalam
-      rentang wajib ada intake, termasuk Sabtu/Minggu/libur. Hari tanpa tiket
-      vendor itu dicatat sebagai hari kosong; bulan tanpa satu pun tiket
-      dicatat sebagai bulan kosong. Bulan lengkap berarti semua hari kalender
-      bulan itu yang masuk rentang memiliki tiket. Rentang harian/bulanan
-      terpanjang adalah deretan berurutan tanpa terputus. Peringkat
-      "paling sering masuk" diurutkan menurut jumlah hari ber-intake, lalu
-      jumlah tiket, lalu kg kering. Hari tanpa tiket dari vendor mana pun
-      tetap dihitung kosong tetapi ditandai sebagai hari sepi pabrik; hari
-      sebelum/sesudah rentang tiket ditandai "di luar rentang data".
-      Batas 731 hari dihapus: seluruh rentang data boleh dipilih, termasuk
-      1.766 hari. Periode panjang otomatis diminimalisir di layar menjadi
-      rentang tanggal berurutan dan rekap nomor tanggal per bulan; ekspor
-      Excel tetap memuat baris per tanggal lengkap.
+      Laporan tiga tabel mengikuti Intake-2025_Ringkasan-Vendor.xlsx:
+      Ringkasan Vendor, Vendor per Bulan, dan Vendor Harian. Trip dihitung
+      sebagai Ticket No unik pada `tiket_baris` (Ticket Date, tiket nol tidak
+      dihitung); baris tambahan dengan nomor tiket sama tidak menambah Trip,
+      tetapi Dry (kg) tetap dijumlahkan. Metrik: Total Trip, % Trip, Hari Aktif,
+      Rata² Trip/Hari Operasional, Rata² Trip/Bulan, Dry (kg). Peringkat
+      diurutkan menurut jumlah Trip, lalu Dry (kg), lalu nama vendor — bukan
+      lagi jumlah tanggal unik ber-intake. Hari Aktif = jumlah tanggal unik
+      dengan minimal satu Trip untuk vendor itu; Hari Operasional = jumlah
+      tanggal unik dengan minimal satu Trip dari vendor mana pun. Dasar
+      tampilan adalah SEMUA HARI KALENDER: tiap tanggal Dari–Sampai tetap
+      menjadi baris, termasuk Sabtu/Minggu/libur; hari tanpa intake bernilai
+      0 Trip. Rata² Trip/Bulan membagi Total Trip dengan jumlah bulan yang
+      tersentuh rentang, dan judul/kolom bulan mengikuti Dari/Sampai (bukan
+      hardcode 2025/12). Semua vendor, termasuk yang 0 Trip, ditulis sebagai
+      baris detail tanpa pengelompokan sisa vendor. Batas 731 hari dihapus:
+      seluruh rentang data boleh dipilih, termasuk 1.766 hari; hanya pengaman
+      ±100 tahun/1.200 bulan yang menolak tanggal ekstrem. Periode panjang
+      diminimalisir di layar menjadi rekap per bulan + rentang tanggal
+      YYYY-MM-DD, dengan `rinci=1` bila pengguna membuka semua baris.
+      Ekspor Excel memuat 3 sheet (Ringkasan Vendor, Vendor per Bulan, Vendor
+      Harian) dan 3 chart Excel native yang bisa diedit, tanpa sheet Master
+      Data/raw tiket; tanggal di luar rentang tiket ditandai Di luar data.
   analisa_5w1h:
     judul: Analisa grafik (5W1H)
     cara_dihitung: >

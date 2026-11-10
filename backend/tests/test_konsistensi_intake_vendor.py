@@ -1,28 +1,32 @@
-"""Kartu baru Intake Analisis: konsistensi intake harian/bulanan per vendor.
+"""Kartu Intake Analisis: laporan Ringkasan Vendor berbasis Trip.
 
-Keputusan pemilik (ask_user):
-- dasar hari = **semua hari kalender** (Sabtu/Minggu/libur tetap dihitung);
-- urutan "paling sering masuk" = **jumlah tanggal unik ber-intake**;
-- filter = **tanggal persis** YYYY-MM-DD;
-- ekspor Excel = **beberapa sheet** dengan seluruh rincian hari/bulan kosong.
+Mengunci keputusan pemilik untuk `Intake-2025_Ringkasan-Vendor.xlsx`:
+- tiga tabel di layar (chart lama dihapus);
+- metrik Total Trip / % Trip / Hari Aktif / Rata² Trip/Hari Operasional /
+  Rata² Trip/Bulan / Dry (kg), peringkat memakai jumlah Trip;
+- ekspor Excel 3 sheet + 3 chart native, tanpa Master Data / `Lainnya`;
+- semua vendor sebagai baris detail, semua hari kalender tetap ada;
+- judul, kolom bulan, dan pembagi bulan mengikuti Dari/Sampai;
+- seluruh rentang data boleh dipilih, periode panjang diminimalisir di layar.
 """
 from __future__ import annotations
 
 import datetime as dt
 import io
+import zipfile
 
 import openpyxl
 import pytest
 from fastapi.testclient import TestClient
+from openpyxl.chart import BarChart, LineChart
 from sqlalchemy import create_engine
-from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
-from app.core.konsistensi_intake import (MAKS_HARI, daftar_hari,
-                                         hitung_konsistensi,
-                                         kelompok_rentang_bulan,
-                                         rentang_bulan_terpanjang,
-                                         rentang_harian_terpanjang)
+from app.core.ringkasan_vendor import (
+    AMBANG_RINGKAS_HARI, MAKS_BULAN, MAKS_HARI, daftar_bulan, daftar_hari,
+    hitung_ringkasan_vendor, label_periode_judul, ringkas_untuk_layar,
+)
 from app.main import buat_app
 from app.models import Base, TiketBaris, Vendor
 
@@ -60,303 +64,325 @@ def _klien(monkeypatch, isi):
     return TestClient(buat_app(eng))
 
 
-def _isi_januari(s):
-    """V001 hadir 10 hari penuh (+1 tiket ekstra di hari sama), V002 hanya 3 hari."""
-    for i in range(1, 11):
-        _tiket(s, f"A{i:02d}", dt.date(2026, 1, i), "V001")
-    _tiket(s, "A99", dt.date(2026, 1, 5), "V001", kg=50)
-    for i in (1, 2, 5):
-        _tiket(s, f"B{i:02d}", dt.date(2026, 1, i), "V002")
-    # Tiket nol tidak boleh dihitung sebagai kehadiran.
-    _tiket(s, "B99", dt.date(2026, 1, 9), "V002", nol=True)
-
-
 def _get(klien, **params):
     r = klien.get(URL, params=params)
     assert r.status_code == 200, r.text
     return r.json()
 
 
-# ------------------------------------------------------- hari kalender & urutan
-def test_semua_hari_kalender_dan_vendor_paling_sering_masuk(monkeypatch):
+def _xlsx(klien, **params):
+    r = klien.get(URL, params={**params, "format": "xlsx"})
+    assert r.status_code == 200, r.text
+    assert "spreadsheetml" in r.headers["content-type"]
+    return r.content
+
+
+def _judul_chart(ch) -> str:
+    return "".join(r.t or "" for p in ch.title.tx.rich.p for r in p.r)
+
+
+def _isi_januari(s):
+    """V001 masuk 10 hari penuh (+1 tiket ekstra), V002 hanya 3 hari."""
+    for i in range(1, 11):
+        _tiket(s, f"A{i:02d}", dt.date(2026, 1, i), "V001")
+    _tiket(s, "A99", dt.date(2026, 1, 5), "V001", kg=50)
+    for i in (1, 2, 5):
+        _tiket(s, f"B{i:02d}", dt.date(2026, 1, i), "V002")
+    # Tiket nol tidak boleh dihitung sebagai Trip.
+    _tiket(s, "B99", dt.date(2026, 1, 9), "V002", nol=True)
+
+
+def _isi_lintas_bulan(s):
+    _tiket(s, "C1", dt.date(2026, 1, 15), "V001", kg=100)
+    _tiket(s, "C2", dt.date(2026, 2, 1), "V002", kg=200)
+    _tiket(s, "C3", dt.date(2026, 3, 10), "V001", kg=300)
+
+
+def _isi_tahun_baru(s):
+    _tiket(s, "T1", dt.date(2026, 1, 1), "V001", kg=100)
+
+
+def _isi_panjang(s):
+    """Satu vendor, tiket tiap 30 hari selama 1.096 hari."""
+    awal = dt.date(2024, 1, 1)
+    for i in range(0, 1096, 30):
+        _tiket(s, f"P{i:04d}", awal + dt.timedelta(days=i), "V001", kg=10)
+
+
+# ------------------------------------------------------- hari kalender & Trip
+def test_semua_hari_kalender_dan_peringkat_trip(monkeypatch):
     d = _get(_klien(monkeypatch, _isi_januari),
              dari="2026-01-01", sampai="2026-01-10")
     assert d["status"] == "ok"
     assert d["dasar"] == {
-        "hari": "kalender", "urutan": "jumlah_hari_masuk",
-        "label_hari": "Semua hari kalender dalam rentang dihitung wajib ada intake",
-        "label_urutan": "Jumlah hari ber-intake (tanggal unik)"}
+        "hari": "kalender",
+        "urutan": "jumlah_trip",
+        "label_hari": "Semua hari kalender dalam rentang tetap ditampilkan",
+        "label_urutan": "Jumlah Trip (Ticket No unik)",
+    }
     assert d["periode"]["jumlah_hari"] == 10
     assert d["periode"]["jumlah_bulan"] == 1
-    assert d["ringkasan"]["total_vendor"] == 2
+    assert d["ringkasan"]["total_vendor"] == 4
+    assert d["ringkasan"]["total_trip"] == 14
+    assert d["ringkasan"]["total_dry_kg"] == pytest.approx(1350.0)
+    assert d["ringkasan"]["hari_operasional"] == 10
+    assert d["ringkasan"]["hari_kalender"] == 10
 
-    v1, v2 = d["baris"]
-    assert (v1["kode"], v1["peringkat"], v1["paling_sering"]) == ("V001", 1, True)
-    assert v1["label"] == "V001 — PT Alpha"
-    assert v1["jumlah_hari_masuk"] == 10
-    assert v1["cakupan_hari_pct"] == 100.0
-    assert v1["status_harian"] == "lengkap"
-    assert v1["status_bulanan"] == "lengkap"
-    assert v1["jumlah_hari_kosong"] == 0 and v1["hari_kosong"] == []
-    assert v1["bulan_lengkap"] == [
-        {"ym": "2026-01", "label": "Jan-26", "jumlah_hari": 10}]
-    assert v1["rentang_harian_terpanjang"] == {
-        "dari": "2026-01-01", "sampai": "2026-01-10", "jumlah_hari": 10}
-    # Dua tiket di tanggal sama tetap dihitung SATU hari, tapi tiketnya 11.
-    assert v1["jumlah_tiket"] == 11
-    assert v1["total_kg"] == pytest.approx(1050.0)
-
-    assert (v2["kode"], v2["peringkat"], v2["paling_sering"]) == ("V002", 2, False)
-    assert v2["jumlah_hari_masuk"] == 3
-    assert v2["jumlah_hari_kosong"] == 7
-    assert [h["tanggal"] for h in v2["hari_kosong"]] == [
-        "2026-01-03", "2026-01-04", "2026-01-06", "2026-01-07",
-        "2026-01-08", "2026-01-09", "2026-01-10"]
-    # 2026-01-04 adalah Minggu: tetap kosong karena dasar hari kalender.
-    assert next(h for h in v2["hari_kosong"]
-                if h["tanggal"] == "2026-01-04")["hari"] == "Minggu"
-    # Tiket nol pada 09 Jan tidak membuat V002 hadir.
-    assert v2["jumlah_tiket"] == 3
-    assert v2["rentang_harian_terpanjang"]["jumlah_hari"] == 2
-
+    v1, v2, v3, v4 = d["baris"]
+    assert (v1["kode"], v1["peringkat"]) == ("V001", 1)
+    assert v1["label"] == "PT Alpha"
+    assert v1["total_trip"] == 11
+    assert v1["dry_kg"] == pytest.approx(1050.0)
+    assert v1["hari_aktif"] == 10
+    assert v1["porsi_trip"] == pytest.approx(11 / 14)
+    assert v1["rata_trip_per_hari_operasional"] == pytest.approx(1.1)
+    assert v1["rata_trip_per_bulan"] == pytest.approx(11.0)
+    assert (v2["kode"], v2["total_trip"], v2["hari_aktif"]) == ("V002", 3, 3)
+    assert v2["dry_kg"] == pytest.approx(300.0)
+    # Vendor Master tanpa tiket TETAP menjadi baris detail bernilai 0.
+    assert {(v3["kode"], v3["total_trip"]),
+            (v4["kode"], v4["total_trip"])} == {("V003", 0), ("V004", 0)}
     assert d["paling_sering"]["kode"] == "V001"
     assert d["seri_paling_sering"] == ["V001"]
-    # V003/V004 ada di Master Vendor tetapi tidak ber-intake pada periode ini.
     assert {v["kode"] for v in d["vendor_tanpa_intake"]} == {"V003", "V004"}
-    assert d["ringkasan"]["vendor_tanpa_intake"] == 2
+
+    assert [b["ym"] for b in d["bulan"]] == ["2026-01"]
+    assert [v["trip_per_bulan"] for v in d["vendor_per_bulan"]] == [
+        [11], [3], [0], [0]]
+    assert d["total_per_bulan"] == [14]
+    assert d["vendor_utama_bulan"] == ["PT Alpha"]
+    assert d["trip_utama_bulan"] == [11]
+    assert d["share_utama_bulan"] == [pytest.approx(11 / 14)]
+
+    assert [h["tanggal"] for h in d["hari"]] == [
+        f"2026-01-{i:02d}" for i in range(1, 11)]
+    assert d["total_per_hari"] == [2, 2, 1, 1, 3, 1, 1, 1, 1, 1]
+    assert d["hari"][9]["kategori"] == "ada_intake"
+    assert d["rata_total_per_hari"] == pytest.approx(1.4)
+    assert d["rata_vendor_per_hari"] == [
+        pytest.approx(1.1), pytest.approx(0.3), 0.0, 0.0]
+    assert d["rekap_per_bulan"][0]["ringkasan"] == "01-10"
+    assert d["catatan_metode"]["minimalisir"].startswith(
+        "Batas 731 hari dihapus")
+    assert "Trip = Ticket No unik" in d["sumber"]
 
 
-def test_hari_dan_bulan_kosong_dirinci_serta_hari_sepi_pabrik(monkeypatch):
-    def isi(s):
-        _tiket(s, "A1", dt.date(2026, 1, 15), "V001")
-        _tiket(s, "A2", dt.date(2026, 3, 10), "V001")
-        _tiket(s, "B1", dt.date(2026, 2, 1), "V002")
-
-    d = _get(_klien(monkeypatch, isi),
+def test_hari_tanpa_intake_nol_dan_di_luar_data(monkeypatch):
+    d = _get(_klien(monkeypatch, _isi_lintas_bulan),
              dari="2026-01-01", sampai="2026-03-31")
     assert d["periode"]["jumlah_hari"] == 90
-    assert [m["ym"] for m in d["daftar_bulan"]] == [
+    assert d["batas_data"] == {
+        "tersedia": True, "dari": "2026-01-15", "sampai": "2026-03-10",
+        "jumlah_hari": 55,
+    }
+    assert [b["ym"] for b in d["bulan"]] == [
         "2026-01", "2026-02", "2026-03"]
-    v1 = next(b for b in d["baris"] if b["kode"] == "V001")
-    v2 = next(b for b in d["baris"] if b["kode"] == "V002")
-    assert [m["ym"] for m in v1["bulan_kosong"]] == ["2026-02"]
-    assert v1["bulan_lengkap"] == []
-    assert v1["rentang_bulanan_terpanjang"]["jumlah_bulan"] == 1
-    assert [m["ym"] for m in v2["bulan_kosong"]] == ["2026-01", "2026-03"]
-    assert d["ringkasan"]["hari_tanpa_intake_sama_sekali"] == 87
-    assert any("tanpa intake dari vendor mana" in p.lower()
-               for p in d["peringatan"])
-    assert d["ringkasan"]["vendor_lengkap_harian"] == 0
-    assert any("Belum ada vendor" in p for p in d["peringatan"])
+    assert len(d["hari"]) == 90
+    assert d["total_per_hari"][0] == 0
+    assert d["hari"][0]["kategori"] == "di_luar_data"
+    assert d["hari"][0]["di_luar_data"] is True
+    assert d["total_per_hari"][14] == 1
+    assert d["hari"][14]["kategori"] == "ada_intake"
+    assert d["total_per_hari"][15] == 0
+    assert d["hari"][15]["kategori"] == "sepi_pabrik"
+    assert d["hari"][15]["sepi_pabrik"] is True
+    assert d["hari"][89]["kategori"] == "di_luar_data"
+    assert any("di luar rentang tiket" in p for p in d["peringatan"])
+
+    assert [m["label"] for m in d["rekap_per_bulan"]] == [
+        "Jan-26", "Feb-26", "Mar-26"]
+    assert [m["total_trip"] for m in d["rekap_per_bulan"]] == [1, 1, 1]
+    assert [m["jumlah_hari_kalender"] for m in d["rekap_per_bulan"]] == [
+        31, 28, 31]
+    assert d["vendor_per_bulan"][0]["trip_per_bulan"] == [1, 0, 1]
+    assert d["vendor_per_bulan"][1]["trip_per_bulan"] == [0, 1, 0]
+    assert d["baris"][0]["rata_trip_per_bulan"] == pytest.approx(2 / 3)
+    assert d["baris"][0]["rata_trip_per_hari_operasional"] == \
+        pytest.approx(2 / 3)
+    assert d["total_per_bulan"] == [1, 1, 1]
 
 
-def test_seri_paling_sering_masuk(monkeypatch):
-    def isi(s):
-        _tiket(s, "A1", dt.date(2026, 5, 1), "V001")
-        _tiket(s, "B1", dt.date(2026, 5, 2), "V002")
+def test_status_kosong_jujur_dan_semua_vendor_tetap_ada(monkeypatch):
+    d = _get(_klien(monkeypatch, lambda s: None),
+             dari="2026-01-01", sampai="2026-01-03")
+    assert len(d["baris"]) == 4
+    assert all(b["total_trip"] == 0 for b in d["baris"])
+    assert d["ringkasan"]["total_trip"] == 0
+    assert any("Tidak ada tiket intake" in p for p in d["peringatan"])
+    assert "tiket_baris" in d["sumber"]
+    assert len(d["hari"]) == 3
+    assert d["total_per_hari"] == [0, 0, 0]
 
-    d = _get(_klien(monkeypatch, isi),
-             dari="2026-05-01", sampai="2026-05-02")
-    assert d["seri_paling_sering"] == ["V001", "V002"]
-    assert all(b["paling_sering"] for b in d["baris"])
-    assert d["ringkasan"]["total_vendor"] == 2
+
+# ------------------------------------------------- periode panjang & rinci=1
+def test_mode_ringkas_rinci_dan_excel_tetap_penuh(monkeypatch):
+    klien = _klien(monkeypatch, _isi_panjang)
+    params = {"dari": "2024-01-01", "sampai": "2026-12-31"}
+    d = _get(klien, **params)
+    assert d["periode"]["jumlah_hari"] == 1096
+    assert d["periode"]["jumlah_bulan"] == 36
+    assert d["periode"]["mode_rincian"] == "ringkas"
+    assert d["periode"]["ringkas_otomatis"] is True
+    assert d["hari"] == []
+    assert d["vendor_harian"] == []
+    assert d["total_per_hari"] == []
+    assert len(d["rekap_per_bulan"]) == 36
+    assert len(d["rentang_hari"]) > 1
+    assert any("DIMINIMALISIR" in p for p in d["peringatan"])
+
+    penuh = _get(klien, **params, rinci=1)
+    assert len(penuh["hari"]) == 1096
+    assert len(penuh["vendor_harian"]) == 4
+    assert len(penuh["total_per_hari"]) == 1096
+    assert penuh["hari"][0]["tanggal"] == "2024-01-01"
+    assert penuh["hari"][-1]["tanggal"] == "2026-12-31"
+
+    isi = _xlsx(klien, **params)
+    wb = openpyxl.load_workbook(io.BytesIO(isi))
+    assert wb.sheetnames == ["Ringkasan Vendor", "Vendor per Bulan",
+                             "Vendor Harian"]
+    assert wb["Vendor Harian"].max_row >= 4 + 1096 + 1
+    assert wb["Vendor Harian"]["A5"].value == dt.datetime(2024, 1, 1)
+    assert wb["Vendor Harian"].cell(4 + 1096, 1).value == \
+        dt.datetime(2026, 12, 31)
+    wb.close()
 
 
 # ------------------------------------------------------------- ekspor Excel
-def test_ekspor_excel_beberapa_sheet_dan_rincian_tidak_dipotong(monkeypatch):
-    def isi(s):
-        _tiket(s, "A1", dt.date(2026, 1, 1), "V001")
-        _tiket(s, "B1", dt.date(2026, 1, 1), "V002")
-        _tiket(s, "B2", dt.date(2026, 1, 2), "V002")
+def test_xlsx_tiga_sheet_tiga_chart_dan_dinamis(monkeypatch):
+    isi = _xlsx(_klien(monkeypatch, _isi_tahun_baru),
+                dari="2025-12-30", sampai="2026-01-02")
+    wb = openpyxl.load_workbook(io.BytesIO(isi))
+    assert wb.sheetnames == ["Ringkasan Vendor", "Vendor per Bulan",
+                             "Vendor Harian"]
+    assert "Master Data" not in wb.sheetnames
 
-    klien = _klien(monkeypatch, isi)
-    params = {"dari": "2026-01-01", "sampai": "2026-02-09"}
-    d = _get(klien, **params)
-    v1 = next(b for b in d["baris"] if b["kode"] == "V001")
-    assert v1["jumlah_hari_kosong"] == 39
-    # Layar dipangkas, Excel tidak.
-    assert len(v1["hari_kosong"]) == 31
-    assert v1["hari_kosong_terpotong"] is True
-    assert any("Ekspor Excel memuat seluruh" in p for p in d["peringatan"])
+    # Tidak ada label "Lainnya" di seluruh workbook (termasuk XML chart).
+    for ws in wb.worksheets:
+        for row in ws.iter_rows():
+            for c in row:
+                assert not (isinstance(c.value, str)
+                            and "Lainnya" in c.value)
+    z = zipfile.ZipFile(io.BytesIO(isi))
+    assert not any(
+        "Lainnya".encode("utf-8") in z.read(n)
+        for n in z.namelist() if n.endswith((".xml", ".rels")))
 
-    r = klien.get(URL, params={**params, "format": "xlsx"})
-    assert r.status_code == 200, r.text
-    assert "spreadsheetml" in r.headers["content-type"]
-    wb = openpyxl.load_workbook(io.BytesIO(r.content), read_only=True,
-                                data_only=True)
-    assert wb.sheetnames == ["Rekap vendor", "Hari kosong",
-                             "Rentang hari kosong", "Bulan kosong",
-                             "Bulan lengkap", "Hari sepi pabrik", "Metode"]
-    assert wb["Rekap vendor"].max_row == 3  # header + 2 vendor
-    # V001 39 hari kosong + V002 38 hari kosong = 77 baris rincian.
-    assert wb["Hari kosong"].max_row == 78
-    # Ringkasan rentang: satu rentang kosong berurutan untuk tiap vendor.
-    assert wb["Rentang hari kosong"].max_row == 3
-    # Februari kosong untuk kedua vendor; Januari tidak.
-    assert wb["Bulan kosong"].max_row == 3
-    assert wb["Bulan lengkap"].max_row == 1
-    metode = [list(r) for r in wb["Metode"].iter_rows(values_only=True)]
-    assert any(r[0] == "Dasar penilaian hari"
-               and "Semua hari kalender" in str(r[1]) for r in metode)
-    assert any(r[0] == "Dasar urutan"
-               and "Jumlah hari ber-intake" in str(r[1]) for r in metode)
+    ws1, ws2, ws3 = (wb[n] for n in wb.sheetnames)
+    assert [len(ws._charts) for ws in (ws1, ws2, ws3)] == [1, 1, 1]
+    assert isinstance(ws1._charts[0], BarChart)
+    assert isinstance(ws2._charts[0], BarChart)
+    assert ws2._charts[0].grouping == "stacked"
+    assert ws2._charts[0].overlap == 100
+    assert isinstance(ws3._charts[0], LineChart)
+    assert all(len(ws.conditional_formatting._cf_rules) >= 1
+               for ws in (ws1, ws2, ws3))
+    assert "2025–2026" in ws1["A1"].value
+    assert "2025–2026" in _judul_chart(ws1._charts[0])
+    assert ws1["A1"].font.name == "Courier New"
+    assert ws1["A4"].fill.fgColor.rgb == "FF1F4E78"
+    assert [ws1.cell(4, c).value for c in range(1, 9)] == [
+        "Rank", "Vendor", "Total Trip", "% Trip", "Hari Aktif",
+        "Rata² Trip/Hari Operasional", "Rata² Trip/Bulan", "Dry (kg)"]
+    assert [ws1.cell(r, 2).value for r in range(5, 9)] == [
+        "PT Alpha", "PT Beta", "PT Delta", "PT Gamma"]
+    assert ws1["B9"].value == "TOTAL"
+    assert ws1["C9"].value == 1
+    assert ws1["H9"].value == 100
+    assert ws1["K4"].value == 1     # Hari operasional
+    assert ws1["M4"].value == 2     # Jumlah bulan dinamis
+
+    assert [ws2.cell(4, c).value for c in range(1, 5)] == [
+        "Vendor", "Des-25", "Jan-26", "Total"]
+    assert [ws2.cell(3, c).value for c in (2, 3)] == [
+        dt.datetime(2025, 12, 1), dt.datetime(2026, 1, 1)]
+    assert "mmm" in ws2["B3"].number_format
+    assert ws2["A9"].value == "TOTAL"
+    assert [ws2.cell(9, c).value for c in range(2, 5)] == [0, 1, 1]
+
+    assert [ws3.cell(4, c).value for c in range(1, 10)] == [
+        "Tanggal", "Total Trip", "PT Alpha", "PT Beta", "PT Delta",
+        "PT Gamma", "Vendor #1", "Trip #1", "Tanggal (YYYY-MM-DD)"]
+    assert ws3["A5"].number_format == "yyyy-mm-dd"
+    assert [ws3.cell(r, 2).value for r in range(5, 9)] == [0, 0, 1, 0]
+    assert [ws3.cell(r, 3).value for r in range(5, 9)] == [0, 0, 1, 0]
+    assert [ws3.cell(r, 1).fill.fgColor.rgb for r in range(5, 9)] == [
+        "FFF2F2F2", "FFF2F2F2", "00000000", "FFF2F2F2"]
+    assert ws3["A9"].value == "Rata² / hari"
+    assert ws1.freeze_panes == "A5"
+    assert ws2.freeze_panes == "B5"
+    assert ws3.freeze_panes == "C5"
     wb.close()
 
 
-def test_ekspor_excel_tetap_ada_saat_tidak_ada_tiket(monkeypatch):
+def test_xlsx_vendor_nol_dan_tanpa_data_tetap_tiga_chart(monkeypatch):
+    isi = _xlsx(_klien(monkeypatch, lambda s: None),
+                dari="2026-01-01", sampai="2026-01-02")
+    wb = openpyxl.load_workbook(io.BytesIO(isi))
+    assert wb.sheetnames == ["Ringkasan Vendor", "Vendor per Bulan",
+                             "Vendor Harian"]
+    assert sum(len(ws._charts) for ws in wb.worksheets) == 3
+    assert [wb["Ringkasan Vendor"].cell(r, 2).value for r in range(5, 9)] == [
+        "PT Alpha", "PT Beta", "PT Delta", "PT Gamma"]
+    assert wb["Ringkasan Vendor"]["C9"].value == 0
+    wb.close()
+
+
+# -------------------------------------------------------------- batas aman
+def test_batas_ekstrem_dan_label_bulan(monkeypatch):
     klien = _klien(monkeypatch, lambda s: None)
-    r = klien.get(URL, params={"dari": "2026-01-01", "sampai": "2026-01-03",
-                               "format": "xlsx"})
-    assert r.status_code == 200, r.text
-    wb = openpyxl.load_workbook(io.BytesIO(r.content), read_only=True)
-    assert wb["Rekap vendor"].max_row == 1
-    assert wb["Hari kosong"].max_row == 1
-    wb.close()
-
-
-# ------------------------------------------------------- periode & validasi
-def test_periode_otomatis_dari_tanggal_tiket(monkeypatch):
-    def isi(s):
-        _tiket(s, "A1", dt.date(2026, 2, 10), "V001")
-        _tiket(s, "A2", dt.date(2026, 2, 20), "V001")
-
-    d = _get(_klien(monkeypatch, isi))
-    assert d["periode"]["dari"] == "2026-02-10"
-    assert d["periode"]["sampai"] == "2026-02-20"
-    assert d["periode"]["dari_otomatis"] is True
-    assert d["periode"]["sampai_otomatis"] is True
-    assert d["periode"]["jumlah_hari"] == 11
-    assert any("diambil otomatis" in p for p in d["peringatan"])
-
-
-def test_periode_terbalik_dan_format_salah_ditolak(monkeypatch):
-    klien = _klien(monkeypatch, _isi_januari)
-    r = klien.get(URL, params={"dari": "2026-03-10", "sampai": "2026-03-01"})
-    assert r.status_code == 422 and "Periode terbalik" in r.text
-    r = klien.get(URL, params={"dari": "2026/01/01"})
-    assert r.status_code == 422 and "YYYY-MM-DD" in r.text
-    # Rentang 1.766 hari (keluhan pemilik) sekarang HARUS diterima.
-    r = klien.get(URL, params={"dari": "2021-12-15",
-                               "sampai": "2026-10-15"})
-    assert r.status_code == 200, r.text
-    assert r.json()["periode"]["jumlah_hari"] == 1766
-    assert r.json()["periode"]["mode_rincian"] == "ringkas"
-    # Hanya tanggal ekstrem (±>100 tahun) yang ditolak batas keamanan.
     r = klien.get(URL, params={"dari": "1900-01-01",
-                               "sampai": "2026-10-15"})
-    assert r.status_code == 422 and "di luar jangkauan" in r.text
+                               "sampai": "2026-11-01"})
+    assert r.status_code == 422
+    assert "batas keamanan" in r.json()["detail"]
+    r = klien.get(URL, params={"dari": "1900-01-01",
+                               "sampai": "2000-01-01"})
+    assert r.status_code == 422
+    assert "1.201 bulan" in r.json()["detail"]
 
-
-def test_rentang_1766_hari_diterima_dan_otomatis_diminimalisir(monkeypatch):
-    """Keluhan pemilik: 1.766 hari tidak boleh 422, rincian tetap terbaca."""
-    klien = _klien(monkeypatch, _isi_januari)
-    d = _get(klien, dari="2021-12-15", sampai="2026-10-15")
-    assert d["status"] == "ok"
-    assert d["periode"]["jumlah_hari"] == 1766
-    assert d["periode"]["jumlah_bulan"] == 59
-    assert d["periode"]["mode_rincian"] == "ringkas"
-    assert d["periode"]["ringkas_otomatis"] is True
-    assert d["batas_data"] == {
-        "tersedia": True, "dari": "2026-01-01", "sampai": "2026-01-10",
-        "jumlah_hari": 10}
-    assert d["ringkasan"]["hari_di_luar_rentang_data"] == 1756
-    assert any("DIMINIMALISIR" in p for p in d["peringatan"])
-    assert any("di luar rentang tiket" in p for p in d["peringatan"])
-
-    v1 = next(b for b in d["baris"] if b["kode"] == "V001")
-    assert v1["jumlah_hari_masuk"] == 10
-    assert v1["jumlah_hari_kosong"] == 1756
-    # JSON layar tetap ringan: 31 chip, 2 rentang, 59 rekap bulan.
-    assert len(v1["hari_kosong"]) == 31
-    assert v1["hari_kosong_terpotong"] is True
-    assert len(v1["hari_kosong_rentang"]) == 2
-    assert v1["hari_kosong_rentang"][0]["jumlah_hari"] == 1478
-    assert v1["hari_kosong_rentang"][0]["kategori"] == "di_luar_data"
-    assert len(v1["hari_kosong_per_bulan"]) == 59
-    assert v1["hari_kosong_per_bulan"][0]["ringkasan"] == "15-31"
-    assert v1["bulan_kosong_rentang"][0]["jumlah_bulan"] >= 48
-    assert v1["hari_kosong"][0]["kategori"] == "di_luar_data"
-    # Dasar lama tidak berubah.
-    assert d["dasar"]["hari"] == "kalender"
-    assert d["dasar"]["urutan"] == "jumlah_hari_masuk"
-
-
-def test_ekspor_excel_rentang_1766_hari_tetap_lengkap(monkeypatch):
-    klien = _klien(monkeypatch, _isi_januari)
-    params = {"dari": "2021-12-15", "sampai": "2026-10-15"}
-    d = _get(klien, **params)
-    total = sum(b["jumlah_hari_kosong"] for b in d["baris"])
-    r = klien.get(URL, params={**params, "format": "xlsx"})
-    assert r.status_code == 200, r.text
-    wb = openpyxl.load_workbook(io.BytesIO(r.content), read_only=True,
-                                data_only=True)
-    assert wb["Hari kosong"].max_row == total + 1
-    assert wb["Rentang hari kosong"].max_row > 1
-    metode = [list(x) for x in wb["Metode"].iter_rows(values_only=True)]
-    assert any(x[0] == "Mode rincian layar"
-               and "Ringkas otomatis" in str(x[1]) for x in metode)
-    assert any(x[0] == "Hari di luar rentang data" and x[1] == 1756
-               for x in metode)
-    wb.close()
-
-
-def test_status_kosong_jujur_dan_sumber_tercantum(monkeypatch):
-    d = _get(_klien(monkeypatch, lambda s: None),
-             dari="2026-01-01", sampai="2026-01-03")
-    assert d["baris"] == []
-    assert d["paling_sering"] is None
-    assert d["ringkasan"]["total_vendor"] == 0
-    assert any("Tidak ada tiket intake" in p for p in d["peringatan"])
-    assert "tiket_baris" in d["sumber"]
-
-
-# ------------------------------------------------------- fungsi murni
-def test_rentang_terpanjang_harian_dan_bulanan():
-    hari = {dt.date(2026, 1, 1), dt.date(2026, 1, 2), dt.date(2026, 1, 4),
-            dt.date(2026, 1, 5), dt.date(2026, 1, 6)}
-    assert rentang_harian_terpanjang(hari) == {
-        "dari": "2026-01-04", "sampai": "2026-01-06", "jumlah_hari": 3}
-    assert rentang_harian_terpanjang(set())["jumlah_hari"] == 0
-    assert rentang_bulan_terpanjang({(2026, 1), (2026, 2), (2026, 4)}) == {
-        "dari": "2026-01", "sampai": "2026-02", "jumlah_bulan": 2}
-    assert rentang_bulan_terpanjang({(2025, 12), (2026, 1)}) == {
-        "dari": "2025-12", "sampai": "2026-01", "jumlah_bulan": 2}
-
-
-def test_kelompok_rentang_bulan_untuk_tampilan_ringkas():
-    bulan = [
-        {"ym": "2025-11", "label": "Nov-25", "jumlah_hari": 30},
-        {"ym": "2025-12", "label": "Des-25", "jumlah_hari": 31},
-        {"ym": "2026-01", "label": "Jan-26", "jumlah_hari": 31},
-        {"ym": "2026-03", "label": "Mar-26", "jumlah_hari": 31},
-    ]
-    kelompok = kelompok_rentang_bulan(bulan)
-    assert [(k["dari"], k["sampai"], k["jumlah_bulan"])
-            for k in kelompok] == [
-        ("2025-11", "2026-01", 3), ("2026-03", "2026-03", 1)]
-    assert kelompok_rentang_bulan([]) == []
-
-
-def test_daftar_hari_termasuk_tahun_kabisat():
-    hari = daftar_hari(dt.date(2024, 2, 28), dt.date(2024, 3, 1))
-    assert [h.isoformat() for h in hari] == [
-        "2024-02-28", "2024-02-29", "2024-03-01"]
-    # Batas 731 hari dihapus; 1.766 hari wajib masuk, batas baru hanya
-    # pengaman tanggal ekstrem ±100 tahun.
     assert MAKS_HARI == 366 * 100
     assert MAKS_HARI > 1766
+    assert MAKS_BULAN == 1_200
+    assert AMBANG_RINGKAS_HARI == 366
+    assert [h.isoformat() for h in daftar_hari(
+        dt.date(2024, 2, 28), dt.date(2024, 3, 1))] == [
+        "2024-02-28", "2024-02-29", "2024-03-01"]
+    assert [b["ym"] for b in daftar_bulan(
+        dt.date(2025, 12, 1), dt.date(2026, 2, 1))] == [
+        "2025-12", "2026-01", "2026-02"]
+    assert label_periode_judul(dt.date(2025, 1, 1),
+                               dt.date(2026, 12, 31)) == "2025–2026"
 
 
-def test_hitung_murni_tanpa_database():
-    hasil = hitung_konsistensi(
+# ------------------------------------------------------------ modul murni
+def test_hitung_murni_trip_unik_dan_normalisasi_vendor():
+    hasil = hitung_ringkasan_vendor(
         [(dt.date(2026, 6, 1), " v001 ", "T1", 100.0),
+         (dt.date(2026, 6, 1), "V001", "T1", 50.0),
          (dt.date(2026, 6, 2), "V001", "T2", 50.0),
          (dt.date(2026, 6, 1), "V002", "T3", 10.0)],
         dt.date(2026, 6, 1), dt.date(2026, 6, 3),
-        {"V001": "PT Alpha"})
-    assert hasil["baris"][0]["kode"] == "V001"
-    assert hasil["baris"][0]["nama"] == "PT Alpha"
-    assert hasil["baris"][0]["jumlah_hari_masuk"] == 2
-    assert [h["tanggal"] for h in hasil["baris"][0]["hari_kosong"]] == [
-        "2026-06-03"]
-    assert hasil["ringkasan"]["total_tiket"] == 3
+        {"v001": "Alpha", "V002": "Beta"})
+    assert [b["label"] for b in hasil["baris"]] == ["Alpha", "Beta"]
+    assert hasil["baris"][0]["total_trip"] == 2   # T1 + T2, bukan 3 baris
+    assert hasil["baris"][0]["dry_kg"] == pytest.approx(200.0)
+    assert hasil["baris"][0]["hari_aktif"] == 2
+    assert hasil["baris"][1]["total_trip"] == 1
+    assert hasil["ringkasan"]["total_trip"] == 3
+    assert hasil["ringkasan"]["hari_operasional"] == 2
+    assert hasil["total_per_hari"] == [2, 1, 0]
+    assert hasil["hari"][2]["kategori"] == "sepi_pabrik"
+
+
+def test_ringkas_untuk_layar_memangkas_matriks_panjang():
+    hasil = hitung_ringkasan_vendor(
+        [(dt.date(2024, 1, 1), "V001", "T1", 10.0)],
+        dt.date(2024, 1, 1), dt.date(2026, 12, 31), {"V001": "Alpha"})
+    assert hasil["periode"]["ringkas_otomatis"] is True
+    r = ringkas_untuk_layar(hasil)
+    assert r["hari"] == []
+    assert r["vendor_harian"] == []
+    assert len(r["bulan"]) == 36
+    assert len(r["vendor_per_bulan"]) == 1
+    assert len(r["rekap_per_bulan"]) == 36
+    assert len(r["rentang_hari"]) > 1

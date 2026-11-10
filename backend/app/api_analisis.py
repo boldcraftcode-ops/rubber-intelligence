@@ -17,6 +17,8 @@ import yaml
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 from openpyxl.cell import WriteOnlyCell
+from openpyxl.chart import BarChart, LineChart, Reference
+from openpyxl.formatting.rule import ColorScaleRule
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.styles.colors import Color
 from openpyxl.utils import get_column_letter
@@ -27,8 +29,9 @@ from sqlalchemy.orm import Session
 from .auth_lokal import info_pengguna, wajib_admin
 from .core import rumus
 from .core.alarm import catat_audit, evaluasi_alarm
-from .core.konsistensi_intake import (
-    MAKS_HARI, hitung_konsistensi, kode_bulan, label_hari,
+from .core.ringkasan_vendor import (
+    MAKS_BULAN, MAKS_HARI, hitung_ringkasan_vendor,
+    label_bulan_pendek, ringkas_untuk_layar,
 )
 from .core.kualitas import (
     data_terlambat,
@@ -80,6 +83,23 @@ AMBANG_XLSX_STREAM = 200_000
 #: Excel sendiri maksimal 16.384 kolom, tapi rincian bulanan juga menyimpan
 #: satu sel per dimensi per bulan; batas ini mencegah workbook raksasa.
 MAKS_BULAN_XLSX = 1_200
+
+# ---------------------------------------------------------------------------
+# Format baku ekspor kartu Konsistensi intake harian vendor, mengikuti
+# `Intake-2025_Ringkasan-Vendor.xlsx`. Berkas contoh HANYA referensi; style
+# ditanam di kode agar ekspor tetap jalan tanpa file tersebut.
+# ---------------------------------------------------------------------------
+FONT_RINGKASAN_VENDOR = "Courier New"
+WARNA_HEADER_RINGKASAN_VENDOR = "FF1F4E78"
+WARNA_ABU_RINGKASAN_VENDOR = "FF595959"
+WARNA_ABU_MUDA_RINGKASAN_VENDOR = "FF7F7F7F"
+WARNA_LUAR_DATA_RINGKASAN_VENDOR = "FFF2F2F2"
+FORMAT_TRIP_RINGKASAN_VENDOR = "#,##0"
+FORMAT_PORSEN_RINGKASAN_VENDOR = "0.0%"
+FORMAT_RATA_RINGKASAN_VENDOR = "0.0"
+FORMAT_TANGGAL_RINGKASAN_VENDOR = "yyyy-mm-dd"
+FORMAT_AWAL_BULAN_RINGKASAN_VENDOR = "dd\\-mmm"
+LEBAR_RINGKASAN_VENDOR = (9.0, 40.0, 12.0, 9.0, 11.0, 18.0, 14.0, 15.0, 8.71)
 
 # ---------------------------------------------------------------------------
 # Format baku ekspor kartu Penerimaan Karet, mengikuti contoh
@@ -1196,208 +1216,347 @@ def _ke_tanggal_db(nilai) -> dt.date | None:
         return None
 
 
-def _ringkas_konsistensi(hasil: dict, maks_hari: int = 31,
-                         maks_bulan: int = 24, maks_rentang: int = 60,
-                         maks_rekap_bulan: int = 120) -> dict:
-    """Pangkas daftar panjang untuk JSON layar; Excel tetap versi penuh.
+def _xlsx_ringkasan_vendor(hasil: dict) -> StreamingResponse:
+    """Ekspor 3 sheet + 3 chart native mengikuti
+    `Intake-2025_Ringkasan-Vendor.xlsx`.
 
-    Pemadatan dilakukan bertingkat: chip per tanggal → rentang tanggal
-    berurutan → rekap nomor tanggal per bulan → rentang bulan. Jadi rentang
-    1.766 hari tetap terkirim ringan tanpa kehilangan tanggal pasti.
+    Perbedaan sadar dari contoh (keputusan pemilik):
+    - tanpa sheet `Master Data` / raw tiket, jadi seluruh angka sudah dihitung
+      backend dan ditulis sebagai nilai (bukan SUMIFS ke sheet mentah);
+    - **setiap vendor** menjadi baris detail, tidak ada baris `Lainnya`;
+    - judul, kolom bulan, dan `Rata² Trip/Bulan` mengikuti `Dari/Sampai`;
+    - sheet `Vendor Harian` memuat **semua hari kalender** pada rentang, hari
+      tanpa intake bernilai 0 Trip, dan tanggal di luar rentang tiket ditandai
+      abu-abu dengan keterangan `Di luar data`.
+
+    Workbook sengaja `write_only`: rentang 1.766 hari (bahkan ±100 tahun)
+    tetap bisa ditulis mengalir. `WriteOnlyCell`, freeze, lebar kolom,
+    colorScale, dan chart native tetap didukung openpyxl pada mode ini.
     """
-    d = dict(hasil)
-    terpotong = False
-    baris: list[dict] = []
-    for b in hasil["baris"]:
-        nb = dict(b)
-        nb["hari_kosong"] = b["hari_kosong"][:maks_hari]
-        nb["hari_kosong_terpotong"] = (b["jumlah_hari_kosong"]
-                                       > len(nb["hari_kosong"]))
-        nb["hari_kosong_rentang"] = b["hari_kosong_rentang"][:maks_rentang]
-        nb["hari_kosong_rentang_terpotong"] = (
-            len(b["hari_kosong_rentang"]) > maks_rentang)
-        nb["hari_kosong_per_bulan"] = (b["hari_kosong_per_bulan"]
-                                       [:maks_rekap_bulan])
-        nb["hari_kosong_per_bulan_terpotong"] = (
-            len(b["hari_kosong_per_bulan"]) > maks_rekap_bulan)
-        nb["bulan_kosong"] = b["bulan_kosong"][:maks_bulan]
-        nb["bulan_kosong_terpotong"] = len(b["bulan_kosong"]) > maks_bulan
-        nb["bulan_kosong_rentang"] = (b["bulan_kosong_rentang"]
-                                      [:maks_rentang])
-        nb["bulan_kosong_rentang_terpotong"] = (
-            len(b["bulan_kosong_rentang"]) > maks_rentang)
-        nb["bulan_lengkap"] = b["bulan_lengkap"][:maks_bulan]
-        nb["bulan_lengkap_terpotong"] = len(b["bulan_lengkap"]) > maks_bulan
-        nb["bulan_lengkap_rentang"] = (b["bulan_lengkap_rentang"]
-                                       [:maks_rentang])
-        nb["bulan_lengkap_rentang_terpotong"] = (
-            len(b["bulan_lengkap_rentang"]) > maks_rentang)
-        terpotong = terpotong or any((
-            nb["hari_kosong_terpotong"], nb["hari_kosong_rentang_terpotong"],
-            nb["hari_kosong_per_bulan_terpotong"],
-            nb["bulan_kosong_terpotong"], nb["bulan_lengkap_terpotong"]))
-        baris.append(nb)
-    d["baris"] = baris
-    if hasil["paling_sering"] is not None:
-        d["paling_sering"] = dict(baris[0])
-    d["hari_sepi_pabrik"] = hasil["hari_sepi_pabrik"][:maks_hari]
-    d["hari_sepi_pabrik_terpotong"] = (
-        len(hasil["hari_sepi_pabrik"]) > maks_hari)
-    d["hari_sepi_pabrik_rentang"] = (hasil["hari_sepi_pabrik_rentang"]
-                                     [:maks_rentang])
-    d["hari_sepi_pabrik_rentang_terpotong"] = (
-        len(hasil["hari_sepi_pabrik_rentang"]) > maks_rentang)
-    d["hari_sepi_pabrik_per_bulan"] = (
-        hasil["hari_sepi_pabrik_per_bulan"][:maks_rekap_bulan])
-    d["peringatan"] = list(hasil["peringatan"])
-    if ((terpotong or d["hari_sepi_pabrik_terpotong"]) and
-            not any("Ekspor Excel memuat seluruh" in p
-                    for p in d["peringatan"])):
-        d["peringatan"].append(
-            f"Daftar hari/bulan kosong di layar dibatasi {maks_hari} hari, "
-            f"{maks_rentang} rentang, dan {maks_bulan} bulan per vendor. "
-            "Ekspor Excel memuat seluruh rincian tanpa potongan.")
-    return d
+    p, r, m = hasil["periode"], hasil["ringkasan"], hasil["catatan_metode"]
+    baris = hasil["baris"]
+    vendor_bulan = hasil["vendor_per_bulan"]
+    vendor_harian = hasil["vendor_harian"]
+    bulan = hasil["bulan"]
+    hari = hasil["hari"]
+    n_vendor, n_bulan, n_hari = len(baris), len(bulan), len(hari)
+    if 5 + n_vendor > 16_384:
+        raise HTTPException(
+            422, "Jumlah vendor melebihi batas 16.384 kolom Excel.")
 
+    satu_tahun = len({b["tahun"] for b in bulan}) <= 1
+    label_bulan = [
+        (b.get("label") or label_bulan_pendek(b["tahun"], b["bulan"]))
+        if satu_tahun else b["label_ym"] for b in bulan]
+    awal_bulan = [dt.date(b["tahun"], b["bulan"], 1) for b in bulan]
+    judul_tahun = p["label_judul"]
 
-def _xlsx_konsistensi(hasil: dict) -> StreamingResponse:
-    """Excel 7 sheet; rincian per tanggal ditulis mengalir dari rentang.
+    font_judul = Font(name=FONT_RINGKASAN_VENDOR, sz=14, bold=True)
+    font_isi = Font(name=FONT_RINGKASAN_VENDOR, sz=11, color=Color(theme=1))
+    font_tebal = Font(name=FONT_RINGKASAN_VENDOR, sz=11, bold=True)
+    font_header = Font(name=FONT_RINGKASAN_VENDOR, sz=11, bold=True,
+                       color=Color(rgb="FFFFFFFF"))
+    font_abu = Font(name=FONT_RINGKASAN_VENDOR, sz=11,
+                    color=Color(rgb=WARNA_ABU_RINGKASAN_VENDOR))
+    font_kecil = Font(name=FONT_RINGKASAN_VENDOR, sz=8,
+                      color=Color(rgb=WARNA_ABU_MUDA_RINGKASAN_VENDOR))
+    fill_header = PatternFill("solid",
+                              fgColor=WARNA_HEADER_RINGKASAN_VENDOR)
+    fill_luar = PatternFill("solid",
+                            fgColor=WARNA_LUAR_DATA_RINGKASAN_VENDOR)
+    sisi = Side(style="thin", color=Color(auto=True))
+    border = Border(left=sisi, right=sisi, top=sisi, bottom=sisi)
+    tengah = Alignment(horizontal="center", vertical="center")
 
-    Sheet `Rentang hari kosong` adalah tampilan minimalis untuk periode
-    panjang, sedangkan `Hari kosong` tetap memuat satu baris per tanggal.
-    """
-    p, m, r = hasil["periode"], hasil["catatan_metode"], hasil["ringkasan"]
-    batas = hasil["batas_data"]
-    judul_rekap = [
-        "Peringkat", "Kode vendor", "Nama vendor", "Hari masuk", "Hari wajib",
-        "Cakupan hari %", "Status harian", "Bulan masuk", "Bulan wajib",
-        "Cakupan bulan %", "Status bulanan", "Rentang harian terpanjang",
-        "Lama rentang (hari)", "Rentang bulanan terpanjang",
-        "Lama rentang (bulan)", "Jumlah tiket", "Total kg",
-        "Jumlah hari kosong", "Jumlah bulan kosong", "Paling sering",
+    def sel(ws, nilai, *, font=None, fill=None, fmt=None, tepi=None,
+            align=None):
+        c = WriteOnlyCell(ws, value=nilai)
+        if font is not None:
+            c.font = font
+        if fill is not None:
+            c.fill = fill
+        if fmt is not None:
+            c.number_format = fmt
+        if tepi is not None:
+            c.border = tepi
+        if align is not None:
+            c.alignment = align
+        return c
+
+    def skala(ws, rentang: str) -> None:
+        ws.conditional_formatting.add(
+            rentang,
+            ColorScaleRule(start_type="min", start_color="FFFFFFFF",
+                           end_type="max", end_color="FF5B9BD5"))
+
+    wb = openpyxl.Workbook(write_only=True)
+
+    # ===================================================== 1. Ringkasan Vendor
+    ws1 = wb.create_sheet("Ringkasan Vendor")
+    ws1.freeze_panes = "A5"
+    ws1.row_dimensions[1].height = 19.5
+    ws1.row_dimensions[2].height = 15.75
+    ws1.row_dimensions[4].height = 31.5
+    baris_total1 = 4 + n_vendor + 1
+    ws1.row_dimensions[baris_total1].height = 15.75
+    for i, lebar in enumerate(LEBAR_RINGKASAN_VENDOR, start=1):
+        ws1.column_dimensions[get_column_letter(i)].width = lebar
+    ws1.column_dimensions["J"].width = 18
+    ws1.column_dimensions["K"].width = 10
+    ws1.column_dimensions["L"].width = 14
+    ws1.column_dimensions["M"].width = 10
+
+    ws1.append([sel(ws1, f"Peringkat Vendor berdasarkan Frekuensi Intake "
+                          f"[{judul_tahun}]", font=font_judul)])
+    ws1.append([sel(ws1, f"Periode {p['label_inggris']} · Semua vendor "
+                          f"ditulis sebagai baris detail", font=font_abu)])
+    ws1.append([None])
+    header1 = ["Rank", "Vendor", "Total Trip", "% Trip", "Hari Aktif",
+               "Rata² Trip/Hari Operasional", "Rata² Trip/Bulan", "Dry (kg)"]
+    row4 = [sel(ws1, t, font=font_header, fill=fill_header, tepi=border,
+                align=tengah) for t in header1]
+    row4 += [
+        sel(ws1, None),
+        sel(ws1, "Hari operasional", font=font_tebal),
+        sel(ws1, r["hari_operasional"], fmt=FORMAT_TRIP_RINGKASAN_VENDOR),
+        sel(ws1, "Jumlah bulan", font=font_tebal),
+        sel(ws1, r["jumlah_bulan"], fmt=FORMAT_TRIP_RINGKASAN_VENDOR),
     ]
-    rekap: list[list] = []
-    rentang_hari: list[list] = []
-    bulan_kosong: list[list] = []
-    bulan_lengkap: list[list] = []
-    for b in hasil["baris"]:
-        rh = b["rentang_harian_terpanjang"]
-        rb = b["rentang_bulanan_terpanjang"]
-        rekap.append([
-            b["peringkat"], b["kode"], b["nama"],
-            b["jumlah_hari_masuk"], b["jumlah_hari_wajib"],
-            b["cakupan_hari_pct"], b["status_harian"],
-            b["jumlah_bulan_masuk"], b["jumlah_bulan_wajib"],
-            b["cakupan_bulan_pct"], b["status_bulanan"],
-            f"{rh['dari']} s.d. {rh['sampai']}" if rh["dari"] else "–",
-            rh["jumlah_hari"],
-            f"{rb['dari']} s.d. {rb['sampai']}" if rb["dari"] else "–",
-            rb["jumlah_bulan"],
-            b["jumlah_tiket"], b["total_kg"],
-            b["jumlah_hari_kosong"], b["jumlah_bulan_kosong"],
-            "YA" if b["paling_sering"] else "",
+    ws1.append(row4)
+    for b in baris:
+        ws1.append([
+            sel(ws1, b["peringkat"], font=font_isi, tepi=border,
+                fmt=FORMAT_TRIP_RINGKASAN_VENDOR),
+            sel(ws1, b["label"], font=font_isi, tepi=border),
+            sel(ws1, b["total_trip"], font=font_isi, tepi=border,
+                fmt=FORMAT_TRIP_RINGKASAN_VENDOR),
+            sel(ws1, b["porsi_trip"], font=font_isi, tepi=border,
+                fmt=FORMAT_PORSEN_RINGKASAN_VENDOR),
+            sel(ws1, b["hari_aktif"], font=font_isi, tepi=border,
+                fmt=FORMAT_TRIP_RINGKASAN_VENDOR),
+            sel(ws1, b["rata_trip_per_hari_operasional"], font=font_isi,
+                tepi=border, fmt=FORMAT_RATA_RINGKASAN_VENDOR),
+            sel(ws1, b["rata_trip_per_bulan"], font=font_isi, tepi=border,
+                fmt=FORMAT_RATA_RINGKASAN_VENDOR),
+            sel(ws1, b["dry_kg"], font=font_isi, tepi=border,
+                fmt=FORMAT_TRIP_RINGKASAN_VENDOR),
         ])
-        for g in b["hari_kosong_rentang"]:
-            rentang_hari.append([
-                b["kode"], b["nama"], g["dari"], g["sampai"], g["label"],
-                g["jumlah_hari"], g["jumlah_sepi_pabrik"],
-                g["jumlah_di_luar_data"], g["jumlah_kosong_vendor"],
-                g["kategori"]])
-        for x in b["bulan_kosong"]:
-            bulan_kosong.append([b["kode"], b["nama"], x["ym"],
-                                 x["label"], x["jumlah_hari"]])
-        for x in b["bulan_lengkap"]:
-            bulan_lengkap.append([b["kode"], b["nama"], x["ym"],
-                                  x["label"], x["jumlah_hari"]])
-
-    sepi_iso = {h["tanggal"] for h in hasil["hari_sepi_pabrik"]}
-    dmin = dt.date.fromisoformat(batas["dari"]) if batas["tersedia"] else None
-    dmax = dt.date.fromisoformat(batas["sampai"]) if batas["tersedia"] else None
-    total_per_tanggal = sum(b["jumlah_hari_kosong"] for b in hasil["baris"])
-    terpotong_xlsx = total_per_tanggal > MAKS_BARIS_XLSX
-
-    def baris_hari_kosong():
-        """Per tanggal penuh, dibangkitkan dari interval agar hemat memori."""
-        sisa = MAKS_BARIS_XLSX
-        for b in hasil["baris"]:
-            for g in b["hari_kosong_rentang"]:
-                h = dt.date.fromisoformat(g["dari"])
-                z = dt.date.fromisoformat(g["sampai"])
-                while h <= z:
-                    if sisa <= 0:
-                        return
-                    iso = h.isoformat()
-                    luar = bool(dmin and (h < dmin or h > dmax))
-                    if luar:
-                        ket = "Di luar rentang data tiket (belum/sudah tidak ada data)"
-                    elif iso in sepi_iso:
-                        ket = "Tidak ada intake dari vendor mana pun (pabrik sepi)"
-                    else:
-                        ket = "Tidak ada intake dari vendor ini"
-                    yield [b["kode"], b["nama"], iso, label_hari(h),
-                           kode_bulan(h), ket, "YA" if luar else ""]
-                    sisa -= 1
-                    h += dt.timedelta(days=1)
-
-    def baris_sepi():
-        for h in hasil["hari_sepi_pabrik"]:
-            yield [h["tanggal"], h["hari"], h["bulan"],
-                   ("Di luar rentang data tiket" if h["di_luar_data"]
-                    else "Tidak ada tiket intake pada tanggal ini"),
-                   h["kategori"]]
-
-    metode = [
-        ["Kartu", "Konsistensi intake harian/bulanan vendor"],
-        ["Periode", f"{p['dari']} s.d. {p['sampai']}"],
-        ["Jumlah hari kalender wajib", p["jumlah_hari"]],
-        ["Jumlah bulan dalam rentang", p["jumlah_bulan"]],
-        ["Mode rincian layar", ("Ringkas otomatis (rentang + rekap bulan)"
-                                if p["mode_rincian"] == "ringkas"
-                                else "Per tanggal")],
-        ["Rentang tiket tersedia",
-         f"{batas['dari']} s.d. {batas['sampai']} ({batas['jumlah_hari']} hari)"
-         if batas["tersedia"] else "–"],
-        ["Hari di luar rentang data", r["hari_di_luar_rentang_data"]],
-        ["Dasar penilaian hari", hasil["dasar"]["label_hari"]],
-        ["Dasar urutan", hasil["dasar"]["label_urutan"]],
-        ["Jumlah vendor dinilai", r["total_vendor"]],
-        ["Vendor paling sering masuk",
-         hasil["paling_sering"]["label"] if hasil["paling_sering"] else "–"],
-        ["Hari sepi pabrik", r["hari_tanpa_intake_sama_sekali"]],
-        ["Sumber data", m["sumber"]],
-        ["Aturan hari kalender", m["dasar_hari"]],
-        ["Aturan urutan", m["dasar_urutan"]],
-        ["Bulan kosong", m["bulan_kosong"]],
-        ["Bulan lengkap", m["bulan_lengkap"]],
-        ["Rentang terpanjang", m["rentang_terpanjang"]],
-        ["Sepi pabrik", m["sepi_pabrik"]],
-        ["Di luar rentang data", m["di_luar_data"]],
-        ["Vendor tidak aktif", m["vendor_tidak_aktif"]],
-        ["Pemadatan periode panjang", m["minimalisir"]],
-        ["Batas rentang", m["batas"]],
-        ["Baris 'Hari kosong'",
-         f"{min(total_per_tanggal, MAKS_BARIS_XLSX)} dari {total_per_tanggal}"
-         + (" (dibatasi batas sheet Excel; sheet 'Rentang hari kosong' tetap "
-            "memuat seluruh rentang tanpa potongan)"
-            if terpotong_xlsx else " (lengkap tanpa potongan)")],
+    ws1.append([
+        sel(ws1, None, font=font_tebal, tepi=border),
+        sel(ws1, "TOTAL", font=font_tebal, tepi=border),
+        sel(ws1, r["total_trip"], font=font_tebal, tepi=border,
+            fmt=FORMAT_TRIP_RINGKASAN_VENDOR),
+        sel(ws1, 1.0 if r["total_trip"] else 0.0, font=font_tebal,
+            tepi=border, fmt=FORMAT_PORSEN_RINGKASAN_VENDOR),
+        sel(ws1, None, font=font_tebal, tepi=border),
+        sel(ws1, None, font=font_tebal, tepi=border),
+        sel(ws1, None, font=font_tebal, tepi=border),
+        sel(ws1, r["total_dry_kg"], font=font_tebal, tepi=border,
+            fmt=FORMAT_TRIP_RINGKASAN_VENDOR),
+    ])
+    catatan1 = [
+        ["Periode", p["label_inggris"]],
+        ["Sumber", m["sumber"]],
+        ["Trip", m["trip"]],
+        ["Hari Aktif & rata", m["hari_operasional"] + " " + m["rata"]],
+        ["Semua vendor", "Tiap vendor menjadi baris detail; tidak ada baris "
+                         "gabungan sisa vendor dan tidak ada sheet Master "
+                         "Data."],
+        ["Di luar data", m["di_luar_data"]],
+        ["Periode panjang", m["minimalisir"]],
     ]
-    return respon_xlsx_banyak("konsistensi_intake_vendor.xlsx", [
-        ("Rekap vendor", judul_rekap, rekap),
-        ("Hari kosong", ["Kode vendor", "Nama vendor", "Tanggal", "Hari",
-                         "Bulan", "Keterangan", "Di luar data"],
-         baris_hari_kosong()),
-        ("Rentang hari kosong", ["Kode vendor", "Nama vendor", "Dari",
-                                "Sampai", "Rentang", "Jumlah hari",
-                                "Pabrik sepi", "Di luar data",
-                                "Kosong vendor", "Kategori"], rentang_hari),
-        ("Bulan kosong", ["Kode vendor", "Nama vendor", "Bulan", "Label",
-                          "Jumlah hari dalam periode"], bulan_kosong),
-        ("Bulan lengkap", ["Kode vendor", "Nama vendor", "Bulan", "Label",
-                           "Jumlah hari dalam periode"], bulan_lengkap),
-        ("Hari sepi pabrik", ["Tanggal", "Hari", "Bulan", "Keterangan",
-                              "Kategori"], baris_sepi()),
-        ("Metode", ["Hal", "Keterangan"], metode),
-    ], tulis_langsung=total_per_tanggal > AMBANG_XLSX_STREAM)
+    for i, (a, b) in enumerate(catatan1):
+        ws1.append([sel(ws1, a, font=font_tebal), sel(ws1, b, font=font_isi)])
+    if n_vendor:
+        skala(ws1, f"C5:C{4 + n_vendor}")
+
+    ch1 = BarChart()
+    ch1.type, ch1.grouping = "col", "clustered"
+    ch1.title = (f"{min(10, n_vendor)} Vendor Teratas - Total Trip "
+                 f"{judul_tahun}" if n_vendor else
+                 f"Total Trip {judul_tahun}")
+    ch1.y_axis.title, ch1.x_axis.title = "Total Trip", "Vendor"
+    ch1.legend = None
+    ch1.height, ch1.width = 10, 20
+    if n_vendor:
+        n_top1 = min(10, n_vendor)
+        ch1.add_data(Reference(ws1, min_col=3, min_row=4,
+                               max_row=4 + n_top1), titles_from_data=True)
+        ch1.set_categories(Reference(ws1, min_col=2, min_row=5,
+                                     max_row=4 + n_top1))
+    ws1.add_chart(ch1, "J5")
+
+    # ==================================================== 2. Vendor per Bulan
+    ws2 = wb.create_sheet("Vendor per Bulan")
+    ws2.freeze_panes = "B5"
+    ws2.row_dimensions[1].height = 19.5
+    ws2.row_dimensions[2].height = 15.75
+    ws2.row_dimensions[3].height = 15.75
+    ws2.row_dimensions[4].height = 15.75
+    baris_total2 = 4 + n_vendor + 1
+    ws2.row_dimensions[baris_total2].height = 15.75
+    ws2.row_dimensions[baris_total2 + 2].height = 48
+    ws2.row_dimensions[baris_total2 + 3].height = 15.75
+    ws2.row_dimensions[baris_total2 + 4].height = 15.75
+    ws2.column_dimensions["A"].width = 40
+    for i in range(2, 2 + n_bulan):
+        ws2.column_dimensions[get_column_letter(i)].width = 11
+    ws2.column_dimensions[get_column_letter(2 + n_bulan)].width = 11
+    ws2.column_dimensions[get_column_letter(3 + n_bulan)].width = 8.71
+
+    ws2.append([sel(ws2, f"Trip Intake per Vendor per Bulan {judul_tahun} "
+                          f"(Semua Vendor)", font=font_judul)])
+    ws2.append([sel(ws2, f"Periode {p['label_inggris']} · "
+                          f"{n_bulan} bulan mengikuti Dari/Sampai",
+                     font=font_abu)])
+    ws2.append([sel(ws2, "Awal bulan →", font=font_kecil)] + [
+        sel(ws2, x, font=font_kecil,
+            fmt=FORMAT_AWAL_BULAN_RINGKASAN_VENDOR) for x in awal_bulan])
+    ws2.append([sel(ws2, t, font=font_header, fill=fill_header, tepi=border,
+                    align=tengah)
+                for t in ["Vendor"] + label_bulan + ["Total"]])
+    for v in vendor_bulan:
+        ws2.append(
+            [sel(ws2, v["label"], font=font_isi, tepi=border)] +
+            [sel(ws2, x, font=font_isi, tepi=border,
+                 fmt=FORMAT_TRIP_RINGKASAN_VENDOR)
+             for x in v["trip_per_bulan"]] +
+            [sel(ws2, v["total_trip"], font=font_isi, tepi=border,
+                 fmt=FORMAT_TRIP_RINGKASAN_VENDOR)])
+    ws2.append(
+        [sel(ws2, "TOTAL", font=font_tebal, tepi=border)] +
+        [sel(ws2, x, font=font_tebal, tepi=border,
+             fmt=FORMAT_TRIP_RINGKASAN_VENDOR)
+         for x in hasil["total_per_bulan"]] +
+        [sel(ws2, r["total_trip"], font=font_tebal, tepi=border,
+             fmt=FORMAT_TRIP_RINGKASAN_VENDOR)])
+    ws2.append([None])
+    ws2.append(
+        [sel(ws2, "Vendor #1 bulan ini", font=font_tebal)] +
+        [sel(ws2, x, font=font_isi) for x in hasil["vendor_utama_bulan"]])
+    ws2.append(
+        [sel(ws2, "Trip vendor #1", font=font_tebal)] +
+        [sel(ws2, x, font=font_isi, fmt=FORMAT_TRIP_RINGKASAN_VENDOR)
+         for x in hasil["trip_utama_bulan"]])
+    ws2.append(
+        [sel(ws2, "Share vendor #1", font=font_tebal)] +
+        [sel(ws2, x, font=font_isi,
+             fmt=FORMAT_PORSEN_RINGKASAN_VENDOR)
+         for x in hasil["share_utama_bulan"]])
+    if n_vendor and n_bulan:
+        skala(ws2, f"B5:{get_column_letter(1 + n_bulan)}{4 + n_vendor}")
+
+    ch2 = BarChart()
+    ch2.type, ch2.grouping, ch2.overlap = "col", "stacked", 100
+    ch2.title = (f"Trip per Bulan per Vendor ({min(10, n_vendor)} teratas) "
+                 f"{judul_tahun}" if n_vendor > 10 else
+                 f"Trip per Bulan per Vendor (Semua Vendor) {judul_tahun}")
+    ch2.y_axis.title, ch2.x_axis.title = "Trip", "Bulan"
+    ch2.legend.position = "r"
+    ch2.height, ch2.width = 11, 22
+    for j in range(min(10, n_vendor)):
+        ch2.add_data(
+            Reference(ws2, min_col=1, max_col=1 + n_bulan,
+                      min_row=5 + j, max_row=5 + j),
+            titles_from_data=True, from_rows=True)
+    ch2.set_categories(
+        Reference(ws2, min_col=2, max_col=1 + n_bulan,
+                  min_row=4, max_row=4))
+    ws2.add_chart(ch2, f"A{baris_total2 + 6}")
+
+    # ======================================================= 3. Vendor Harian
+    ws3 = wb.create_sheet("Vendor Harian")
+    ws3.freeze_panes = "C5"
+    ws3.row_dimensions[1].height = 19.5
+    ws3.row_dimensions[2].height = 15.75
+    ws3.row_dimensions[4].height = 61.5
+    baris_rata3 = 4 + n_hari + 1
+    ws3.row_dimensions[baris_rata3].height = 15.75
+    ws3.column_dimensions["A"].width = 21.29
+    ws3.column_dimensions["B"].width = 9
+    for i in range(3, 3 + n_vendor):
+        ws3.column_dimensions[get_column_letter(i)].width = 12
+    ws3.column_dimensions[get_column_letter(3 + n_vendor)].width = 34
+    ws3.column_dimensions[get_column_letter(4 + n_vendor)].width = 8
+    ws3.column_dimensions[get_column_letter(5 + n_vendor)].width = 14
+
+    ws3.append([sel(ws3, f"Trip Intake Harian per Vendor {judul_tahun} "
+                          f"(Semua Vendor, Semua Hari Kalender)",
+                     font=font_judul)])
+    ws3.append([sel(ws3, f"Periode {p['label_inggris']} · Tanggal di luar "
+                          f"rentang tiket ditandai abu-abu (Di luar data)",
+                     font=font_abu)])
+    ws3.append([None])
+    header3 = (["Tanggal", "Total Trip"] +
+               [v["label"] for v in vendor_harian] +
+               ["Vendor #1", "Trip #1", "Tanggal (YYYY-MM-DD)"])
+    ws3.append([sel(ws3, t, font=font_header, fill=fill_header, tepi=border,
+                    align=tengah) for t in header3])
+    for i, h in enumerate(hari):
+        tanggal = dt.date.fromisoformat(h["tanggal"])
+        row = [
+            sel(ws3, tanggal, font=font_isi, tepi=border,
+                fmt=FORMAT_TANGGAL_RINGKASAN_VENDOR,
+                fill=fill_luar if h["di_luar_data"] else None),
+            sel(ws3, hasil["total_per_hari"][i], font=font_isi, tepi=border,
+                fmt=FORMAT_TRIP_RINGKASAN_VENDOR),
+        ]
+        row += [sel(ws3, v["trip_per_hari"][i], font=font_isi, tepi=border,
+                    fmt=FORMAT_TRIP_RINGKASAN_VENDOR)
+                for v in vendor_harian]
+        row += [
+            sel(ws3, hasil["vendor_utama_harian"][i], font=font_isi,
+                tepi=border),
+            sel(ws3, hasil["trip_utama_harian"][i], font=font_isi,
+                tepi=border, fmt=FORMAT_TRIP_RINGKASAN_VENDOR),
+            sel(ws3, h["tanggal"], font=font_isi, tepi=border),
+        ]
+        ws3.append(row)
+    ws3.append(
+        [sel(ws3, "Rata² / hari", font=font_tebal),
+         sel(ws3, hasil["rata_total_per_hari"], font=font_tebal,
+             fmt=FORMAT_RATA_RINGKASAN_VENDOR)] +
+        [sel(ws3, x, font=font_tebal,
+             fmt=FORMAT_RATA_RINGKASAN_VENDOR)
+         for x in hasil["rata_vendor_per_hari"]] +
+        [sel(ws3, None), sel(ws3, None), sel(ws3, None)])
+    ws3.append([None])
+    ws3.append([sel(ws3, "Keterangan", font=font_tebal),
+                sel(ws3, "Baris tanggal di luar rentang tiket ditandai "
+                         "abu-abu (Di luar data); hari tanpa intake bernilai "
+                         "0 Trip dan tetap ditulis.", font=font_isi)])
+    ws3.append([sel(ws3, "Sumber", font=font_tebal),
+                sel(ws3, m["sumber"] + " " + m["trip"], font=font_isi)])
+    ws3.append([sel(ws3, "Catatan", font=font_tebal),
+                sel(ws3, m["dasar_hari"] + " " + m["minimalisir"],
+                    font=font_isi)])
+    if n_vendor and n_hari:
+        skala(ws3, f"C5:{get_column_letter(2 + n_vendor)}{4 + n_hari}")
+
+    ch3 = LineChart()
+    ch3.title = (f"Trip Harian - Total vs Vendor #1 {judul_tahun}"
+                 if n_vendor else f"Trip Harian - Total {judul_tahun}")
+    ch3.y_axis.title, ch3.x_axis.title = "Trip", "Tanggal"
+    ch3.legend.position = "r"
+    ch3.height, ch3.width = 9, 20
+    ch3.add_data(
+        Reference(ws3, min_col=2, max_col=3 if n_vendor else 2,
+                  min_row=4, max_row=4 + n_hari),
+        titles_from_data=True)
+    ch3.set_categories(
+        Reference(ws3, min_col=1, min_row=5, max_row=4 + n_hari))
+    anchor3 = f"{get_column_letter(min(6 + n_vendor, 16_000))}3"
+    ws3.add_chart(ch3, anchor3)
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    wb.close()
+    buf.seek(0)
+    nama = (f"ringkasan_vendor_{p['dari']}_sd_{p['sampai']}.xlsx")
+    return StreamingResponse(
+        buf,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{nama}"'})
 
 
 def _baris_periode_bulanan(session: Session, tahun: int, bulan: int):
@@ -2915,23 +3074,31 @@ def pasang_router(app, ambil_session):
     def kartu_konsistensi_intake_vendor(dari: str | None = None,
                                         sampai: str | None = None,
                                         format: str | None = None,
+                                        rinci: int | None = None,
                                         session: Session = dep):
-        """Vendor mana yang selalu masuk setiap hari/bulan, mana yang bolong.
+        """Laporan Ringkasan Vendor berbasis **Trip**, mengikuti contoh
+        `Intake-2025_Ringkasan-Vendor.xlsx`.
 
-        Dasar yang dipakai (sesuai keputusan pemilik):
-        - **Semua hari kalender** dalam rentang dihitung wajib ada intake,
-          termasuk Sabtu/Minggu/libur. Hari tanpa tiket vendor = hari kosong.
-        - **Urutan** memakai jumlah tanggal unik ber-intake ("paling sering
-          masuk"), bukan jumlah tiket atau kg.
-        - Rentang memakai **tanggal persis** `YYYY-MM-DD`.
-        - `format=xlsx` menghasilkan 7 sheet (rekap, per tanggal, rentang
-          padat, bulan, sepi pabrik, metode).
+        Kartu layar kini berupa **tiga tabel** (`Ringkasan Vendor`,
+        `Vendor per Bulan`, `Vendor Harian`); chart lama dihapus. Metrik
+        memakai Total Trip, % Trip, Hari Aktif, Rata² Trip/Hari Operasional,
+        Rata² Trip/Bulan, dan Dry (kg). Peringkat diurutkan menurut jumlah
+        Trip (Ticket No unik), bukan lagi jumlah tanggal unik ber-intake.
+
+        `format=xlsx` menghasilkan **3 sheet + 3 chart Excel native** tanpa
+        sheet `Master Data`/raw tiket. Semua vendor (termasuk yang 0 Trip)
+        ditulis sebagai baris detail, tanpa `Lainnya`. Judul, kolom bulan, dan
+        pembagi `Rata² Trip/Bulan` mengikuti `Dari/Sampai`. Sheet harian memuat
+        **semua hari kalender** pada rentang; hari tanpa intake bernilai 0 Trip.
 
         Bila `dari`/`sampai` kosong, batas diisi dari tanggal tiket paling awal
-        / paling akhir yang ada. **Seluruh rentang data boleh dipilih**; batas
-        731 hari sudah dihapus. `MAKS_HARI` kini hanya pengaman untuk tanggal
-        ekstrem (±100 tahun). Periode panjang otomatis dipadatkan di layar
-        menjadi rentang tanggal + rekap per bulan, tanpa mengubah hasil hitung.
+        / paling akhir. Seluruh rentang data boleh dipilih; batas 731 hari sudah
+        dihapus. `MAKS_HARI` hanya pengaman tanggal ekstrem (±100 tahun) dan
+        `MAKS_BULAN` pengaman kolom bulan. Periode panjang diminimalisir di
+        layar menjadi rekap per bulan + rentang tanggal `YYYY-MM-DD`; `rinci=1`
+        meminta matriks harian penuh bila pengguna ingin membuka semua baris,
+        sementara ekspor Excel selalu menulis satu baris per tanggal. Data
+        sumber tidak diubah dan tidak ada tabel/dependensi baru.
         """
         d = _tanggal_iso(dari, "dari")
         s = _tanggal_iso(sampai, "sampai")
@@ -2957,6 +3124,16 @@ def pasang_router(app, ambil_session):
                 422, f"Rentang {jumlah_hari} hari di luar jangkauan tanggal "
                      f"yang wajar (batas keamanan {MAKS_HARI} hari, ±100 "
                      "tahun). Periksa kembali 'Dari/Sampai'.")
+        jumlah_bulan = ((akhir.year - awal.year) * 12
+                        + akhir.month - awal.month + 1)
+        if jumlah_bulan > MAKS_BULAN:
+            jml = f"{jumlah_bulan:,}".replace(",", ".")
+            maks = f"{MAKS_BULAN:,}".replace(",", ".")
+            raise HTTPException(
+                422, f"Periode {jml} bulan terlalu panjang untuk laporan "
+                     f"Ringkasan Vendor; maksimal {maks} bulan (100 tahun). "
+                     "Persempit 'Dari/Sampai' agar tiap bulan tetap menjadi "
+                     "kolom.")
 
         mentah = session.execute(
             select(TiketBaris.ticket_date, TiketBaris.kode_vendor,
@@ -2968,8 +3145,11 @@ def pasang_router(app, ambil_session):
         nama_vendor = {v.kode: v.nama_baku
                        for v in session.scalars(select(Vendor))}
         batas_data = (min_d, max_d) if min_d and max_d else None
-        hasil = hitung_konsistensi(mentah, awal, akhir, nama_vendor,
-                                   batas_data=batas_data)
+        try:
+            hasil = hitung_ringkasan_vendor(
+                mentah, awal, akhir, nama_vendor, batas_data=batas_data)
+        except ValueError as galat:
+            raise HTTPException(422, str(galat)) from galat
         hasil["periode"]["dari_otomatis"] = d is None
         hasil["periode"]["sampai_otomatis"] = s is None
         if d is None or s is None:
@@ -2977,12 +3157,14 @@ def pasang_router(app, ambil_session):
                 "Batas periode yang tidak diisi diambil otomatis dari tanggal "
                 "tiket paling awal/akhir pada database.")
         hasil["sumber"] = ("tiket_baris (Ticket Date, tanpa tiket nol); "
-                           "dasar hari = semua hari kalender; urutan = jumlah "
-                           "tanggal unik ber-intake")
+                           "Trip = Ticket No unik; dasar hari = semua hari "
+                           "kalender; urutan = jumlah Trip")
 
         if format == "xlsx":
-            return _xlsx_konsistensi(hasil)
-        return _ringkas_konsistensi(hasil)
+            return _xlsx_ringkasan_vendor(hasil)
+        if rinci:
+            return hasil
+        return ringkas_untuk_layar(hasil)
 
     # ------------------------------------------------------------ kartu: konsentrasi vendor
     @router.get("/kartu/konsentrasi-vendor")
