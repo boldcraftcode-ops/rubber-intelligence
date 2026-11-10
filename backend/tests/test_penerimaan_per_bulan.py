@@ -225,3 +225,48 @@ def test_ekspor_xlsx_mode_bulan(klien):
     assert r.status_code == 200
     assert "spreadsheet" in r.headers["content-type"]
     assert "per_bulan" in r.headers.get("content-disposition", "")
+
+
+def test_ekspor_xlsx_mode_bulan_format_contoh(klien):
+    """Rincian per bulan juga memakai format Penerimaan Karet yang sama."""
+    import io
+    import openpyxl
+    from app.api_analisis import FORMAT_KG_PENERIMAAN
+    r = klien.get("/api/kartu/penerimaan",
+                  params={"dimensi": "vendor", "per": "bulan",
+                          "dari": "2026-01-01", "sampai": "2026-03-31",
+                          "format": "xlsx"})
+    ws = openpyxl.load_workbook(io.BytesIO(r.content)).active
+    assert ws["A1"].value is None and ws["A4"].value is None
+    assert ws["A2"].value.startswith("Penerimaan Karet dari - [")
+    assert ws["A3"].value == "Periode :  [January ~ March 2026]"
+    assert [ws.cell(5, i).value for i in range(1, 7)] == [
+        "Vendor", "Jan-26", "Feb-26", "Mar-26", "Total kg", "Porsi"]
+    assert ws["A5"].font.name == "Courier New"
+    assert ws["A5"].fill.fgColor.theme == 3
+    assert ws["A5"].border.left.style == "thin"
+    assert ws["B5"].number_format == FORMAT_KG_PENERIMAAN
+    assert ws["E5"].number_format == FORMAT_KG_PENERIMAAN
+    assert ws["F5"].number_format == "0%"
+    assert ws["A6"].font.name == "Courier New"
+    assert ws["A6"].border.left.style == "thin"
+    assert "PT Alpha" in ws["A6"].value     # isi/agregasi tidak berubah
+    assert ws["A9"].value == "TOTAL"        # 3 vendor + baris TOTAL
+    assert "G" not in ws.column_dimensions  # mode bulan tak memakai lebar G
+
+
+def test_ekspor_xlsx_mode_bulan_satu_bulan_lebar_kolom(klien):
+    """Jumlah kolom ≤ 6 tidak boleh tertukar dengan format mode total."""
+    import io
+    import openpyxl
+    r = klien.get("/api/kartu/penerimaan",
+                  params={"dimensi": "vendor", "per": "bulan",
+                          "dari": "2026-01-01", "sampai": "2026-01-31",
+                          "format": "xlsx"})
+    ws = openpyxl.load_workbook(io.BytesIO(r.content)).active
+    assert [ws.cell(5, i).value for i in range(1, 5)] == [
+        "Vendor", "Jan-26", "Total kg", "Porsi"]
+    assert ws["A3"].value == "Periode :  [January 2026]"
+    assert round(ws.column_dimensions["B"].width, 5) == 14.28516
+    assert round(ws.column_dimensions["C"].width, 5) == 19.57031
+    assert round(ws.column_dimensions["D"].width, 5) == 9.28516

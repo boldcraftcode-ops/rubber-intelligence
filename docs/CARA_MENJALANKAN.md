@@ -832,6 +832,31 @@ Catatan untuk pengembang: prop Recharts berlawanan dengan kesan namanya —
 `layout="vertical"` menghasilkan **batang horizontal**. Jangan membaliknya
 hanya berdasarkan nama prop.
 
+### Format Excel kartu Penerimaan Karet (sejak 05/11/2026)
+
+Tombol **Ekspor Excel** pada kartu **Penerimaan Karet** kini mengikuti
+`Format_penerimaan_per_desa.xlsx`:
+
+- satu sheet `Sheet`; baris 1 kosong, A2 berisi
+  `Penerimaan Karet dari - [filter] `, A3 berisi
+  `Periode :  [January ~ December 2026]`, baris 4 kosong;
+- header di baris 5: `Desa` (atau `Vendor`/`Provinsi`/`Kabupaten`/`Kecamatan`
+  sesuai dimensi), `Kg biasa`, `Kg EUDR`, `Kg total`, `Porsi`,
+  `Jumlah tiket`; data mulai baris 6;
+- font **Courier New** 11 (judul 14 warna `#1D2434`), header putih di atas
+  isian biru `theme dk2 + tint 40%`, border tipis di header & seluruh baris
+  data;
+- kolom kg memakai format accounting tanpa desimal, `Porsi` memakai `0%`,
+  `Jumlah tiket` rata tengah; lebar kolom A–G dan tinggi baris 2 (18,75)
+  mengikuti berkas contoh.
+
+Format ini berlaku untuk **semua dimensi** dan juga saat periode lebih dari
+satu bulan (`per=bulan`, kolom bulan disisipkan sebelum `Total kg`/`Porsi`).
+Judul mencerminkan filter vendor/wilayah yang aktif; periode mengikuti bulan
+`Dari/Sampai` atau bulan berdata bila filter kosong. Kartu lain tetap memakai
+format ekspornya masing-masing; perhitungan, agregasi, dan grafik tidak berubah.
+Style ditanam di kode, jadi ekspor tidak bergantung pada berkas contoh.
+
 ## Kalau ada tombol analisa yang bilang "Fitur ini tidak dikenali"
 
 Gejalanya: misalnya **Margin Bridge** atau **Days of Cover** tidak mau terbuka

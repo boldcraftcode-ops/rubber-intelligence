@@ -17,7 +17,8 @@ import yaml
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 from openpyxl.cell import WriteOnlyCell
-from openpyxl.styles import Font, PatternFill
+from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+from openpyxl.styles.colors import Color
 from openpyxl.utils import get_column_letter
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
@@ -75,6 +76,23 @@ NAMA_BULAN_SINGKAT = ("", "Jan", "Feb", "Mar", "Apr", "Mei", "Jun",
 MAKS_BARIS_XLSX = 1_000_000
 #: Di atas jumlah baris ini workbook ditulis mengalir (write_only).
 AMBANG_XLSX_STREAM = 200_000
+
+# ---------------------------------------------------------------------------
+# Format baku ekspor kartu Penerimaan Karet, mengikuti contoh
+# `Format_penerimaan_per_desa.xlsx`. File contoh HANYA referensi; style
+# ditanam di kode agar ekspor tetap jalan tanpa file tersebut.
+# ---------------------------------------------------------------------------
+FONT_PENERIMAAN = "Courier New"
+WARNA_JUDUL_PENERIMAAN = "FF1D2434"
+TINT_HEADER_PENERIMAAN = 0.39997558519241921  # theme dk2 (1F497D) → 558ED5
+FORMAT_KG_PENERIMAAN = (
+    '_(* #,##0_);_(* \\(#,##0\\);_(* "-"??_);_(@_)')
+FORMAT_PORSEN_PENERIMAAN = "0%"
+LEBAR_PENERIMAAN = (26.5703125, 19.5703125, 14.28515625, 19.5703125,
+                    9.28515625, 19.28515625, 9.140625)
+NAMA_BULAN_INGGRIS = ("", "January", "February", "March", "April", "May",
+                      "June", "July", "August", "September", "October",
+                      "November", "December")
 
 
 class RekonsiliasiKeputusanMasuk(BaseModel):
@@ -135,6 +153,86 @@ def respon_xlsx(nama_file: str, judul: list[str], baris: list[list]) -> Streamin
     ws.append(judul)
     for b in baris:
         ws.append(b)
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return StreamingResponse(
+        buf,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{nama_file}"'})
+
+
+def respon_xlsx_penerimaan(nama_file: str, judul: str, periode: str,
+                           header: list[str], baris: list[list],
+                           tipe_kolom: list[str],
+                           kolom_tengah: int | None = None,
+                           mode_bulan: bool = False) -> StreamingResponse:
+    """Ekspor kartu Penerimaan Karet mengikuti `Format_penerimaan_per_desa.xlsx`.
+
+    Susunan: baris 1 kosong, A2 judul, A3 periode, baris 4 kosong, header di
+    baris 5, data mulai baris 6. Font Courier New 11 (judul 14), header putih
+    di atas fill theme dk2+tint 40%, border tipis di header & data, format kg
+    accounting, `Porsi` 0%, `Jumlah tiket` rata tengah. Tanpa freeze/merge.
+    """
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Sheet"
+
+    font_judul = Font(name=FONT_PENERIMAAN, sz=14,
+                      color=WARNA_JUDUL_PENERIMAAN)
+    font_isi = Font(name=FONT_PENERIMAAN, sz=11, color=Color(theme=1))
+    font_header = Font(name=FONT_PENERIMAAN, sz=11, color=Color(theme=0))
+    fill_header = PatternFill(
+        fill_type="solid",
+        fgColor=Color(theme=3, tint=TINT_HEADER_PENERIMAAN))
+    sisi = Side(style="thin", color=Color(auto=True))
+    border = Border(left=sisi, right=sisi, top=sisi, bottom=sisi)
+
+    c = ws.cell(row=2, column=1, value=judul)
+    c.font = font_judul
+    c.alignment = Alignment(vertical="center")
+    ws.row_dimensions[2].height = 18.75
+    c = ws.cell(row=3, column=1, value=f"Periode :  [{periode}]")
+    c.font = font_isi
+
+    for i, teks in enumerate(header, start=1):
+        c = ws.cell(row=5, column=i, value=teks)
+        c.font = font_header
+        c.fill = fill_header
+        c.border = border
+        tipe = tipe_kolom[i - 1] if i - 1 < len(tipe_kolom) else "teks"
+        if tipe == "kg":
+            c.number_format = FORMAT_KG_PENERIMAAN
+        elif tipe == "persen":
+            c.number_format = FORMAT_PORSEN_PENERIMAAN
+        if kolom_tengah is not None and i - 1 == kolom_tengah:
+            c.alignment = Alignment(horizontal="center")
+
+    for indeks_baris, nilai_baris in enumerate(baris, start=6):
+        for i, nilai in enumerate(nilai_baris, start=1):
+            c = ws.cell(row=indeks_baris, column=i, value=nilai)
+            c.font = font_isi
+            c.border = border
+            tipe = tipe_kolom[i - 1] if i - 1 < len(tipe_kolom) else "teks"
+            if tipe == "kg":
+                c.number_format = FORMAT_KG_PENERIMAAN
+            elif tipe == "persen":
+                c.number_format = FORMAT_PORSEN_PENERIMAAN
+            if kolom_tengah is not None and i - 1 == kolom_tengah:
+                c.alignment = Alignment(horizontal="center")
+
+    if mode_bulan:
+        # Kolom A, N kolom bulan, Total kg, Porsi.
+        lebar = ([LEBAR_PENERIMAAN[0]]
+                 + [LEBAR_PENERIMAAN[2]] * (len(header) - 3)
+                 + [LEBAR_PENERIMAAN[3], LEBAR_PENERIMAAN[4]])
+    else:
+        lebar = list(LEBAR_PENERIMAAN[:len(header)])
+        # Sampel juga menyimpan lebar kolom G meski tidak berisi data.
+        ws.column_dimensions["G"].width = LEBAR_PENERIMAAN[6]
+    for i, nilai in enumerate(lebar, start=1):
+        ws.column_dimensions[get_column_letter(i)].width = nilai
+
     buf = io.BytesIO()
     wb.save(buf)
     buf.seek(0)
@@ -341,11 +439,65 @@ def _label_bulan_singkat(th: int, bl: int) -> str:
     return f"{NAMA_BULAN_SINGKAT[bl]}-{str(th)[2:]}"
 
 
+def _fmt_periode_penerimaan(awal: tuple[int, int] | None,
+                            akhir: tuple[int, int] | None) -> str:
+    """`((2026,1),(2026,12))` → `"January ~ December 2026"`."""
+    if not awal or not akhir:
+        return "Tidak ada data"
+    if awal > akhir:
+        awal, akhir = akhir, awal
+    th1, bl1 = awal
+    th2, bl2 = akhir
+    if awal == akhir:
+        return f"{NAMA_BULAN_INGGRIS[bl1]} {th1}"
+    if th1 == th2:
+        return (f"{NAMA_BULAN_INGGRIS[bl1]} ~ "
+                f"{NAMA_BULAN_INGGRIS[bl2]} {th2}")
+    return (f"{NAMA_BULAN_INGGRIS[bl1]} {th1} ~ "
+            f"{NAMA_BULAN_INGGRIS[bl2]} {th2}")
+
+
+def _info_ekspor_penerimaan(dari: dt.date | None, sampai: dt.date | None,
+                            vendor: str | None, provinsi: str | None,
+                            kabupaten: str | None, kecamatan: str | None,
+                            desa: str | None, potongan: list[tuple],
+                            session: Session) -> tuple[str, str]:
+    """Judul & periode untuk Excel Penerimaan Karet, mengikuti file contoh."""
+    peta_vendor = {
+        " ".join((v.kode or "").split()).upper(): v.nama_baku
+        for v in session.scalars(select(Vendor))}
+    bagian: list[str] = []
+    if vendor:
+        kode = " ".join(vendor.split()).upper()
+        nama = peta_vendor.get(kode)
+        bagian.append(f"{kode} {nama}" if nama else kode)
+    for label, nilai in (("Provinsi", provinsi), ("Kabupaten", kabupaten),
+                         ("Kecamatan", kecamatan), ("Desa", desa)):
+        if nilai:
+            bagian.append(f"{label}: {' '.join(nilai.split()).upper()}")
+    isi_filter = " | ".join(bagian) if bagian else "Semua vendor"
+    judul = f"Penerimaan Karet dari - [{isi_filter}] "
+
+    berdata = sorted({b for _k, b, _kg, _e, _t in potongan if b})
+    awal = (dari.year, dari.month) if dari else None
+    akhir = (sampai.year, sampai.month) if sampai else None
+    if awal and akhir:
+        pass
+    elif awal:
+        akhir = berdata[-1] if berdata else awal
+    elif akhir:
+        awal = berdata[0] if berdata else akhir
+    elif berdata:
+        awal, akhir = berdata[0], berdata[-1]
+    return judul, _fmt_periode_penerimaan(awal, akhir)
+
+
 def _penerimaan_per_bulan(potongan: list[tuple], dimensi: str,
                           dari: dt.date | None, sampai: dt.date | None,
                           top: int, format: str | None,
                           session: Session,
-                          label_peta: dict[str, str] | None = None) -> dict:
+                          label_peta: dict[str, str] | None = None,
+                          info_ekspor: tuple[str, str] | None = None) -> dict:
     """Bentuk jawaban `per=bulan`: bulan x dimensi.
 
     Dipakai saat filter periode mencakup lebih dari satu bulan, supaya
@@ -463,15 +615,25 @@ def _penerimaan_per_bulan(potongan: list[tuple], dimensi: str,
                   "EUDR / kode TTSR",
     }
     if format == "xlsx":
-        judul = [dimensi] + label_bulan + ["Total kg", "Porsi"]
+        judul = [dimensi.capitalize()] + label_bulan + ["Total kg", "Porsi"]
         isi_xlsx = []
         for b in baris_keluar:
             isi_xlsx.append([b["label"]] + b["kg_per_bulan"] + [b["kg_total"],
                                                                 b["porsi"]])
         isi_xlsx.append(["TOTAL"] + total_per_bulan
                         + [round(sum(total_per_bulan), 1), None])
-        return respon_xlsx(f"penerimaan_per_{dimensi}_per_bulan.xlsx",
-                           judul, isi_xlsx)
+        if info_ekspor is None:
+            awal = (dari.year, dari.month) if dari else (
+                berdata[0] if berdata else None)
+            akhir = (sampai.year, sampai.month) if sampai else (
+                berdata[-1] if berdata else None)
+            info_ekspor = ("Penerimaan Karet",
+                           _fmt_periode_penerimaan(awal, akhir))
+        return respon_xlsx_penerimaan(
+            f"penerimaan_per_{dimensi}_per_bulan.xlsx",
+            info_ekspor[0], info_ekspor[1], judul, isi_xlsx,
+            ["teks"] + ["kg"] * (len(judul) - 2) + ["persen"],
+            mode_bulan=True)
     return hasil
 
 
@@ -2211,9 +2373,16 @@ def pasang_router(app, ambil_session):
         else:
             laporan_wilayah = None
 
+        info_ekspor = None
+        if format == "xlsx":
+            info_ekspor = _info_ekspor_penerimaan(
+                dari, sampai, vendor, provinsi, kabupaten, kecamatan, desa,
+                potongan, session)
+
         if per == "bulan":
             hasil = _penerimaan_per_bulan(potongan, dimensi, dari, sampai,
-                                          top, format, session, label_peta)
+                                          top, format, session, label_peta,
+                                          info_ekspor)
             if isinstance(hasil, dict) and laporan_wilayah:
                 hasil["wilayah"] = laporan_wilayah
             return hasil
@@ -2250,12 +2419,17 @@ def pasang_router(app, ambil_session):
         if laporan_wilayah:
             hasil["wilayah"] = laporan_wilayah
         if format == "xlsx":
-            return respon_xlsx(
+            judul_xlsx, periode_xlsx = info_ekspor or (
+                "Penerimaan Karet", "Tidak ada data")
+            return respon_xlsx_penerimaan(
                 f"penerimaan_per_{dimensi}.xlsx",
-                [dimensi, "Kg biasa", "Kg EUDR", "Kg total", "Porsi",
-                 "Jumlah tiket"],
+                judul_xlsx, periode_xlsx,
+                [dimensi.capitalize(), "Kg biasa", "Kg EUDR", "Kg total",
+                 "Porsi", "Jumlah tiket"],
                 [[b["label"], b["kg_biasa"], b["kg_eudr"], b["kg_total"],
-                  b["porsi"], b["jumlah_tiket"]] for b in baris])
+                  b["porsi"], b["jumlah_tiket"]] for b in baris],
+                ["teks", "kg", "kg", "kg", "persen", "teks"],
+                kolom_tengah=5)
         return hasil
 
     # ------------------------------------------- kartu penerimaan: tren & musiman

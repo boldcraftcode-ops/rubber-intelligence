@@ -283,6 +283,9 @@ kartu:
       Dipisah dua tumpukan - grade biasa dan grade EUDR (grade ber-flag EUDR
       atau kode mengandung TTSR). Filter "Hanya EUDR" menampilkan vendor/
       wilayah yang memasok karet EUDR saja. Tanggal memakai Ticket Date.
+      Ekspor Excel mengikuti Format_penerimaan_per_desa.xlsx: judul & periode
+      di A2/A3, header di baris 5, font Courier New, fill biru theme dk2+tint
+      40%, border tipis, format accounting/0%, dan data mulai baris 6.
   konsistensi_intake_vendor:
     judul: Konsistensi intake harian/bulanan vendor
     cara_dihitung: >
