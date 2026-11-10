@@ -1854,10 +1854,8 @@ function KartuKonsistensiIntake() {
   const rataTotalPerHari: any = sumberHarian?.rata_total_per_hari ?? 0;
   const rentangHari: any[] = d?.rentang_hari ?? [];
   const rekapBulan: any[] = d?.rekap_per_bulan ?? [];
-  const tanpaIntake: any[] = d?.vendor_tanpa_intake ?? [];
   const top: any = d?.paling_sering;
   const ringkas: any = d?.ringkasan ?? {};
-  const metode: any = d?.catatan_metode ?? {};
 
   // Rentang harian memakai YYYY-MM-DD; rentang bulanan memakai YYYY-MM.
   const fmtRentang = (nilai: string) =>
@@ -1883,7 +1881,6 @@ function KartuKonsistensiIntake() {
   return (
     <Kartu idMetrik="konsistensi_intake_vendor"
            judul="Konsistensi intake harian vendor"
-           keterangan="Laporan tiga tabel mengikuti Intake-2025_Ringkasan-Vendor.xlsx: Ringkasan Vendor, Vendor per Bulan, dan Vendor Harian. Peringkat memakai jumlah Trip; ekspor Excel memuat 3 sheet dengan 3 chart Excel yang tetap bisa diedit."
            urlEkspor={url}
            anak={
       <>
@@ -2220,23 +2217,6 @@ function KartuKonsistensiIntake() {
                   </>
                 )}
 
-                <p className="mt-3 text-[11px] text-[#64676C]">
-                  {metode.sumber} {metode.trip} {metode.dasar_hari} {metode.dasar_urutan}{" "}
-                  {metode.hari_operasional} {metode.rata} {metode.minimalisir}{" "}
-                  {metode.di_luar_data} {metode.batas}
-                </p>
-                {tanpaIntake.length > 0 && (
-                  <p className="mt-1 text-[11px] text-[#64676C]">
-                    Vendor dengan 0 Trip pada periode ini tetap menjadi baris detail:{" "}
-                    {tanpaIntake.slice(0, 8).map((v: any) => v.label).join(", ")}
-                    {tanpaIntake.length > 8 ? `, +${tanpaIntake.length - 8} vendor lagi` : ""}.
-                  </p>
-                )}
-                <p className="mt-1 text-[11px] text-[#64676C]">
-                  Ekspor Excel: 3 sheet (<b>Ringkasan Vendor</b>, <b>Vendor per Bulan</b>,
-                  {" "}<b>Vendor Harian</b>) + 3 chart Excel yang bisa diedit; tanpa sheet
-                  Master Data dan tanpa pengelompokan sisa vendor.
-                </p>
               </>
             )}
           </>

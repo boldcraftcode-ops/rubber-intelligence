@@ -73,7 +73,6 @@ def test_tiga_tabel_dan_chart_lama_dihapus():
     assert 'data-uji="mode-ringkas-konsistensi"' in blok
     assert 'data-uji="rekap-bulan-konsistensi"' in blok
     assert 'data-uji="rentang-hari-kosong"' in blok
-    assert "metode.minimalisir" in blok
     assert "… seluruhnya ada di Excel" in blok
     assert "h.sepi_pabrik" in blok
     assert "Di luar data" in blok
@@ -85,7 +84,15 @@ def test_tiga_tabel_dan_chart_lama_dihapus():
     assert "qRinci" in blok
     assert "tampilkan semua" in blok
     assert "tanpa pengelompokan sisa" in blok
-    assert "3 sheet" in blok and "3 chart Excel" in blok
+    #Caption panjang yang diminta pemilik untuk dibuang tidak boleh kembali.
+    assert 'keterangan="Laporan tiga tabel' not in blok
+    assert "metode.sumber" not in blok
+    assert "metode.minimalisir" not in blok
+    assert "const metode" not in blok
+    assert "Vendor dengan 0 Trip" not in blok
+    assert "const tanpaIntake" not in blok
+    assert "Ekspor Excel: 3 sheet" not in blok
+    assert "3 chart Excel" not in blok
 
 
 def test_backend_endpoint_dan_tiga_sheet_ekspor():
