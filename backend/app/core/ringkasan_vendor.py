@@ -488,8 +488,8 @@ def hitung_ringkasan_vendor(mentah: Iterable[tuple], awal: dt.date,
                            "Excel tetap memuat satu baris per tanggal.",
             "di_luar_data": "Tanggal di luar rentang tiket tersedia tetap "
                             "ditampilkan bernilai 0 Trip.",
-            "sepi_pabrik": "Hari tanpa intake dari vendor mana pun bernilai "
-                           "0 Trip dan tetap masuk baris harian.",
+            "sepi_pabrik": "Hari tanpa intake dari vendor mana pun (pabrik tutup) "
+                           "bernilai 0 Trip dan tetap masuk baris harian.",
             "batas": f"Batas keamanan {MAKS_HARI} hari (±100 tahun) hanya "
                      "menolak tanggal ekstrem, bukan membatasi data.",
         },

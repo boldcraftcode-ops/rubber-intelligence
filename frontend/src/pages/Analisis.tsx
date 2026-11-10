@@ -1872,7 +1872,7 @@ function KartuKonsistensiIntake() {
     (g.dari === g.sampai ? g.dari : `${g.dari} s.d. ${g.sampai}`);
   const namaKategori = (k: string) =>
     k === "di_luar_data" ? "Di luar data"
-      : k === "sepi_pabrik" ? "Pabrik sepi" : "Ada intake";
+      : k === "sepi_pabrik" ? "pabrik tutup" : "Ada intake";
   const kelasKategori = (k: string) =>
     k === "di_luar_data" ? "border-[#E5E7EB] bg-[#F3F4F6] text-[#4B5563]"
       : k === "sepi_pabrik" ? "border-[#FECACA] bg-[#FEF2F2] text-[#B91C1C]"
@@ -2185,7 +2185,7 @@ function KartuKonsistensiIntake() {
                                 )}
                                 {h.sepi_pabrik && (
                                   <span className="ml-1 rounded-sm bg-[#FEE2E2] px-1 py-0.5 text-[9px] font-semibold text-[#B91C1C]">
-                                    pabrik sepi
+                                    pabrik tutup
                                   </span>
                                 )}
                               </td>

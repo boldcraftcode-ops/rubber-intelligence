@@ -547,8 +547,9 @@ dihapus. Satu endpoint: `GET /api/kartu/konsistensi-intake-vendor`.
 - **Rata² Trip/Bulan** = Total Trip ÷ jumlah bulan yang tersentuh rentang;
   judul, periode, dan kolom bulan mengikuti `Dari/Sampai`, bukan hardcode
   `2025`/12 bulan.
-- **Semua hari kalender** tetap ada. Hari sepi pabrik bernilai 0 Trip dan
-  tanggal di luar rentang tiket ditandai **Di luar data**, bukan dihapus.
+- **Semua hari kalender** tetap ada. Hari tanpa intake dari vendor mana pun
+  (**pabrik tutup**) bernilai 0 Trip dan tanggal di luar rentang tiket
+  ditandai **Di luar data**, bukan dihapus.
 - Sumber: `ticket_date`, `ticket_no`, `kode_vendor`, `dry_kg` pada
   `tiket_baris`; kode vendor dibakukan UPPER/TRIM; nama dari Master Vendor.
   Tidak ada tabel database baru, tidak ada dependensi baru, dan data sumber

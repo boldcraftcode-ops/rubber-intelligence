@@ -242,7 +242,7 @@ def _kategori_hari(h: dt.date, sepi: set[dt.date],
     if batas_data and (h < batas_data[0] or h > batas_data[1]):
         return "di_luar_data"
     if h in sepi:
-        return "pabrik sepi"
+        return "pabrik tutup"
     return "kosong vendor"
 
 
@@ -268,7 +268,7 @@ def _rincian_interval(interval: list[tuple[dt.date, dt.date]],
             kategori = _kategori_hari(h, sepi, batas_data)
             if kategori == "di_luar_data":
                 j_luar += 1
-            elif kategori == "pabrik sepi":
+            elif kategori == "pabrik tutup":
                 j_sepi += 1
             else:
                 j_vendor += 1
@@ -278,19 +278,19 @@ def _rincian_interval(interval: list[tuple[dt.date, dt.date]],
                     "hari": label_hari(h),
                     "bulan": kode_bulan(h),
                     "label": label_tanggal(h),
-                    "sepi_pabrik": kategori == "pabrik sepi",
+                    "sepi_pabrik": kategori == "pabrik tutup",
                     "di_luar_data": kategori == "di_luar_data",
                     "kategori": kategori,
                 })
             isi = per_bulan[(h.year, h.month)]
             isi["hari"].append(h.day)
-            isi[{"di_luar_data": "luar", "pabrik sepi": "sepi",
+            isi[{"di_luar_data": "luar", "pabrik tutup": "sepi",
                  "kosong vendor": "vendor"}[kategori]] += 1
             h += dt.timedelta(days=1)
         if j_luar == n:
             kategori_grup = "di_luar_data"
         elif j_sepi == n:
-            kategori_grup = "pabrik sepi"
+            kategori_grup = "pabrik tutup"
         elif j_vendor == n:
             kategori_grup = "kosong vendor"
         else:
@@ -307,7 +307,7 @@ def _rincian_interval(interval: list[tuple[dt.date, dt.date]],
             "jumlah_sepi_pabrik": j_sepi,
             "jumlah_di_luar_data": j_luar,
             "jumlah_kosong_vendor": j_vendor,
-            "sepi_pabrik": kategori_grup == "pabrik sepi",
+            "sepi_pabrik": kategori_grup == "pabrik tutup",
             "di_luar_data": kategori_grup == "di_luar_data",
             "kategori": kategori_grup,
         })
@@ -345,7 +345,7 @@ def hitung_konsistensi(
 
     `tiket` berisi `(tanggal, kode_vendor, ticket_no, dry_kg)`. Tanggal di luar
     rentang diabaikan. `batas_data` (tanggal tiket paling awal/akhir) dipakai
-    untuk menandai hari yang memang belum ada datanya, bukan pabrik sepi.
+    untuk menandai hari yang memang belum ada datanya, bukan pabrik tutup.
     """
     nama_vendor = {_norm_kode(k): v for k, v in (nama_vendor or {}).items()}
     meta_bulan = _meta_bulan(awal, akhir)
@@ -463,7 +463,7 @@ def hitung_konsistensi(
             f"{hari_luar_data} hari pada rentang yang dipilih berada di luar "
             "rentang tiket yang tersedia. Sesuai dasar 'semua hari kalender', "
             "hari itu TETAP dihitung kosong, tetapi ditandai 'di luar rentang "
-            "data' agar tidak diartikan sebagai pabrik sepi.")
+            "data' agar tidak diartikan sebagai pabrik tutup.")
     if hari_sepi:
         peringatan.append(
             f"Ada {len(hari_sepi)} hari kalender tanpa intake dari vendor mana "
@@ -558,11 +558,11 @@ def hitung_konsistensi(
                              "yang berada di dalam rentang memiliki tiket.",
             "rentang_terpanjang": "Rentang terpanjang = deretan hari/bulan "
                                   "berurutan tanpa terputus dengan intake.",
-            "sepi_pabrik": "Hari sepi pabrik = tanggal tanpa tiket dari vendor "
+            "sepi_pabrik": "Hari pabrik tutup = tanggal tanpa tiket dari vendor "
                            "mana pun; tetap dihitung kosong, tetapi ditandai.",
             "di_luar_data": "Hari sebelum tiket paling awal atau sesudah tiket "
                             "paling akhir ditandai 'di luar rentang data', "
-                            "bukan 'pabrik sepi', agar tidak menyesatkan.",
+                            "bukan 'pabrik tutup', agar tidak menyesatkan.",
             "vendor_tidak_aktif": "Vendor tanpa tiket sama sekali pada periode "
                                   "tidak masuk tabel, tetapi jumlahnya dilaporkan.",
             "minimalisir": "Batas 731 hari dihapus: seluruh rentang data boleh "

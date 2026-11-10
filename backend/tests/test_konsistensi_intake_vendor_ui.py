@@ -77,6 +77,9 @@ def test_tiga_tabel_dan_chart_lama_dihapus():
     assert "… seluruhnya ada di Excel" in blok
     assert "h.sepi_pabrik" in blok
     assert "Di luar data" in blok
+    assert "pabrik tutup" in blok
+    assert "Pabrik sepi" not in blok
+    assert "pabrik sepi" not in blok
     assert "YYYY-MM-DD" in blok
     assert "rinci=1" in blok
     assert "qRinci" in blok
@@ -107,6 +110,7 @@ def test_backend_endpoint_dan_tiga_sheet_ekspor():
     assert "batas_data=batas_data" in s
     assert "rinci=1" in s
     assert "731 hari sudah" in s
+    assert "pabrik tutup" in s
     assert "openpyxl.Workbook(write_only=True)" in s
     assert "ColorScaleRule" in s
     assert "BarChart()" in s and "LineChart()" in s
@@ -129,6 +133,7 @@ def test_modul_murni_dan_keputusan_pemilik_terkunci():
     assert "Trip = Ticket No unik" in s
     assert "Rata² Trip/Bulan" in s
     assert "semua hari kalender" in s
+    assert "pabrik tutup" in s
 
 
 def test_i18n_health_metrik_dan_dokumentasi():
@@ -136,7 +141,7 @@ def test_i18n_health_metrik_dan_dokumentasi():
     assert '"Konsistensi intake harian vendor": "Vendor daily intake consistency"' \
         in i18n
     for k in ("Ringkasan Vendor", "Vendor per Bulan", "Vendor Harian",
-              "Total Trip", "Hari Aktif", "Dry (kg)"):
+              "Total Trip", "Hari Aktif", "Dry (kg)", "pabrik tutup"):
         assert f'"{k}"' in i18n
     health = _teks("backend/app/main.py")
     assert '"kartu-konsistensi-intake-vendor"' in health
@@ -146,6 +151,7 @@ def test_i18n_health_metrik_dan_dokumentasi():
     assert "SEMUA HARI KALENDER" in metrik
     assert "Batas 731 hari dihapus" in metrik
     assert "Trip dihitung" in metrik and "Ticket No unik" in metrik
+    assert "pabrik tutup" in metrik
     assert "3 sheet" in metrik and "3 chart Excel native" in metrik
     cara = _teks("docs/CARA_MENJALANKAN.md")
     assert "## 3o. Laporan Ringkasan Vendor" in cara
@@ -153,6 +159,7 @@ def test_i18n_health_metrik_dan_dokumentasi():
     assert "3 sheet" in cara and "3 chart Excel native" in cara
     assert "731 hari" in cara and "sudah dihapus" in cara
     assert "rinci=1" in cara
+    assert "pabrik tutup" in cara
     assert "pengelompokan sisa vendor" in cara
     serah = _teks("docs/SERAH_TERIMA.md")
     assert "**Kartu konsistensi intake harian/bulanan vendor ditambahkan**" \
@@ -160,3 +167,4 @@ def test_i18n_health_metrik_dan_dokumentasi():
     assert "**Batas 731 hari dihapus dari kartu konsistensi intake**" in serah
     assert "Intake-2025_Ringkasan-Vendor.xlsx" in serah
     assert "3 sheet + 3 chart Excel native" in serah
+    assert "Label Pabrik sepi diganti menjadi pabrik tutup" in serah

@@ -304,7 +304,8 @@ kartu:
       tanggal unik dengan minimal satu Trip dari vendor mana pun. Dasar
       tampilan adalah SEMUA HARI KALENDER: tiap tanggal Dari–Sampai tetap
       menjadi baris, termasuk Sabtu/Minggu/libur; hari tanpa intake bernilai
-      0 Trip. Rata² Trip/Bulan membagi Total Trip dengan jumlah bulan yang
+      0 Trip (pabrik tutup). Rata² Trip/Bulan membagi Total Trip dengan
+      jumlah bulan yang
       tersentuh rentang, dan judul/kolom bulan mengikuti Dari/Sampai (bukan
       hardcode 2025/12). Semua vendor, termasuk yang 0 Trip, ditulis sebagai
       baris detail tanpa pengelompokan sisa vendor. Batas 731 hari dihapus:

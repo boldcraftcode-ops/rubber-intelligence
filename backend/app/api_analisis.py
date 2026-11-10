@@ -1523,8 +1523,9 @@ def _xlsx_ringkasan_vendor(hasil: dict) -> StreamingResponse:
     ws3.append([None])
     ws3.append([sel(ws3, "Keterangan", font=font_tebal),
                 sel(ws3, "Baris tanggal di luar rentang tiket ditandai "
-                         "abu-abu (Di luar data); hari tanpa intake bernilai "
-                         "0 Trip dan tetap ditulis.", font=font_isi)])
+                         "abu-abu (Di luar data); hari tanpa intake dari "
+                         "vendor mana pun (pabrik tutup) bernilai 0 Trip "
+                         "dan tetap ditulis.", font=font_isi)])
     ws3.append([sel(ws3, "Sumber", font=font_tebal),
                 sel(ws3, m["sumber"] + " " + m["trip"], font=font_isi)])
     ws3.append([sel(ws3, "Catatan", font=font_tebal),

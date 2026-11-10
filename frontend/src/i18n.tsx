@@ -257,6 +257,8 @@ const KAMUS: Record<string, string> = {
   "Rata² Trip/Hari Operasional": "Avg Trips/Operating Day",
   "Rata² Trip/Bulan": "Avg Trips/Month",
   "Dry (kg)": "Dry (kg)",
+  "pabrik tutup": "factory closed",
+  "Pabrik tutup": "Factory closed",
   "Tutup": "Close",
   // ---- halaman depan: angka kunci & perlu perhatian
   "Perubahan vs": "Change vs",

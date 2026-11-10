@@ -164,6 +164,7 @@ def test_semua_hari_kalender_dan_peringkat_trip(monkeypatch):
     assert d["rekap_per_bulan"][0]["ringkasan"] == "01-10"
     assert d["catatan_metode"]["minimalisir"].startswith(
         "Batas 731 hari dihapus")
+    assert "pabrik tutup" in d["catatan_metode"]["sepi_pabrik"]
     assert "Trip = Ticket No unik" in d["sumber"]
 
 
@@ -267,6 +268,11 @@ def test_xlsx_tiga_sheet_tiga_chart_dan_dinamis(monkeypatch):
     assert not any(
         "Lainnya".encode("utf-8") in z.read(n)
         for n in z.namelist() if n.endswith((".xml", ".rels")))
+    assert any(isinstance(c.value, str) and "pabrik tutup" in c.value
+               for ws in wb.worksheets for row in ws.iter_rows() for c in row)
+    assert not any(isinstance(c.value, str)
+                   and "pabrik sepi" in c.value.lower()
+                   for ws in wb.worksheets for row in ws.iter_rows() for c in row)
 
     ws1, ws2, ws3 = (wb[n] for n in wb.sheetnames)
     assert [len(ws._charts) for ws in (ws1, ws2, ws3)] == [1, 1, 1]
