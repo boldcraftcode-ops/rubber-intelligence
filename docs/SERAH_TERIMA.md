@@ -75,12 +75,12 @@ Belum selesai: lihat **bagian 11** dan batasan referensi Provinsi di bawah.
   Filter: tahun/periode/supplier/EUDR; LATEX OP opsional dan default mati.
   Ekspor dan unduhan unmapped tersedia untuk semua pengguna yang bisa melihat
   halaman. Vendor memiliki flag sementara `is_direct_producer`, default `false`.
-- Master Collector memakai dropdown Kabupaten/Kota dan Desa dari ID_AUX dan
-  menolak nilai baru yang tidak cocok. ID_AUX tidak memuat Provinsi, sehingga
-  dropdown Provinsi dinonaktifkan dan input Provinsi baru ditolak; **jangan**
-  mengambil provinsi dari intake sebagai pengganti. Untuk mengaktifkannya,
-  pemilik perlu menyediakan crosswalk Provinsi resmi yang terhubung ke ID_AUX.
-  Nilai lokasi lama tetap dipertahankan jika tidak diubah.
+- Master Collector memakai dropdown Provinsi, Kabupaten/Kota, dan Desa dari
+  ID_AUX. ID_AUX tidak memuat kolom Provinsi, tetapi crosswalk resmi
+  Kepmendagri sudah dipasang (`backend/data/CROSSWALK_PROVINSI.md`) dan
+  terhubung ke `kabupaten_norm`; **jangan** mengambil provinsi dari intake
+  sebagai pengganti. Baris SCDF tanpa pemetaan pasti tetap kosong, bukan
+  ditebak. Nilai lokasi lama tetap dipertahankan jika tidak diubah.
 - Verifikasi terakhir: tes terarah Traceability/Collector/skema **24 lulus**;
   build frontend lulus. Suite penuh **429 lulus, 2 gagal** hanya pada pemeriksaan
   CRLF untuk `ambil-bahan-offline.bat` dan `start-offline.bat`; jangan ubah line
@@ -1224,12 +1224,15 @@ itu data yang memang belum diisi.
 
 ## 11. Yang belum dikerjakan / kandidat lanjutan
 
-**Batasan Traceability yang harus dituntaskan bila sumber tersedia:** ID_AUX yang
-ada tidak memuat Provinsi atau kode administratif. Karena pemilik menetapkan
-ID_AUX sebagai referensi resmi, dropdown Provinsi pada Master Collector sengaja
-dinonaktifkan, dan Code Traceability tetap kosong. Jangan mengisi dari intake,
-`BIN`, atau `Location`. Tambahkan hanya setelah ada crosswalk resmi yang
-menghubungkan Provinsi/Kode ke kombinasi ID_AUX.
+**Batasan Traceability yang masih tersisa:** ID_AUX tidak memuat kode
+administratif, sehingga `code` pada `traceability_wilayah` tetap kosong.
+Crosswalk Provinsi resmi sudah dipasang, tetapi 7 kunci `kabupaten_norm` yang
+bukan satuan administrasi atau ambigu (`BANJAR`, `DANAU`, `DANAU TOBA`,
+`HUTAN`, `UNKNOWN`, `WADUK CIRATA`, `WADUNG KEDUNGOMBO`) sengaja dibiarkan
+tanpa Provinsi sampai pemilik menyediakan pemetaan tambahan yang jelas. Jangan
+mengisi dari intake, `BIN`, atau `Location`. Sumber resmi berikutnya bila
+diperlukan adalah kode administrasi Kemendagri yang terhubung ke kombinasi
+ID_AUX.
 
 Berurutan dari yang paling masuk akal:
 
@@ -1334,6 +1337,8 @@ menjawab.
 | 2026-11-08 | **Angka kunci Margin Performance dibuat auto tampil tanpa tombol Refresh**: `KartuMuatSaatDiminta` mendapat prop `otomatis` yang membuat `useQueryKartu` tidak lagi menahan jaringan dan menyembunyikan Refresh; kartu memakai query `ringkasOtomatis` tersendiri sehingga kartu lain tetap on-demand. **Panel analisa diperbaiki**: RCA, Margin Bridge, Days of Cover, Analisis tren & musiman, dan Analisis deskriptif & komposisi beralih dari `useQueryKartu` ke `useQuery` biasa; URL 5W1H kartu elemen tidak lagi menggabungkan dua query string | pemilik meminta kartu angka kunci auto tampil serta menanyakan kenapa tombol analisa tidak memuat data. Diagnosis: endpoint backend 200, tetapi konteks Refresh kartu memaksa `enabled:false` pada query panel yang baru dipasang saat klik. Perubahan murni frontend + i18n + tes/docs; tidak ada endpoint, perhitungan, atau data yang diubah. Tombol Refresh kartu lain tetap dipertahankan |
 
 | 2026-11-05 | **Grafik Porsi (%) di panel Analisis deskriptif & komposisi — penerimaan karet dibuat vertikal**: `BarChart` memakai `layout="horizontal"` (kategori di X, persentase di Y), label dimiringkan −45°, nama lengkap tetap muncul di tooltip, dan tabel tetap memuat label asli. **Share EUDR vs biasa** tetap grafik garis bulanan | pemilik mengklarifikasi bahwa yang diinginkan adalah semua grafik di panel itu berbentuk vertikal, kecuali **Share EUDR vs biasa**. Istilah prop Recharts berlawanan dengan tampilannya: `layout="vertical"` justru membuat batang mendatar. Perubahan murni presentasi; agregasi, endpoint, filter dimensi, tabel Pareto/ABC, dan data tidak berubah |
+
+| 2026-11-05 | **Crosswalk Provinsi resmi dipasang untuk ID_AUX/SCDF**: `backend/data/crosswalk_provinsi_id_aux.csv` (487 dari 494 `kabupaten_norm`) + `backend/data/CROSSWALK_PROVINSI.md` memetakan Kabupaten/Kota ke Provinsi memakai snapshot Kepmendagri No. 100.1.1-6117 Tahun 2022. `muat_referensi_bawaan` mengisi `provinsi`/`provinsi_norm` secara idempoten tanpa menimpa nilai lama; `/api/intake/options/scdf/provinsi` menjadi `available:true`, dropdown Provinsi aktif, dan Edit/Quick-fill/Excel memvalidasi Provinsi terhadap hierarki SCDF. Health menambah `scdf-provinsi-crosswalk` | pemilik menjawab "Oke, coba pasang crowsswalk resmi tersebut" setelah ditanya kenapa kolom Provinsi tidak bisa diedit. Sumber bukan nilai intake: 12 provinsi filter-only tetap tidak dipakai sebagai referensi. Alias ejaan/nama lama bersifat eksplisit dan dikonfirmasi lewat kecamatan; `BANJAR` (dua provinsi) serta label non-administrasi sengaja dibiarkan NULL agar tidak ada tebakan. Tidak ada tabel baru, tidak mengubah `ticket_no`/`asal_getah`/audit/data intake mentah, dan `code` tetap kosong |
 
 ---
 

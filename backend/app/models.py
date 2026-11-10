@@ -157,8 +157,11 @@ class ReferensiWilayahTrace(Base):
     """Referensi pasangan kabupaten/kecamatan/desa dari sheet ID_AUX.
 
     ID_AUX yang disediakan berisi Kabupaten/Kecamatan dan Desa, tetapi tidak
-    berisi Provinsi maupun kode administrasi. Kolom crosswalk Provinsi dan
-    `code` sengaja NULL sampai referensi resmi yang memuatnya tersedia.
+    berisi Provinsi maupun kode administrasi. `provinsi`/`provinsi_norm` kini
+    diisi dari crosswalk resmi Kepmendagri yang terhubung ke `kabupaten_norm`
+    (lihat `backend/data/CROSSWALK_PROVINSI.md`); `code` tetap NULL karena
+    ID_AUX tidak memuat kode administrasi. Baris tanpa pemetaan pasti sengaja
+    dibiarkan NULL, bukan ditebak dari intake.
     """
     __tablename__ = "traceability_wilayah"
     __table_args__ = (UniqueConstraint(

@@ -160,7 +160,9 @@ def test_api_agregasi_traceability_berbasis_dry_tiket_valid_dan_ref():
     assert wilayah["provinsi"] == []
     assert {x["value"] for x in wilayah["kabupaten_kota"]} == {"Kota Medan"}
     assert {x["value"] for x in wilayah["desa"]} == {"Babura"}
-    assert "tidak menyediakan Provinsi" in wilayah["catatan"]
+    # Fixture kecil ini belum memuat crosswalk, tetapi catatan tidak boleh
+    # lagi menyatakan ID_AUX "tidak menyediakan Provinsi".
+    assert "crosswalk resmi" in wilayah["catatan"]
 
 
 def test_koreksi_manual_subdistrict_updates_supplier_and_regional_traceability():

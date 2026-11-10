@@ -21,11 +21,13 @@ def _engine():
         s.add_all([Vendor(kode="V001", nama_baku="PT Vendor Satu", status="aktif"),
                    Vendor(kode="V002", nama_baku="CV Vendor Dua", status="aktif")])
         s.add_all([
-            ReferensiWilayahTrace(provinsi_norm=None, provinsi=None,
+            ReferensiWilayahTrace(provinsi_norm="SUMATERA UTARA",
+                provinsi="SUMATERA UTARA",
                 kabupaten_norm="DELI SERDANG", kecamatan_norm="BATANG KUIS",
                 desa_norm="TANJUNG MORAWA", kabupaten="Kabupaten Deli Serdang",
                 kecamatan="Batang Kuis", desa="Tanjung Morawa", code=None),
-            ReferensiWilayahTrace(provinsi_norm=None, provinsi=None,
+            ReferensiWilayahTrace(provinsi_norm="SUMATERA UTARA",
+                provinsi="SUMATERA UTARA",
                 kabupaten_norm="MEDAN", kecamatan_norm="MEDAN BARU",
                 desa_norm="MEDAN BARU", kabupaten="Kota Medan",
                 kecamatan="Medan Baru", desa="Medan Baru", code=None),
@@ -95,15 +97,29 @@ def test_kode_dan_vendor_wajib(klien):
     assert _buat(klien, nama="  ").status_code == 422
 
 
-def test_lokasi_baru_harus_dicocokkan_ke_id_aux(klien):
-    # ID_AUX tidak mempunyai kolom Provinsi, maka nilai provinsi baru tidak
-    # boleh diambil diam-diam dari data intake.
-    prov = _buat(klien, provinsi="Sumatera Utara")
+def test_lokasi_baru_harus_dicocokkan_ke_crosswalk_resmi(klien):
+    # Crosswalk resmi sudah terpasang: Provinsi yang ada di sana diterima,
+    # tetapi nilai fiktif tetap ditolak, bukan diambil dari intake.
+    ok = _buat(klien, provinsi="Sumatera Utara")
+    assert ok.status_code == 200, ok.text
+    assert ok.json()["collector"]["provinsi"] == "Sumatera Utara"
+    prov = _buat(klien, kode="K002", nik="", provinsi="Provinsi Fiktif")
     assert prov.status_code == 422
-    assert "referensi SCDF tidak menyediakan kolom Provinsi" in prov.json()["detail"]
-    kab = _buat(klien, kode="K002", provinsi="", kabupaten_kota="Kabupaten Contoh")
+    assert "Provinsi tidak ditemukan pada crosswalk resmi SCDF" in prov.json()["detail"]
+    kab = _buat(klien, kode="K003", nik="", provinsi="",
+                kabupaten_kota="Kabupaten Contoh")
     assert kab.status_code == 422
     assert "tidak ditemukan pada referensi SCDF" in kab.json()["detail"]
+
+
+def test_dropdown_wilayah_memakai_crosswalk_bukan_intake(klien):
+    r = klien.get("/api/collector/wilayah")
+    assert r.status_code == 200, r.text
+    d = r.json()
+    assert d["provinsi"] == [{"value": "SUMATERA UTARA", "label": "SUMATERA UTARA"}]
+    assert "crosswalk resmi" in d["catatan"]
+    assert {x["value"] for x in d["kabupaten_kota"]} >= {
+        "Kabupaten Deli Serdang", "Kota Medan"}
 
 
 def test_nik_wajib_16_digit_jika_diisi(klien):

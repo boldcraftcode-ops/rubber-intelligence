@@ -63,7 +63,7 @@ export function KartuDaftarCollector() {
   };
 
   return <Kartu idMetrik="master_collector" judul="Daftar collector"
-    keterangan="Collector adalah perorangan yang terafiliasi ke satu vendor. Kabupaten/Kota dan Desa dipilih dari SCDF; Provinsi hanya aktif jika referensi resmi menyediakan mapping provinsi."
+    keterangan="Collector adalah perorangan yang terafiliasi ke satu vendor. Provinsi, Kabupaten/Kota, dan Desa dipilih dari SCDF; Provinsi berasal dari crosswalk resmi yang terhubung ke ID_AUX."
     anak={<>
       <div className="mb-3 flex flex-wrap items-end gap-3">
         <div className="min-w-56 flex-1"><label className={kelasLabel}>Cari</label>
@@ -153,7 +153,7 @@ export function KartuDaftarCollector() {
           onClick={() => { setInfo(null); simpan.mutate(); }}>{simpan.isPending ? "Menyimpan…" : ubahKode ? "Simpan perubahan" : "Tambah collector"}</button>
         {ubahKode && <button className={kelasTombolKecil} onClick={() => { setUbahKode(null); setForm({ ...KOSONG }); setInfo(null); }}>Batal ubah</button>}
       </div>
-      <p className="mt-2 text-[11px] text-[#64676C]">NIK boleh dikosongkan; bila diisi harus 16 angka dan tidak boleh dipakai collector lain. Afiliasi vendor wajib dipilih. Kabupaten/Kota dan Desa mengikuti SCDF. File SCDF yang tersedia tidak memiliki kolom Provinsi, sehingga Provinsi dinonaktifkan—nilai dari intake tidak dipakai sebagai pengganti sumber resmi.</p>
+      <p className="mt-2 text-[11px] text-[#64676C]">NIK boleh dikosongkan; bila diisi harus 16 angka dan tidak boleh dipakai collector lain. Afiliasi vendor wajib dipilih. Provinsi, Kabupaten/Kota, dan Desa mengikuti SCDF. Provinsi berasal dari crosswalk resmi yang terhubung ke ID_AUX—nilai dari intake tidak dipakai sebagai pengganti sumber resmi; wilayah yang belum punya pemetaan resmi dibiarkan kosong.</p>
       {info && <Pesan jenis={info.jenis} teks={info.teks} />}
     </>} />;
 }

@@ -1,15 +1,18 @@
 """API Traceability: volume Dry teragregasi di server, referensi wilayah dan ekspor."""
 from __future__ import annotations
 
+import csv
 import datetime as dt
 import io
+from collections import defaultdict
 from pathlib import Path
 
 import openpyxl
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
-from sqlalchemy import (String, and_, case, cast, distinct, func, or_, select, tuple_)
+from sqlalchemy import (String, and_, case, cast, distinct, func, or_, select,
+                        tuple_, update)
 from sqlalchemy.orm import Session, aliased
 
 from .auth_lokal import info_pengguna, wajib_admin
@@ -34,54 +37,121 @@ def _desa_norm(teks: str | None) -> str:
     return normalisasi_teks_wilayah(teks) or ""
 
 NAMA_FILE_REFERENSI = Path(__file__).resolve().parents[1] / "data" / "ID_AUX.xlsx"
+NAMA_FILE_CROSSWALK = (Path(__file__).resolve().parents[1] / "data"
+                       / "crosswalk_provinsi_id_aux.csv")
+#: Crosswalk hanya dipasang pada tabel referensi ID_AUX skala penuh, bukan
+#: pada fixture tes/import kecil yang sengaja belum punya Provinsi.
+BATAS_REFERENSI_RES = 80_000
+
+
+def baca_crosswalk_provinsi(path: Path | None = None) -> dict[str, tuple[str, str]]:
+    """Baca crosswalk resmi Kabupaten/Kota → Provinsi.
+
+    Hasilnya `kabupaten_norm -> (provinsi, provinsi_norm)`. Kunci yang
+    dipetakan ke lebih dari satu provinsi dibuang supaya tidak ada tebakan.
+    """
+    sumber = path or NAMA_FILE_CROSSWALK
+    if not sumber.exists():
+        return {}
+    kandidat: dict[str, set[tuple[str, str]]] = defaultdict(set)
+    with sumber.open("r", encoding="utf-8", newline="") as f:
+        for baris in csv.DictReader(f):
+            kab = normalisasi_kabupaten(baris.get("kabupaten_norm"))
+            prov = (baris.get("provinsi") or "").strip()
+            if not kab or not prov:
+                continue
+            kandidat[kab].add((prov, normalisasi_teks_wilayah(prov)))
+    return {k: next(iter(v)) for k, v in kandidat.items() if len(v) == 1}
+
+
+def terapkan_crosswalk_provinsi(session: Session, path: Path | None = None) -> int:
+    """Isi `provinsi`/`provinsi_norm` pada baris SCDF yang masih kosong.
+
+    Tidak menimpa nilai yang sudah ada, tidak menyentuh tabel intake, dan
+    aman dipanggil berulang.
+    """
+    peta = baca_crosswalk_provinsi(path)
+    if not peta:
+        return 0
+    perlu = session.scalar(
+        select(func.count()).select_from(ReferensiWilayahTrace)
+        .where(ReferensiWilayahTrace.provinsi_norm.is_(None))) or 0
+    if not perlu:
+        return 0
+    total = 0
+    for kab, (prov, pnorm) in peta.items():
+        hasil = session.execute(
+            update(ReferensiWilayahTrace)
+            .where(ReferensiWilayahTrace.kabupaten_norm == kab,
+                   ReferensiWilayahTrace.provinsi_norm.is_(None))
+            .values(provinsi=prov, provinsi_norm=pnorm))
+        total += hasil.rowcount or 0
+    session.commit()
+    return total
+
+
+def kabupaten_memiliki_provinsi(session: Session, kabupaten_norm: str) -> bool:
+    """Apakah Kabupaten/Kota ini sudah terikat ke Provinsi crosswalk resmi."""
+    if not kabupaten_norm:
+        return False
+    return session.scalar(
+        select(ReferensiWilayahTrace.id)
+        .where(ReferensiWilayahTrace.kabupaten_norm == kabupaten_norm,
+               ReferensiWilayahTrace.provinsi_norm.is_not(None))
+        .limit(1)) is not None
 
 
 def muat_referensi_bawaan(session: Session, path: Path | None = None) -> int:
-    """Seed ID_AUX satu kali; file tidak membawa kode wilayah, jadi Code NULL."""
-    if (session.scalar(select(func.count()).select_from(ReferensiWilayahTrace)) or 0) > 0:
-        return 0
-    sumber = path or NAMA_FILE_REFERENSI
-    if not sumber.exists():
-        return 0
-    wb = openpyxl.load_workbook(sumber, read_only=True, data_only=True)
-    try:
-        ws = wb["ID AUX"] if "ID AUX" in wb.sheetnames else wb[wb.sheetnames[0]]
-        seen: set[tuple[str, str, str]] = set()
-        batch: list[dict] = []
-        jumlah = 0
-        for row in ws.iter_rows(min_row=2, values_only=True):
-            kab_kec = str(row[0] or "").strip()
-            desa = str(row[1] or "").strip()
-            match = row[3] if len(row) > 3 else None
-            if not kab_kec or not desa or match not in (1, True, "1"):
-                continue
-            kabupaten, pemisah, kecamatan = kab_kec.partition("_")
-            if not pemisah or not kabupaten.strip() or not kecamatan.strip():
-                continue
-            kabupaten, kecamatan, desa = kabupaten.strip(), kecamatan.strip(), desa.strip()
-            kunci = (normalisasi_kabupaten(kabupaten),
-                     normalisasi_teks_wilayah(kecamatan),
-                     normalisasi_teks_wilayah(desa))
-            if not all(kunci) or kunci in seen:
-                continue
-            seen.add(kunci)
-            batch.append({
-                "provinsi_norm": None, "provinsi": None,
-                "kabupaten_norm": kunci[0], "kecamatan_norm": kunci[1],
-                "desa_norm": kunci[2], "kabupaten": kabupaten,
-                "kecamatan": kecamatan, "desa": desa, "code": None,
-            })
-            if len(batch) >= 2000:
-                session.execute(ReferensiWilayahTrace.__table__.insert(), batch)
-                jumlah += len(batch)
-                batch.clear()
-        if batch:
-            session.execute(ReferensiWilayahTrace.__table__.insert(), batch)
-            jumlah += len(batch)
-        session.commit()
-        return jumlah
-    finally:
-        wb.close()
+    """Seed ID_AUX satu kali, lalu pasang crosswalk Provinsi bila skala penuh.
+
+    ID_AUX tidak membawa kode administrasi, jadi kolom `code` tetap NULL.
+    """
+    jumlah = 0
+    if (session.scalar(select(func.count()).select_from(ReferensiWilayahTrace)) or 0) == 0:
+        sumber = path or NAMA_FILE_REFERENSI
+        if sumber.exists():
+            wb = openpyxl.load_workbook(sumber, read_only=True, data_only=True)
+            try:
+                ws = wb["ID AUX"] if "ID AUX" in wb.sheetnames else wb[wb.sheetnames[0]]
+                seen: set[tuple[str, str, str]] = set()
+                batch: list[dict] = []
+                for row in ws.iter_rows(min_row=2, values_only=True):
+                    kab_kec = str(row[0] or "").strip()
+                    desa = str(row[1] or "").strip()
+                    match = row[3] if len(row) > 3 else None
+                    if not kab_kec or not desa or match not in (1, True, "1"):
+                        continue
+                    kabupaten, pemisah, kecamatan = kab_kec.partition("_")
+                    if not pemisah or not kabupaten.strip() or not kecamatan.strip():
+                        continue
+                    kabupaten, kecamatan, desa = (kabupaten.strip(),
+                                                 kecamatan.strip(), desa.strip())
+                    kunci = (normalisasi_kabupaten(kabupaten),
+                             normalisasi_teks_wilayah(kecamatan),
+                             normalisasi_teks_wilayah(desa))
+                    if not all(kunci) or kunci in seen:
+                        continue
+                    seen.add(kunci)
+                    batch.append({
+                        "provinsi_norm": None, "provinsi": None,
+                        "kabupaten_norm": kunci[0], "kecamatan_norm": kunci[1],
+                        "desa_norm": kunci[2], "kabupaten": kabupaten,
+                        "kecamatan": kecamatan, "desa": desa, "code": None,
+                    })
+                    if len(batch) >= 2000:
+                        session.execute(ReferensiWilayahTrace.__table__.insert(), batch)
+                        jumlah += len(batch)
+                        batch.clear()
+                if batch:
+                    session.execute(ReferensiWilayahTrace.__table__.insert(), batch)
+                    jumlah += len(batch)
+                session.commit()
+            finally:
+                wb.close()
+    if (session.scalar(select(func.count()).select_from(ReferensiWilayahTrace)) or 0) \
+            >= BATAS_REFERENSI_RES:
+        terapkan_crosswalk_provinsi(session)
+    return jumlah
 
 
 class SourcingTypeMasuk(BaseModel):

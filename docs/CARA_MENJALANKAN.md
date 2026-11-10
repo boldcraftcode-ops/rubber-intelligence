@@ -449,6 +449,47 @@ pemetaan**, ekspor, dan impor workbook belum termapping tetap berjalan seperti
 sebelumnya. Tidak ada tabel database baru. Health menambah fitur
 `traceability-scdf-typo`.
 
+## 3n. Crosswalk Provinsi resmi untuk SCDF (sejak 05/11/2026)
+
+`ID_AUX.xlsx` hanya memuat Kabupaten/Kecamatan dan Desa. Supaya kolom
+**Provinsi** bisa diedit tanpa mengarang nilai dari intake, aplikasi memakai
+`backend/data/crosswalk_provinsi_id_aux.csv`. File itu menghubungkan
+`kabupaten_norm` pada `traceability_wilayah` ke Provinsi dan kode wilayah dari
+snapshot **Keputusan Mendagri No. 100.1.1-6117 Tahun 2022**. Asal-usul,
+lisensi, daftar alias, dan bukti kecocokan kecamatan ada di
+`backend/data/CROSSWALK_PROVINSI.md`; salinan kecil sumber resmi ada di
+`backend/data/sumber_crosswalk/`.
+
+Yang berubah di layar:
+
+- **Data Intake Details → Edit**: dropdown **Provinsi** kini aktif dan
+  berisi nama resmi dari crosswalk, bukan 12 nilai filter intake. Memilih
+  Provinsi mengosongkan Kabupaten/Kota, Kecamatan, dan Desa; dropdown di
+  bawahnya lalu hanya menawarkan kombinasi SCDF untuk Provinsi itu.
+- **Quick-fill** dan **Excel diff** memakai aturan validasi yang sama:
+  Provinsi yang tidak ada di crosswalk ditolak, dan Kabupaten/Kota yang tidak
+  cocok dengan Provinsi itu juga ditolak. Pratinjau tetap tidak menyimpan;
+  konfirmasi eksplisit tetap wajib.
+- **Master Collector**: dropdown **Provinsi** ikut aktif memakai sumber yang
+  sama. Template Excel petunjuknya sudah diperbarui.
+- Endpoint `GET /api/intake/options/scdf/provinsi` mengembalikan
+  `available: true` dan `catatan: null`. Health menambah fitur
+  `scdf-provinsi-crosswalk`.
+
+Database lama tidak perlu dihapus. Saat API versi ini mulai dan endpoint SCDF
+dipanggil, `muat_referensi_bawaan()` mengisi `provinsi` dan `provinsi_norm`
+pada baris yang masih kosong lewat `terapkan_crosswalk_provinsi()`. Prosesnya
+idempoten: nilai yang sudah terisi tidak ditimpa, tabel `tiket_baris`, audit,
+dan koreksi wilayah tidak disentuh. Untuk database yang sudah berjalan, cukup
+restart API lalu buka halaman Intake/Traceability sekali.
+
+Tidak semua kunci dipetakan. `BANJAR` dipakai dua provinsi pada sumber resmi,
+sedangkan `DANAU`, `DANAU TOBA`, `HUTAN`, `UNKNOWN`, `WADUK CIRATA`, dan
+`WADUNG KEDUNGOMBO` adalah fitur geometri/label kosong, bukan
+Kabupaten/Kota. Ketujuh kunci itu sengaja dibiarkan `provinsi_norm = NULL`;
+dropdown tetap menampilkannya tanpa menebak Provinsi, tetapi koreksi Provinsi
+pada baris itu ditolak sampai ada pemetaan resmi yang lebih spesifik.
+
 ## 4. Mengimpor data (tiket, stok, pembelian, dll.)
 
 Selain lewat tab **Unggah Data**, impor bisa dijalankan dari terminal

@@ -274,6 +274,7 @@ def buat_app(engine: Engine | None = None) -> FastAPI:
                     "kepatuhan-vendor-sampling",
                     "traceability-tree",
                     "traceability-scdf-typo",
+                    "scdf-provinsi-crosswalk",
                     "intake-quick-fill",
                     "intake-excel-diff",
                 ],

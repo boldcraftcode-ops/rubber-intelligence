@@ -22,6 +22,8 @@ from pydantic import BaseModel, Field, ValidationError
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
+from .api_traceability import (kabupaten_memiliki_provinsi,
+                               muat_referensi_bawaan)
 from .auth_lokal import info_pengguna, wajib_admin
 from .core.alarm import catat_audit, evaluasi_alarm
 from .core.traceability import normalisasi_kabupaten, normalisasi_teks_wilayah
@@ -305,8 +307,8 @@ def pasang_router_intake(app, ambil_session):
 
     def pastikan_referensi_scdf(session: Session) -> None:
         # Pakai referensi SCDF yang sama dengan Traceability; tidak mengambil
-        # provinsi dari intake maupun data collector.
-        from .api_traceability import muat_referensi_bawaan
+        # provinsi dari intake maupun data collector. Crosswalk resmi dipasang
+        # di sini (idempoten) bila tabel referensi sudah skala penuh.
         muat_referensi_bawaan(session)
 
     def provinsi_tersedia(session: Session) -> bool:
@@ -315,9 +317,13 @@ def pasang_router_intake(app, ambil_session):
             ReferensiWilayahTrace.provinsi.is_not(None)).limit(1)) is not None
 
     def filter_provinsi_scdf(query, provinsi: str | None, tersedia: bool):
+        """Ikat dropdown ke Provinsi crosswalk, tanpa menyembunyikan baris SCDF
+        yang memang belum punya pemetaan resmi (mis. `BANJAR`, `DANAU`)."""
         if provinsi and provinsi.strip() and tersedia:
             norm = normalisasi_teks_wilayah(provinsi)
-            return query.where(ReferensiWilayahTrace.provinsi_norm == norm)
+            return query.where(or_(
+                ReferensiWilayahTrace.provinsi_norm == norm,
+                ReferensiWilayahTrace.provinsi_norm.is_(None)))
         return query
 
     def _validasi_perubahan(row: TiketBaris, perubahan: dict, session: Session) -> dict:
@@ -349,6 +355,18 @@ def pasang_router_intake(app, ambil_session):
             kecamatan_norm = normalisasi_teks_wilayah(wilayah_baru["kecamatan"])
             desa_norm = normalisasi_teks_wilayah(wilayah_baru["desa"])
 
+            # Provinsi hanya dianggap sah bila benar-benar ada pada crosswalk
+            # resmi, bukan sekadar nilai lama pada baris intake.
+            provinsi_resmi = bool(ada_provinsi_scdf and provinsi_norm and
+                session.scalar(select(ReferensiWilayahTrace.id).where(
+                    ReferensiWilayahTrace.provinsi_norm == provinsi_norm).limit(1)) is not None)
+            kabupaten_terhubung = bool(ada_provinsi_scdf and kabupaten_norm and
+                kabupaten_memiliki_provinsi(session, kabupaten_norm))
+            # Baris SCDF yang tidak punya pemetaan (BANJAR, DANAU, dsb.) tidak
+            # ditebak provinsinya; ikatan hierarki dipakai hanya bila kedua
+            # kunci memang berasal dari crosswalk.
+            ikat_provinsi = provinsi_resmi and kabupaten_terhubung
+
             provinsi_diubah = (
                 "provinsi" in perubahan and
                 wilayah_baru["provinsi"] != (row.provinsi or "").strip()
@@ -357,23 +375,29 @@ def pasang_router_intake(app, ambil_session):
                 if not ada_provinsi_scdf:
                     raise HTTPException(422,
                         "Provinsi tidak dapat dikoreksi: referensi SCDF yang termuat belum menyediakan Provinsi.")
-                if session.scalar(select(ReferensiWilayahTrace.id).where(
-                        ReferensiWilayahTrace.provinsi_norm == provinsi_norm).limit(1)) is None:
+                if not provinsi_resmi:
                     raise HTTPException(422, "Provinsi tidak ditemukan pada referensi SCDF.")
+                if kabupaten_norm and not kabupaten_terhubung:
+                    raise HTTPException(422,
+                        "Provinsi tidak dapat dikoreksi: Kabupaten/Kota ini belum memiliki "
+                        "pemetaan Provinsi pada crosswalk resmi SCDF.")
 
             if kabupaten_norm:
                 q_ref = select(ReferensiWilayahTrace.id).where(
                     ReferensiWilayahTrace.kabupaten_norm == kabupaten_norm)
-                if ada_provinsi_scdf and provinsi_norm:
+                if ikat_provinsi:
                     q_ref = q_ref.where(ReferensiWilayahTrace.provinsi_norm == provinsi_norm)
                 if session.scalar(q_ref.limit(1)) is None:
-                    raise HTTPException(422, "Kabupaten/Kota tidak ditemukan pada referensi SCDF untuk Provinsi tersebut.")
+                    raise HTTPException(422,
+                        "Kabupaten/Kota tidak ditemukan pada referensi SCDF untuk Provinsi tersebut."
+                        if ikat_provinsi else
+                        "Kabupaten/Kota tidak ditemukan pada referensi SCDF.")
 
                 if kecamatan_norm:
                     q_ref = select(ReferensiWilayahTrace.id).where(
                         ReferensiWilayahTrace.kabupaten_norm == kabupaten_norm,
                         ReferensiWilayahTrace.kecamatan_norm == kecamatan_norm)
-                    if ada_provinsi_scdf and provinsi_norm:
+                    if ikat_provinsi:
                         q_ref = q_ref.where(ReferensiWilayahTrace.provinsi_norm == provinsi_norm)
                     if session.scalar(q_ref.limit(1)) is None:
                         raise HTTPException(422, "Kecamatan tidak ditemukan pada Kabupaten/Kota di referensi SCDF.")
@@ -383,7 +407,7 @@ def pasang_router_intake(app, ambil_session):
                             ReferensiWilayahTrace.kabupaten_norm == kabupaten_norm,
                             ReferensiWilayahTrace.kecamatan_norm == kecamatan_norm,
                             ReferensiWilayahTrace.desa_norm == desa_norm)
-                        if ada_provinsi_scdf and provinsi_norm:
+                        if ikat_provinsi:
                             q_ref = q_ref.where(ReferensiWilayahTrace.provinsi_norm == provinsi_norm)
                         if session.scalar(q_ref.limit(1)) is None:
                             raise HTTPException(422, "Desa tidak ditemukan pada pasangan Kabupaten/Kecamatan di referensi SCDF.")
