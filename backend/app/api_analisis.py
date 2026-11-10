@@ -76,6 +76,10 @@ NAMA_BULAN_SINGKAT = ("", "Jan", "Feb", "Mar", "Apr", "Mei", "Jun",
 MAKS_BARIS_XLSX = 1_000_000
 #: Di atas jumlah baris ini workbook ditulis mengalir (write_only).
 AMBANG_XLSX_STREAM = 200_000
+#: Pengaman ekspor Excel Penerimaan Karet: 1.200 bulan = 100 tahun.
+#: Excel sendiri maksimal 16.384 kolom, tapi rincian bulanan juga menyimpan
+#: satu sel per dimensi per bulan; batas ini mencegah workbook raksasa.
+MAKS_BULAN_XLSX = 1_200
 
 # ---------------------------------------------------------------------------
 # Format baku ekspor kartu Penerimaan Karet, mengikuti contoh
@@ -401,15 +405,18 @@ def _filter_tiket(q, tahun=None, bulan=None, vendor=None, grade=None, eudr=None,
     return q
 
 
-def _bulan_berurutan(awal: tuple[int, int], akhir: tuple[int, int]) -> list[tuple[int, int]]:
+def _bulan_berurutan(awal: tuple[int, int], akhir: tuple[int, int],
+                     maks: int = 120) -> list[tuple[int, int]]:
     """Daftar (tahun, bulan) dari awal sampai akhir, termasuk bulan kosong.
 
     Bulan tanpa tiket tetap ditampilkan (nilai 0) supaya grafik tidak
     "melompat" dan pembaca melihat bulan yang memang tidak ada penerimaan.
+    `maks` dipakai sebagai pengaman; ekspor Excel menaikkannya agar seluruh
+    periode terpilih tetap menjadi kolom.
     """
     hasil: list[tuple[int, int]] = []
     th, bl = awal
-    while (th, bl) <= akhir and len(hasil) < 120:
+    while (th, bl) <= akhir and len(hasil) < maks:
         hasil.append((th, bl))
         bl += 1
         if bl > 12:
@@ -455,6 +462,39 @@ def _fmt_periode_penerimaan(awal: tuple[int, int] | None,
                 f"{NAMA_BULAN_INGGRIS[bl2]} {th2}")
     return (f"{NAMA_BULAN_INGGRIS[bl1]} {th1} ~ "
             f"{NAMA_BULAN_INGGRIS[bl2]} {th2}")
+
+
+def _bulan_xlsx_penuh(dari: dt.date | None, sampai: dt.date | None,
+                      berdata: list[tuple[int, int]]) -> list[tuple[int, int]]:
+    """Sumbu bulan untuk EKSPOR EXCEL: seluruh periode terpilih, tanpa potong.
+
+    Beda dengan sumbu grafik/JSON: di sini bulan kosong tetap menjadi kolom
+    dan sisa dimensi tidak digabung. Bila hanya satu batas tanggal diisi,
+    batas lainnya memakai ujung bulan berdata. `MAKS_BULAN_XLSX` mencegah
+    rentang ekstrem membuat workbook berjuta-juta sel.
+    """
+    awal: tuple[int, int] | None = None
+    akhir: tuple[int, int] | None = None
+    if dari and sampai and (dari.year, dari.month) <= (sampai.year, sampai.month):
+        awal, akhir = (dari.year, dari.month), (sampai.year, sampai.month)
+    elif dari and berdata:
+        awal, akhir = (dari.year, dari.month), berdata[-1]
+    elif sampai and berdata:
+        awal, akhir = berdata[0], (sampai.year, sampai.month)
+    elif berdata:
+        awal, akhir = berdata[0], berdata[-1]
+    if not awal or not akhir or awal > akhir:
+        return []
+    bulan = _bulan_berurutan(awal, akhir, maks=MAKS_BULAN_XLSX + 1)
+    if len(bulan) > MAKS_BULAN_XLSX:
+        jumlah_label = f"{len(bulan):,}".replace(",", ".")
+        maks_label = f"{MAKS_BULAN_XLSX:,}".replace(",", ".")
+        raise HTTPException(
+            422,
+            f"Periode {jumlah_label} bulan terlalu panjang untuk ekspor Excel; "
+            f"maksimal {maks_label} bulan (100 tahun). Persempit "
+            f"'Dari/Sampai' agar setiap bulan tetap menjadi kolom.")
+    return bulan
 
 
 def _info_ekspor_penerimaan(dari: dt.date | None, sampai: dt.date | None,
@@ -504,8 +544,11 @@ def _penerimaan_per_bulan(potongan: list[tuple], dimensi: str,
     pembaca melihat pergerakan tiap vendor/wilayah dari bulan ke bulan —
     bukan hanya total sepanjang periode.
 
-    Semua angka kg kering. `top` dimensi terbesar dipertahankan; sisanya
-    digabung menjadi satu baris "Lainnya" agar grafik tetap terbaca.
+    Semua angka kg kering. Untuk JSON/grafik, `top` dimensi terbesar
+    dipertahankan; sisanya digabung menjadi satu baris "Lainnya" agar grafik
+    tetap terbaca. Khusus `format=xlsx`, ekspor TIDAK memakai `top`: semua
+    dimensi ditulis sebagai baris detail tersendiri dan semua bulan terpilih
+    menjadi kolom, tanpa baris "Lainnya".
     """
     # ---- daftar bulan
     # Sumbu bulan MENGIKUTI periode filter (bukan data), supaya mengganti filter
@@ -523,23 +566,30 @@ def _penerimaan_per_bulan(potongan: list[tuple], dimensi: str,
         bulan = _bulan_berurutan(berdata[0], berdata[-1])
     else:
         bulan = []
-    indeks = {b: i for i, b in enumerate(bulan)}
     label_bulan = [_label_bulan_singkat(th, bl) for th, bl in bulan]
 
-    # ---- agregasi per (dimensi, bulan), dipisah biasa/EUDR
-    isi: dict[str, dict] = defaultdict(
-        lambda: {"biasa": [0.0] * len(bulan), "eudr": [0.0] * len(bulan),
-                 "tiket": set()})
-    for kunci, bln, kg, e, no_tiket in potongan:
-        i = indeks.get(bln)
-        if i is None:
-            continue
-        isi[kunci]["eudr" if e else "biasa"][i] += kg
-        isi[kunci]["tiket"].add(no_tiket)
+    def agregasi(daftar_bulan: list[tuple[int, int]]) -> dict[str, dict]:
+        """Agregasi per (dimensi, bulan), dipisah biasa/EUDR.
+
+        Dipakai dua kali: sumbu ringkas untuk grafik/JSON, dan sumbu penuh
+        untuk ekspor Excel. Keduanya memakai potongan tiket yang sama.
+        """
+        indeks = {b: i for i, b in enumerate(daftar_bulan)}
+        isi: dict[str, dict] = defaultdict(
+            lambda: {"biasa": [0.0] * len(daftar_bulan),
+                     "eudr": [0.0] * len(daftar_bulan), "tiket": set()})
+        for kunci, bln, kg, e, no_tiket in potongan:
+            i = indeks.get(bln)
+            if i is None:
+                continue
+            isi[kunci]["eudr" if e else "biasa"][i] += kg
+            isi[kunci]["tiket"].add(no_tiket)
+        return isi
 
     def total(baris: dict) -> float:
         return sum(baris["biasa"]) + sum(baris["eudr"])
 
+    isi = agregasi(bulan)
     total_kg = sum(total(a) for a in isi.values())
     urut = sorted(isi.items(), key=lambda kv: -total(kv[1]))
 
@@ -615,13 +665,32 @@ def _penerimaan_per_bulan(potongan: list[tuple], dimensi: str,
                   "EUDR / kode TTSR",
     }
     if format == "xlsx":
-        judul = [dimensi.capitalize()] + label_bulan + ["Total kg", "Porsi"]
-        isi_xlsx = []
-        for b in baris_keluar:
-            isi_xlsx.append([b["label"]] + b["kg_per_bulan"] + [b["kg_total"],
-                                                                b["porsi"]])
-        isi_xlsx.append(["TOTAL"] + total_per_bulan
-                        + [round(sum(total_per_bulan), 1), None])
+        # EKSPOR: seluruh bulan terpilih + SELURUH baris detail. Tidak memakai
+        # `top` dan tidak ada baris "Lainnya (N dimensi)" seperti di grafik.
+        bulan_xlsx = _bulan_xlsx_penuh(dari, sampai, berdata)
+        label_bulan_xlsx = [_label_bulan_singkat(th, bl)
+                            for th, bl in bulan_xlsx]
+        agregat_xlsx = agregasi(bulan_xlsx)
+        total_kg_xlsx = sum(total(a) for a in agregat_xlsx.values())
+        urut_xlsx = sorted(agregat_xlsx.items(),
+                           key=lambda kv: -total(kv[1]))
+        baris_xlsx = [{
+            "label": label_dari(kunci),
+            "kg_per_bulan": kg_bulan(a),
+            "kg_total": round(total(a), 1),
+            "porsi": round(total(a) / total_kg_xlsx, 4)
+                     if total_kg_xlsx else None,
+        } for kunci, a in urut_xlsx]
+        total_per_bulan_xlsx = [
+            round(sum(b["kg_per_bulan"][i] for b in baris_xlsx), 1)
+            for i in range(len(bulan_xlsx))]
+
+        judul = ([dimensi.capitalize()] + label_bulan_xlsx
+                 + ["Total kg", "Porsi"])
+        isi_xlsx = [[b["label"]] + b["kg_per_bulan"]
+                    + [b["kg_total"], b["porsi"]] for b in baris_xlsx]
+        isi_xlsx.append(["TOTAL"] + total_per_bulan_xlsx
+                        + [round(sum(total_per_bulan_xlsx), 1), None])
         if info_ekspor is None:
             awal = (dari.year, dari.month) if dari else (
                 berdata[0] if berdata else None)
@@ -2314,9 +2383,11 @@ def pasang_router(app, ambil_session):
 
         `per=bulan` -> rincian per bulan untuk dimensi terpilih (dipakai bila
         periode filter lebih dari satu bulan): bulan x dimensi, dengan `top`
-        dimensi terbesar dan sisanya digabung menjadi "Lainnya". Tanpa
-        `per=bulan`, bentuk jawabannya tetap seperti semula (satu baris per
-        dimensi untuk seluruh periode)."""
+        dimensi terbesar dan sisanya digabung menjadi "Lainnya" untuk grafik.
+        Tanpa `per=bulan`, bentuk jawabannya tetap seperti semula (satu baris
+        per dimensi untuk seluruh periode). Khusus `format=xlsx`, `top` dan
+        "Lainnya" TIDAK dipakai: semua dimensi ditulis sebagai baris detail
+        dan semua bulan terpilih menjadi kolom."""
         if dimensi not in DIMENSI_TONASE:
             raise HTTPException(422, f"Dimensi '{dimensi}' tidak dikenal. "
                                      f"Pilihan: {', '.join(DIMENSI_TONASE)}.")

@@ -853,9 +853,21 @@ Tombol **Ekspor Excel** pada kartu **Penerimaan Karet** kini mengikuti
 Format ini berlaku untuk **semua dimensi** dan juga saat periode lebih dari
 satu bulan (`per=bulan`, kolom bulan disisipkan sebelum `Total kg`/`Porsi`).
 Judul mencerminkan filter vendor/wilayah yang aktif; periode mengikuti bulan
-`Dari/Sampai` atau bulan berdata bila filter kosong. Kartu lain tetap memakai
-format ekspornya masing-masing; perhitungan, agregasi, dan grafik tidak berubah.
-Style ditanam di kode, jadi ekspor tidak bergantung pada berkas contoh.
+`Dari/Sampai` atau bulan berdata bila filter kosong.
+
+**Data panjang tetap lengkap di Excel.** Batas `Tampilkan N terbesar` dan baris
+`Lainnya (N provinsi/desa/…)` hanya dipakai grafik/tabel di layar supaya tetap
+terbaca. Saat `format=xlsx`, ekspor menulis **setiap dimensi sebagai baris
+detail tersendiri** tanpa baris `Lainnya`, dan **setiap bulan terpilih menjadi
+kolom** (bulan kosong bernilai 0, tidak dipotong ke bulan berdata). Baris
+`TOTAL` tetap ada di akhir. Pengaman: maksimal **1.200 bulan (100 tahun)**;
+rentang lebih panjang ditolak 422 dengan pesan untuk mempersempit
+`Dari/Sampai`. Mode total periode juga selalu menulis semua baris detail,
+terlepas dari `top`.
+
+Kartu lain tetap memakai format ekspornya masing-masing; perhitungan, agregasi,
+dan grafik tidak berubah. Style ditanam di kode, jadi ekspor tidak bergantung
+pada berkas contoh.
 
 ## Kalau ada tombol analisa yang bilang "Fitur ini tidak dikenali"
 

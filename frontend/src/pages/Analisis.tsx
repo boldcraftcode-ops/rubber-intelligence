@@ -969,6 +969,12 @@ function KartuPenerimaan() {
                 {dimensiData} terbesar
               </label>
             )}
+            {modeBulan && (
+              <p className="w-full text-[11px] text-[#64676C]">
+                Grafik/tabel dibatasi agar terbaca; <b>Ekspor Excel</b> tetap
+                memuat semua baris detail, tanpa baris "Lainnya".
+              </p>
+            )}
           </div>
         )}
 
