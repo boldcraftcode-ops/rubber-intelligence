@@ -1736,10 +1736,10 @@ function KartuMarginPer() {
 /* ---------- pemilih rentang TANGGAL PERSIS (kartu konsistensi vendor) ----------
    Berbeda dari PilihRentangBulan: daftar hari kosong harus mengikuti tanggal
    yang benar-benar dipilih, bukan otomatis tanggal 1 / akhir bulan. */
-function PilihRentangTanggal({ dari, sampai, setDari, setSampai, aksi }: {
+function PilihRentangTanggal({ dari, sampai, setDari, setSampai, aksi, batasData }: {
   dari: string; sampai: string;
   setDari: (v: string) => void; setSampai: (v: string) => void;
-  aksi?: any;
+  aksi?: any; batasData?: any;
 }) {
   const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
   const pilihCepat = (e: { currentTarget: HTMLSelectElement }) => {
@@ -1764,7 +1764,7 @@ function PilihRentangTanggal({ dari, sampai, setDari, setSampai, aksi }: {
         <select className="rounded-sm border border-[#E4E5E8] bg-white px-2 py-1.5 text-[#1D2434]"
                 defaultValue="" aria-label="Pilih rentang tanggal cepat" onChange={pilihCepat}>
           <option value="" disabled>Pilih rentang…</option>
-          <option value="semua">Seluruh data</option>
+          <option value="semua">Seluruh rentang tiket</option>
           <option value="tahun">Tahun berjalan s.d. hari ini</option>
           <option value="bulan">Bulan berjalan s.d. hari ini</option>
           <option value="tigapuluh">30 hari terakhir</option>
@@ -1785,6 +1785,15 @@ function PilihRentangTanggal({ dari, sampai, setDari, setSampai, aksi }: {
         <button className={kelasTombolKecil}
                 onClick={() => { setDari(""); setSampai(""); }}>
           hapus filter
+        </button>
+      )}
+      {batasData?.tersedia && (
+        <button className={kelasTombolKecil}
+                title={`Tiket tersedia ${batasData.dari} s.d. ${batasData.sampai}`}
+                onClick={() => {
+                  setDari(batasData.dari); setSampai(batasData.sampai);
+                }}>
+          pakai batas tiket
         </button>
       )}
       {aksi}
@@ -1811,6 +1820,7 @@ function KartuKonsistensiIntake() {
   const top: any = d?.paling_sering;
   const ringkas: any = d?.ringkasan ?? {};
   const metode: any = d?.catatan_metode ?? {};
+  const modeRingkas = d?.periode?.mode_rincian === "ringkas";
 
   const grafikTeratas = baris.slice(0, 10).map((b: any) => ({
     nama: b.nama.length > 14 ? b.nama.slice(0, 13) + "…" : b.nama,
@@ -1835,8 +1845,17 @@ function KartuKonsistensiIntake() {
         <div className="mb-3 flex flex-wrap items-end gap-3 rounded-sm border border-[#E4E5E8] bg-[#F8F8F8] px-3 py-2">
           <PilihRentangTanggal dari={dari} sampai={sampai}
                                setDari={setDari} setSampai={setSampai}
-                               aksi={<TombolRefreshKartu />} />
+                               aksi={<TombolRefreshKartu />}
+                               batasData={d?.batas_data} />
         </div>
+        {d?.batas_data?.tersedia && (
+          <p className="-mt-2 mb-3 text-[11px] text-[#64676C]">
+            Rentang tiket tersedia:{" "}
+            <b className="text-[#1D2434]">{fmtTanggal(d.batas_data.dari)} → {fmtTanggal(d.batas_data.sampai)}</b>
+            {" "}({d.batas_data.jumlah_hari} hari). Kosongkan kedua kolom tanggal atau
+            tekan <b>pakai batas tiket</b> bila ingin menilai hanya masa dengan data.
+          </p>
+        )}
 
         {q.isLoading && <p className="text-xs text-[#64676C]">Menghitung konsistensi…</p>}
         {q.error && <p className="text-xs text-[#B91C1C]">{pesanGalat(q.error)}</p>}
@@ -1859,6 +1878,16 @@ function KartuKonsistensiIntake() {
                   ))}
                 </ul>
               </div>
+            )}
+
+            {modeRingkas && (
+              <p className="mb-3 rounded-sm border border-[#D7E7FF] bg-[#EFF6FF] px-3 py-2 text-[11px] text-[#1D4ED8]"
+                 data-uji="mode-ringkas-konsistensi">
+                Periode panjang ({d.periode.jumlah_hari} hari) tetap dihitung penuh.
+                Rincian hari kosong <b>otomatis diminimalisir</b> menjadi rentang
+                tanggal berurutan dan rekap nomor tanggal per bulan; ekspor Excel
+                tetap memuat seluruh baris per tanggal.
+              </p>
             )}
 
             {baris.length === 0 ? (
@@ -1985,43 +2014,128 @@ function KartuKonsistensiIntake() {
                                   Rentang harian tanpa putus: <b>{rentangTeks(b.rentang_harian_terpanjang, "jumlah_hari")}</b>
                                   {" · "}Rentang bulanan tanpa putus: <b>{rentangTeks(b.rentang_bulanan_terpanjang, "jumlah_bulan")}</b>
                                 </p>
+                                {modeRingkas ? (
+                                  <>
+                                    <p className="mt-2 text-[11px] font-semibold text-[#B45309]">
+                                      Hari kosong ({b.jumlah_hari_kosong}) — rekap per bulan:
+                                    </p>
+                                    {(b.hari_kosong_per_bulan ?? []).length === 0 ? (
+                                      <p className="mt-1 text-[11px] text-[#15803D]">Tidak ada — masuk setiap hari.</p>
+                                    ) : (
+                                      <div className="mt-1 max-h-44 overflow-y-auto rounded-sm border border-[#E4E5E8] bg-white"
+                                           data-uji="rekap-bulan-konsistensi">
+                                        <table className="w-full text-[10px]">
+                                          <thead className="sticky top-0 bg-[#F8F8F8]">
+                                            <tr className="text-left text-[#64676C]">
+                                              <th className="px-2 py-1">Bulan</th>
+                                              <th className="px-2 py-1 text-right">Hari</th>
+                                              <th className="px-2 py-1">Tanggal kosong</th>
+                                              <th className="px-2 py-1 text-right">Luar data</th>
+                                            </tr>
+                                          </thead>
+                                          <tbody>
+                                            {(b.hari_kosong_per_bulan ?? []).map((m: any) => (
+                                              <tr key={m.ym} className="border-t border-[#EDEFF2]">
+                                                <td className="px-2 py-1 font-mono">{m.label}</td>
+                                                <td className="px-2 py-1 text-right font-mono">{m.jumlah_hari}</td>
+                                                <td className="px-2 py-1 font-mono" title={m.teks}>{m.ringkasan}</td>
+                                                <td className="px-2 py-1 text-right font-mono">{m.jumlah_di_luar_data}</td>
+                                              </tr>
+                                            ))}
+                                          </tbody>
+                                        </table>
+                                      </div>
+                                    )}
+                                    {b.hari_kosong_per_bulan_terpotong && (
+                                      <p className="mt-1 text-[10px] text-[#64676C]">… sisa bulan ada di Excel</p>
+                                    )}
+                                    <p className="mt-2 text-[11px] font-semibold text-[#B45309]">
+                                      Rentang hari kosong berurutan ({b.hari_kosong_rentang?.length ?? 0}):
+                                    </p>
+                                    <div className="mt-1 flex flex-wrap gap-1" data-uji="rentang-hari-kosong">
+                                      {(b.hari_kosong_rentang ?? []).length === 0 && (
+                                        <span className="text-[11px] text-[#15803D]">Tidak ada — masuk setiap hari.</span>
+                                      )}
+                                      {(b.hari_kosong_rentang ?? []).slice(0, 12).map((g: any) => (
+                                        <span key={`${g.dari}-${g.sampai}`}
+                                              title={g.teks}
+                                              className={`rounded-sm border px-1.5 py-0.5 text-[10px] ${g.di_luar_data ? "border-[#E5E7EB] bg-[#F3F4F6] text-[#4B5563]" : g.sepi_pabrik ? "border-[#FECACA] bg-[#FEF2F2] text-[#B91C1C]" : "border-[#FDE68A] bg-[#FFFBEB] text-[#92400E]"}`}>
+                                          {g.jumlah_hari === 1 ? g.label_dari : `${g.label_dari} → ${g.label_sampai}`}
+                                          {" · "}{g.jumlah_hari} hari{g.di_luar_data ? " · luar data" : ""}
+                                        </span>
+                                      ))}
+                                      {(b.hari_kosong_rentang_terpotong || (b.hari_kosong_rentang ?? []).length > 12) && (
+                                        <span className="text-[10px] text-[#64676C]">… seluruhnya ada di Excel</span>
+                                      )}
+                                    </div>
+                                    <p className="mt-1 text-[10px] text-[#64676C]">
+                                      Nomor tanggal pada kolom "Tanggal kosong" tetap menyebut hari apa saja yang kosong.
+                                      Ekspor Excel memuat satu baris per tanggal tanpa potongan.
+                                    </p>
+                                  </>
+                                ) : (
+                                  <>
+                                    <p className="mt-2 text-[11px] font-semibold text-[#B45309]">
+                                      Hari kosong ({b.jumlah_hari_kosong}):
+                                    </p>
+                                    <div className="mt-1 flex flex-wrap gap-1">
+                                      {(b.hari_kosong ?? []).length === 0 && (
+                                        <span className="text-[11px] text-[#15803D]">Tidak ada — masuk setiap hari.</span>
+                                      )}
+                                      {(b.hari_kosong ?? []).map((h: any) => (
+                                        <span key={h.tanggal}
+                                              title={h.sepi_pabrik ? "Tidak ada intake dari vendor mana pun" : "Tidak ada intake dari vendor ini"}
+                                              className={`rounded-sm border px-1.5 py-0.5 text-[10px] ${h.sepi_pabrik ? "border-[#FECACA] bg-[#FEF2F2] text-[#B91C1C]" : "border-[#FDE68A] bg-[#FFFBEB] text-[#92400E]"}`}>
+                                          {h.label}{h.sepi_pabrik ? " · pabrik sepi" : ""}
+                                        </span>
+                                      ))}
+                                      {b.hari_kosong_terpotong && (
+                                        <span className="text-[10px] text-[#64676C]">… seluruhnya ada di Excel</span>
+                                      )}
+                                    </div>
+                                  </>
+                                )}
                                 <p className="mt-2 text-[11px] font-semibold text-[#B45309]">
-                                  Hari kosong ({b.jumlah_hari_kosong}):
+                                  Bulan kosong ({b.jumlah_bulan_kosong}){modeRingkas ? " — rentang" : ""}:
                                 </p>
                                 <div className="mt-1 flex flex-wrap gap-1">
-                                  {(b.hari_kosong ?? []).length === 0 && (
-                                    <span className="text-[11px] text-[#15803D]">Tidak ada — masuk setiap hari.</span>
-                                  )}
-                                  {(b.hari_kosong ?? []).map((h: any) => (
-                                    <span key={h.tanggal}
-                                          title={h.sepi_pabrik ? "Tidak ada intake dari vendor mana pun" : "Tidak ada intake dari vendor ini"}
-                                          className={`rounded-sm border px-1.5 py-0.5 text-[10px] ${h.sepi_pabrik ? "border-[#FECACA] bg-[#FEF2F2] text-[#B91C1C]" : "border-[#FDE68A] bg-[#FFFBEB] text-[#92400E]"}`}>
-                                      {h.label}{h.sepi_pabrik ? " · pabrik sepi" : ""}
-                                    </span>
-                                  ))}
-                                  {b.hari_kosong_terpotong && (
-                                    <span className="text-[10px] text-[#64676C]">… seluruhnya ada di Excel</span>
-                                  )}
-                                </div>
-                                <p className="mt-2 text-[11px] font-semibold text-[#B45309]">
-                                  Bulan kosong ({b.jumlah_bulan_kosong}):
-                                </p>
-                                <div className="mt-1 flex flex-wrap gap-1">
-                                  {(b.bulan_kosong ?? []).length === 0 && (
-                                    <span className="text-[11px] text-[#15803D]">Tidak ada — masuk setiap bulan.</span>
-                                  )}
-                                  {(b.bulan_kosong ?? []).map((m: any) => (
-                                    <span key={m.ym} className="rounded-sm border border-[#FDE68A] bg-[#FFFBEB] px-1.5 py-0.5 text-[10px] text-[#92400E]">
-                                      {m.label}
-                                    </span>
-                                  ))}
-                                  {b.bulan_kosong_terpotong && (
-                                    <span className="text-[10px] text-[#64676C]">… seluruhnya ada di Excel</span>
+                                  {modeRingkas ? (
+                                    <>
+                                      {(b.bulan_kosong_rentang ?? []).length === 0 && (
+                                        <span className="text-[11px] text-[#15803D]">Tidak ada — masuk setiap bulan.</span>
+                                      )}
+                                      {(b.bulan_kosong_rentang ?? []).map((g: any) => (
+                                        <span key={`${g.dari}-${g.sampai}`}
+                                              className="rounded-sm border border-[#FDE68A] bg-[#FFFBEB] px-1.5 py-0.5 text-[10px] text-[#92400E]">
+                                          {g.label} · {g.jumlah_bulan} bulan
+                                        </span>
+                                      ))}
+                                      {(b.bulan_kosong_rentang_terpotong || b.bulan_kosong_terpotong) && (
+                                        <span className="text-[10px] text-[#64676C]">… seluruhnya ada di Excel</span>
+                                      )}
+                                    </>
+                                  ) : (
+                                    <>
+                                      {(b.bulan_kosong ?? []).length === 0 && (
+                                        <span className="text-[11px] text-[#15803D]">Tidak ada — masuk setiap bulan.</span>
+                                      )}
+                                      {(b.bulan_kosong ?? []).map((m: any) => (
+                                        <span key={m.ym} className="rounded-sm border border-[#FDE68A] bg-[#FFFBEB] px-1.5 py-0.5 text-[10px] text-[#92400E]">
+                                          {m.label}
+                                        </span>
+                                      ))}
+                                      {b.bulan_kosong_terpotong && (
+                                        <span className="text-[10px] text-[#64676C]">… seluruhnya ada di Excel</span>
+                                      )}
+                                    </>
                                   )}
                                 </div>
                                 <p className="mt-2 text-[11px] text-[#64676C]">
                                   Bulan lengkap (setiap hari kalender ada intake):{" "}
-                                  <b>{(b.bulan_lengkap ?? []).map((m: any) => m.label).join(", ") || "tidak ada"}</b>
+                                  <b>{(modeRingkas ? (b.bulan_lengkap_rentang ?? []) : (b.bulan_lengkap ?? []))
+                                    .map((m: any) => m.label).join(", ") || "tidak ada"}</b>
+                                  {(modeRingkas ? b.bulan_lengkap_rentang_terpotong : b.bulan_lengkap_terpotong) &&
+                                    " … seluruhnya ada di Excel"}
                                 </p>
                               </td>
                             </tr>
@@ -2033,7 +2147,8 @@ function KartuKonsistensiIntake() {
                 </div>
 
                 <p className="mt-2 text-[11px] text-[#64676C]">
-                  {metode.dasar_hari} {metode.dasar_urutan} {metode.sumber}
+                  {metode.dasar_hari} {metode.dasar_urutan} {metode.sumber}{" "}
+                  {metode.minimalisir} {metode.di_luar_data}
                 </p>
                 {(d.vendor_tanpa_intake ?? []).length > 0 && (
                   <p className="mt-1 text-[11px] text-[#64676C]">

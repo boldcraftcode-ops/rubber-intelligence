@@ -20,6 +20,7 @@ from sqlalchemy.pool import StaticPool
 
 from app.core.konsistensi_intake import (MAKS_HARI, daftar_hari,
                                          hitung_konsistensi,
+                                         kelompok_rentang_bulan,
                                          rentang_bulan_terpanjang,
                                          rentang_harian_terpanjang)
 from app.main import buat_app
@@ -183,11 +184,14 @@ def test_ekspor_excel_beberapa_sheet_dan_rincian_tidak_dipotong(monkeypatch):
     assert "spreadsheetml" in r.headers["content-type"]
     wb = openpyxl.load_workbook(io.BytesIO(r.content), read_only=True,
                                 data_only=True)
-    assert wb.sheetnames == ["Rekap vendor", "Hari kosong", "Bulan kosong",
+    assert wb.sheetnames == ["Rekap vendor", "Hari kosong",
+                             "Rentang hari kosong", "Bulan kosong",
                              "Bulan lengkap", "Hari sepi pabrik", "Metode"]
     assert wb["Rekap vendor"].max_row == 3  # header + 2 vendor
     # V001 39 hari kosong + V002 38 hari kosong = 77 baris rincian.
     assert wb["Hari kosong"].max_row == 78
+    # Ringkasan rentang: satu rentang kosong berurutan untuk tiap vendor.
+    assert wb["Rentang hari kosong"].max_row == 3
     # Februari kosong untuk kedua vendor; Januari tidak.
     assert wb["Bulan kosong"].max_row == 3
     assert wb["Bulan lengkap"].max_row == 1
@@ -231,8 +235,69 @@ def test_periode_terbalik_dan_format_salah_ditolak(monkeypatch):
     assert r.status_code == 422 and "Periode terbalik" in r.text
     r = klien.get(URL, params={"dari": "2026/01/01"})
     assert r.status_code == 422 and "YYYY-MM-DD" in r.text
-    r = klien.get(URL, params={"dari": "2020-01-01", "sampai": "2027-01-01"})
-    assert r.status_code == 422 and "terlalu panjang" in r.text
+    # Rentang 1.766 hari (keluhan pemilik) sekarang HARUS diterima.
+    r = klien.get(URL, params={"dari": "2021-12-15",
+                               "sampai": "2026-10-15"})
+    assert r.status_code == 200, r.text
+    assert r.json()["periode"]["jumlah_hari"] == 1766
+    assert r.json()["periode"]["mode_rincian"] == "ringkas"
+    # Hanya tanggal ekstrem (±>100 tahun) yang ditolak batas keamanan.
+    r = klien.get(URL, params={"dari": "1900-01-01",
+                               "sampai": "2026-10-15"})
+    assert r.status_code == 422 and "di luar jangkauan" in r.text
+
+
+def test_rentang_1766_hari_diterima_dan_otomatis_diminimalisir(monkeypatch):
+    """Keluhan pemilik: 1.766 hari tidak boleh 422, rincian tetap terbaca."""
+    klien = _klien(monkeypatch, _isi_januari)
+    d = _get(klien, dari="2021-12-15", sampai="2026-10-15")
+    assert d["status"] == "ok"
+    assert d["periode"]["jumlah_hari"] == 1766
+    assert d["periode"]["jumlah_bulan"] == 59
+    assert d["periode"]["mode_rincian"] == "ringkas"
+    assert d["periode"]["ringkas_otomatis"] is True
+    assert d["batas_data"] == {
+        "tersedia": True, "dari": "2026-01-01", "sampai": "2026-01-10",
+        "jumlah_hari": 10}
+    assert d["ringkasan"]["hari_di_luar_rentang_data"] == 1756
+    assert any("DIMINIMALISIR" in p for p in d["peringatan"])
+    assert any("di luar rentang tiket" in p for p in d["peringatan"])
+
+    v1 = next(b for b in d["baris"] if b["kode"] == "V001")
+    assert v1["jumlah_hari_masuk"] == 10
+    assert v1["jumlah_hari_kosong"] == 1756
+    # JSON layar tetap ringan: 31 chip, 2 rentang, 59 rekap bulan.
+    assert len(v1["hari_kosong"]) == 31
+    assert v1["hari_kosong_terpotong"] is True
+    assert len(v1["hari_kosong_rentang"]) == 2
+    assert v1["hari_kosong_rentang"][0]["jumlah_hari"] == 1478
+    assert v1["hari_kosong_rentang"][0]["kategori"] == "di_luar_data"
+    assert len(v1["hari_kosong_per_bulan"]) == 59
+    assert v1["hari_kosong_per_bulan"][0]["ringkasan"] == "15-31"
+    assert v1["bulan_kosong_rentang"][0]["jumlah_bulan"] >= 48
+    assert v1["hari_kosong"][0]["kategori"] == "di_luar_data"
+    # Dasar lama tidak berubah.
+    assert d["dasar"]["hari"] == "kalender"
+    assert d["dasar"]["urutan"] == "jumlah_hari_masuk"
+
+
+def test_ekspor_excel_rentang_1766_hari_tetap_lengkap(monkeypatch):
+    klien = _klien(monkeypatch, _isi_januari)
+    params = {"dari": "2021-12-15", "sampai": "2026-10-15"}
+    d = _get(klien, **params)
+    total = sum(b["jumlah_hari_kosong"] for b in d["baris"])
+    r = klien.get(URL, params={**params, "format": "xlsx"})
+    assert r.status_code == 200, r.text
+    wb = openpyxl.load_workbook(io.BytesIO(r.content), read_only=True,
+                                data_only=True)
+    assert wb["Hari kosong"].max_row == total + 1
+    assert wb["Rentang hari kosong"].max_row > 1
+    metode = [list(x) for x in wb["Metode"].iter_rows(values_only=True)]
+    assert any(x[0] == "Mode rincian layar"
+               and "Ringkas otomatis" in str(x[1]) for x in metode)
+    assert any(x[0] == "Hari di luar rentang data" and x[1] == 1756
+               for x in metode)
+    wb.close()
 
 
 def test_status_kosong_jujur_dan_sumber_tercantum(monkeypatch):
@@ -258,11 +323,28 @@ def test_rentang_terpanjang_harian_dan_bulanan():
         "dari": "2025-12", "sampai": "2026-01", "jumlah_bulan": 2}
 
 
+def test_kelompok_rentang_bulan_untuk_tampilan_ringkas():
+    bulan = [
+        {"ym": "2025-11", "label": "Nov-25", "jumlah_hari": 30},
+        {"ym": "2025-12", "label": "Des-25", "jumlah_hari": 31},
+        {"ym": "2026-01", "label": "Jan-26", "jumlah_hari": 31},
+        {"ym": "2026-03", "label": "Mar-26", "jumlah_hari": 31},
+    ]
+    kelompok = kelompok_rentang_bulan(bulan)
+    assert [(k["dari"], k["sampai"], k["jumlah_bulan"])
+            for k in kelompok] == [
+        ("2025-11", "2026-01", 3), ("2026-03", "2026-03", 1)]
+    assert kelompok_rentang_bulan([]) == []
+
+
 def test_daftar_hari_termasuk_tahun_kabisat():
     hari = daftar_hari(dt.date(2024, 2, 28), dt.date(2024, 3, 1))
     assert [h.isoformat() for h in hari] == [
         "2024-02-28", "2024-02-29", "2024-03-01"]
-    assert MAKS_HARI == 731
+    # Batas 731 hari dihapus; 1.766 hari wajib masuk, batas baru hanya
+    # pengaman tanggal ekstrem ±100 tahun.
+    assert MAKS_HARI == 366 * 100
+    assert MAKS_HARI > 1766
 
 
 def test_hitung_murni_tanpa_database():

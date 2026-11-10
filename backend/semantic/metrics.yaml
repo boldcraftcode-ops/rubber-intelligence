@@ -296,7 +296,12 @@ kartu:
       terpanjang adalah deretan berurutan tanpa terputus. Peringkat
       "paling sering masuk" diurutkan menurut jumlah hari ber-intake, lalu
       jumlah tiket, lalu kg kering. Hari tanpa tiket dari vendor mana pun
-      tetap dihitung kosong tetapi ditandai sebagai hari sepi pabrik.
+      tetap dihitung kosong tetapi ditandai sebagai hari sepi pabrik; hari
+      sebelum/sesudah rentang tiket ditandai "di luar rentang data".
+      Batas 731 hari dihapus: seluruh rentang data boleh dipilih, termasuk
+      1.766 hari. Periode panjang otomatis diminimalisir di layar menjadi
+      rentang tanggal berurutan dan rekap nomor tanggal per bulan; ekspor
+      Excel tetap memuat baris per tanggal lengkap.
   analisa_5w1h:
     judul: Analisa grafik (5W1H)
     cara_dihitung: >

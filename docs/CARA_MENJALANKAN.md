@@ -503,17 +503,27 @@ satu endpoint: `GET /api/kartu/konsistensi-intake-vendor`.
    persis — bukan hanya bulan). Tersedia juga pilihan cepat: tahun berjalan,
    bulan berjalan, 30 hari terakhir, dan Semester 1. Kosongkan kedua kotak bila
    ingin memakai seluruh rentang tiket yang ada; batasnya diisi otomatis dari
-   tanggal tiket paling awal/akhir. Rentang maksimal 731 hari.
+   tanggal tiket paling awal/akhir, atau tekan **pakai batas tiket**. **Seluruh
+   rentang data boleh dipilih** — termasuk rentang 1.766 hari yang sebelumnya
+   ditolak; batas 731 hari sudah dihapus. Hanya tanggal ekstrem (±100 tahun)
+   yang ditolak sebagai pengaman. Bila periode yang dipilih melebihi rentang
+   tiket, hari sebelum/sesudah data tetap dihitung kosong tetapi ditandai
+   **di luar rentang data**, bukan **pabrik sepi**.
 2. Tekan **↻ Refresh periode ini** di samping filter (kartu ini mengikuti pola
    kartu lain: data dimuat saat diminta, bukan otomatis).
 3. Baca strip angka kunci dan blok biru **Vendor paling sering masuk**, lalu
    tabel peringkat. **Klik baris vendor** untuk membuka rincian: rentang harian
    tanpa putus, rentang bulanan tanpa putus, daftar **hari kosong** (dengan nama
-   hari), daftar **bulan kosong**, dan **bulan lengkap**.
-4. Tekan **Ekspor Excel** di kanan atas kartu. File memuat **6 sheet**:
-   `Rekap vendor`, `Hari kosong`, `Bulan kosong`, `Bulan lengkap`,
-   `Hari sepi pabrik`, dan `Metode`. Daftar di layar dibatasi 31 hari / 24 bulan
-   per vendor; **Excel memuat seluruhnya tanpa potongan**.
+   hari), daftar **bulan kosong**, dan **bulan lengkap**. Pada periode panjang,
+   rincian **otomatis diminimalisir** menjadi rentang tanggal berurutan dan
+   tabel rekap nomor tanggal per bulan — tanggal pastinya tetap terbaca tanpa
+   harus menggulung ratusan chip.
+4. Tekan **Ekspor Excel** di kanan atas kartu. File memuat **7 sheet**:
+   `Rekap vendor`, `Hari kosong`, `Rentang hari kosong`, `Bulan kosong`,
+   `Bulan lengkap`, `Hari sepi pabrik`, dan `Metode`. Daftar di layar dibatasi
+   31 hari / 60 rentang / 24 bulan per vendor; **Excel memuat seluruhnya tanpa
+   potongan** (kecuali pengaman 1.000.000 baris per sheet untuk tanggal
+   ekstrem; sheet `Rentang hari kosong` tetap lengkap).
 
 **Aturan hitung yang dipakai (sesuai pilihan pemilik)**
 
@@ -532,6 +542,11 @@ satu endpoint: `GET /api/kartu/konsistensi-intake-vendor`.
   yang benar-benar berada di dalam rentang.
 - **Rentang harian/bulanan terpanjang** = deretan berurutan tanpa putus; ini
   yang menjawab "pada periode kapan vendor itu selalu masuk".
+- **Pemadatan otomatis** = bila periode >366 hari atau hari kosong >31, kartu
+  memakai mode ringkas. Deretan hari kosong berurutan ditulis sebagai satu
+  rentang `Dari → Sampai`, dan tiap bulan menampilkan nomor tanggal yang kosong
+  (mis. `01-03, 05, 07-09`). Hitungan cakupan/status tidak berubah; yang
+  dipadatkan hanya cara menampilkan. Batas 731 hari dihapus.
 - Vendor yang ada di **Master Vendor** tetapi tidak punya tiket sama sekali pada
   periode ini tidak masuk tabel; jumlahnya tetap dilaporkan di bawah tabel.
 - Sumber: `ticket_date` pada `tiket_baris`; kode vendor dibakukan
