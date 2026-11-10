@@ -33,6 +33,8 @@ from .core.ringkasan_vendor import (
     MAKS_BULAN, MAKS_HARI, hitung_ringkasan_vendor,
     label_bulan_pendek, ringkas_untuk_layar,
 )
+from .core.traceability import (normalisasi_kabupaten,
+                                normalisasi_teks_wilayah)
 from .core.kualitas import (
     data_terlambat,
     hari_pembelian_tanpa_sicom,
@@ -59,6 +61,8 @@ from .models import (
     ParameterPabrik,
     Pembelian,
     RawUnggahan,
+    ReferensiWilayahTrace,
+    KoreksiWilayahTrace,
     Sicom,
     TiketBaris,
     Vendor,
@@ -1214,6 +1218,144 @@ def _ke_tanggal_db(nilai) -> dt.date | None:
         return dt.date.fromisoformat(str(nilai)[:10])
     except Exception:
         return None
+
+
+# Wilayah kartu "Daftar intake terakhir" mengikuti hierarki SCDF tanpa
+# mengubah data tiket: ejaan resmi hanya dipakai bila kunci normalized cocok.
+CATATAN_WILAYAH_INTAKE_TERAKHIR = (
+    "Wilayah dipecah menjadi Provinsi, Kabupaten/Kota, Kecamatan, dan Desa. "
+    "Ejaan resmi SCDF dipakai bila kombinasi kabupaten/kecamatan/desa cocok "
+    "dengan traceability_wilayah atau koreksi terkontrol; bila tidak ada "
+    "padanan, nilai pada tiket ditampilkan apa adanya tanpa menebak Provinsi."
+)
+
+
+def _nama_vendor_baku(session: Session) -> dict[str, str]:
+    """Kode vendor UPPER/TRIM -> nama baku dari Master Vendor."""
+    hasil: dict[str, str] = {}
+    for v in session.scalars(select(Vendor)):
+        kode = (v.kode or "").strip().upper()
+        if kode:
+            hasil[kode] = (v.nama_baku or "").strip() or kode
+    return hasil
+
+
+def _opsi_intake_terakhir(session: Session) -> dict:
+    """Opsi filter vendor + batas tanggal untuk kartu intake terakhir.
+
+    Dropdown memuat **semua** Master Vendor (termasuk yang belum punya tiket)
+    ditambah kode yang ternyata hanya ada di `tiket_baris`. Daftar ini sengaja
+    tidak mengikuti filter periode supaya pilihan vendor tidak berubah-ubah
+    saat pengguna mengganti rentang tanggal.
+    """
+    nama_master = _nama_vendor_baku(session)
+    nama_tiket: dict[str, str | None] = {}
+    for kode, nama in session.execute(
+            select(TiketBaris.kode_vendor,
+                   func.min(TiketBaris.nama_vendor_asli)).where(
+                TiketBaris.tiket_nol == False,  # noqa: E712
+                TiketBaris.kode_vendor.is_not(None)).group_by(
+                TiketBaris.kode_vendor)):
+        k = (kode or "").strip().upper()
+        if not k:
+            continue
+        n = (nama or "").strip() or None
+        if k not in nama_tiket or (nama_tiket[k] is None and n):
+            nama_tiket[k] = n
+
+    pilihan = []
+    for kode in sorted(set(nama_master) | set(nama_tiket)):
+        if not kode:
+            continue
+        sumber = "master" if kode in nama_master else "tiket"
+        nama = nama_master.get(kode) or nama_tiket.get(kode) or kode
+        pilihan.append({
+            "kode": kode,
+            "label": f"{kode} — {nama}" if nama != kode else kode,
+            "sumber": sumber,
+        })
+
+    batas = session.execute(
+        select(func.min(TiketBaris.ticket_date),
+               func.max(TiketBaris.ticket_date)).where(
+            TiketBaris.tiket_nol == False,  # noqa: E712
+            TiketBaris.ticket_date.is_not(None))).one()
+    min_d, max_d = _ke_tanggal_db(batas[0]), _ke_tanggal_db(batas[1])
+    return {
+        "pilihan_vendor": pilihan,
+        "batas_data": {
+            "tersedia": bool(min_d and max_d),
+            "dari": min_d.isoformat() if min_d else None,
+            "sampai": max_d.isoformat() if max_d else None,
+        },
+    }
+
+
+def _kunci_wilayah_intake(baris: dict) -> tuple[str, str, str]:
+    """Kunci normalized kabupaten/kecamatan/desa untuk pencocokan SCDF."""
+    return (
+        baris["kabupaten_norm"] or normalisasi_kabupaten(baris["kabupaten"]),
+        baris["kecamatan_norm"] or normalisasi_teks_wilayah(baris["kecamatan"]),
+        baris["desa_norm"] or normalisasi_teks_wilayah(baris["desa"]),
+    )
+
+
+def _peta_wilayah_scdf(session: Session,
+                       kunci_diminta: set[tuple[str, str, str]]):
+    """Ambil padanan SCDF + koreksi terkontrol untuk kunci yang diperlukan.
+
+    Mengembalikan `(peta_langsung, peta_koreksi)`. Tidak ada penebakan
+    Provinsi: hanya baris referensi yang kuncinya benar-benar cocok dipakai.
+    """
+    if not kunci_diminta:
+        return {}, {}
+    kab_diminta = {k[0] for k in kunci_diminta}
+    ref_by_id: dict[int, ReferensiWilayahTrace] = {}
+    peta_koreksi: dict[tuple[str, str, str], int] = {}
+    for c in session.scalars(select(KoreksiWilayahTrace).where(
+            KoreksiWilayahTrace.source_kabupaten_norm.in_(kab_diminta))):
+        kunci = (c.source_kabupaten_norm or "",
+                 c.source_kecamatan_norm or "",
+                 c.source_desa_norm or "")
+        if kunci in kunci_diminta:
+            peta_koreksi[kunci] = c.target_ref_id
+    if peta_koreksi:
+        for ref in session.scalars(select(ReferensiWilayahTrace).where(
+                ReferensiWilayahTrace.id.in_(set(peta_koreksi.values())))):
+            ref_by_id[ref.id] = ref
+
+    peta_langsung: dict[tuple[str, str, str], ReferensiWilayahTrace] = {}
+    for ref in session.scalars(select(ReferensiWilayahTrace).where(
+            ReferensiWilayahTrace.kabupaten_norm.in_(kab_diminta))):
+        ref_by_id.setdefault(ref.id, ref)
+        kunci = (ref.kabupaten_norm, ref.kecamatan_norm, ref.desa_norm)
+        if kunci in kunci_diminta:
+            peta_langsung.setdefault(kunci, ref)
+    koreksi = {k: ref_by_id.get(id_ref)
+               for k, id_ref in peta_koreksi.items()}
+    return peta_langsung, koreksi
+
+
+def _wilayah_intake_tampil(baris: dict, peta_langsung, peta_koreksi) -> dict:
+    """Empat kolom wilayah; ejaan SCDF bila ada padanan pasti."""
+    kunci = (baris["kabupaten_norm"], baris["kecamatan_norm"],
+             baris["desa_norm"])
+    ref = peta_koreksi.get(kunci) or peta_langsung.get(kunci)
+    if ref is None:
+        return {
+            "provinsi": baris["provinsi"],
+            "kabupaten": baris["kabupaten"],
+            "kecamatan": baris["kecamatan"],
+            "desa": baris["desa"],
+            "sumber_wilayah": "intake",
+        }
+    return {
+        "provinsi": ref.provinsi or baris["provinsi"],
+        "kabupaten": ref.kabupaten or baris["kabupaten"],
+        "kecamatan": ref.kecamatan or baris["kecamatan"],
+        "desa": ref.desa or baris["desa"],
+        "sumber_wilayah": "SCDF",
+    }
 
 
 def _xlsx_ringkasan_vendor(hasil: dict) -> StreamingResponse:
@@ -3278,71 +3420,146 @@ def pasang_router(app, ambil_session):
         return hasil
 
     # ------------------------------------------------------------ kartu: daftar intake
+    @router.get("/kartu/intake-terakhir/opsi")
+    def opsi_intake_terakhir(session: Session = dep):
+        """Opsi filter vendor + batas tiket, bisa dimuat sebelum Refresh kartu."""
+        return _opsi_intake_terakhir(session)
+
     @router.get("/kartu/intake-terakhir")
     def kartu_intake_terakhir(limit: int = 20, format: str | None = None,
+                              dari: str | None = None,
+                              sampai: str | None = None,
+                              vendor: str | None = Query(default=None,
+                                                         max_length=120),
                               session: Session = dep):
-        """Daftar tiket intake terbaru — supaya pengguna tahu kapan intake
-        terakhir masuk dan apa isinya.
+        """Daftar tiket intake terbaru dengan filter records dan breakdown wilayah.
 
-        Satu baris = satu tiket (bukan satu baris tiket): beberapa baris
-        (line_seq) dengan nomor tiket yang sama digabung, karena satu tiket
-        adalah satu kendaraan yang datang.
+        Satu baris = satu tiket (bukan satu baris tiket): beberapa `line_seq`
+        dengan nomor tiket sama digabung, karena satu tiket adalah satu
+        kendaraan yang datang. `dari`/`sampai` memakai tanggal persis
+        `YYYY-MM-DD` (inklusif); `vendor` menyaring `kode_vendor` secara
+        exact. Ringkasan atas, tabel, jumlah total, dan Ekspor Excel sama-sama
+        mengikuti kedua filter. `limit` hanya memotong baris yang ditampilkan.
+
+        Wilayah tidak lagi digabung menjadi `Kabupaten, Provinsi`: tabel dan
+        Excel memuat **Provinsi, Kabupaten/Kota, Kecamatan, Desa** terpisah.
+        Ejaan resmi SCDF dipakai bila kunci normalized cocok dengan
+        `traceability_wilayah` atau koreksi terkontrol; tanpa padanan, nilai
+        tiket ditampilkan apa adanya. Tidak ada penebakan Provinsi dan data
+        intake mentah tidak diubah.
         """
         if limit < 1 or limit > 200:
             raise HTTPException(422, "`limit` harus antara 1 dan 200.")
+        d = _tanggal_iso(dari, "dari")
+        s = _tanggal_iso(sampai, "sampai")
+        if d and s and d > s:
+            raise HTTPException(422, f"Periode terbalik: 'dari' ({dari}) lebih "
+                                     f"akhir daripada 'sampai' ({sampai}).")
+        if d and s and (s - d).days + 1 > MAKS_HARI:
+            raise HTTPException(
+                422, f"Rentang {(s - d).days + 1} hari di luar jangkauan "
+                     f"tanggal yang wajar (batas keamanan {MAKS_HARI} hari, "
+                     "±100 tahun). Periksa kembali 'Dari/Sampai'.")
+
+        opsi = _opsi_intake_terakhir(session)
+        kode_diminta = (vendor or "").strip().upper() or None
+        if kode_diminta and kode_diminta not in {
+                p["kode"] for p in opsi["pilihan_vendor"]}:
+            raise HTTPException(
+                422, f"Kode vendor '{vendor}' tidak dikenal. Pilih kode dari "
+                     "Master Vendor atau kode yang benar-benar ada di tiket.")
+
+        kondisi = [TiketBaris.tiket_nol == False,  # noqa: E712
+                   TiketBaris.ticket_date.is_not(None)]
+        if d:
+            kondisi.append(TiketBaris.ticket_date >= d)
+        if s:
+            kondisi.append(TiketBaris.ticket_date <= s)
+        if kode_diminta:
+            kondisi.append(func.upper(func.trim(
+                TiketBaris.kode_vendor)) == kode_diminta)
+
+        mentah = session.execute(
+            select(TiketBaris.ticket_date, TiketBaris.ticket_no,
+                   TiketBaris.line_seq, TiketBaris.kode_vendor,
+                   TiketBaris.nama_vendor_asli, TiketBaris.item_code,
+                   TiketBaris.provinsi, TiketBaris.kabupaten,
+                   TiketBaris.kecamatan, TiketBaris.desa,
+                   TiketBaris.kabupaten_norm, TiketBaris.kecamatan_norm,
+                   TiketBaris.desa_norm, TiketBaris.wet_kg,
+                   TiketBaris.dry_kg, TiketBaris.reject_kg).where(
+                *kondisi).order_by(
+                TiketBaris.ticket_date.desc(),
+                TiketBaris.ticket_no.desc(),
+                TiketBaris.line_seq.asc())).mappings()
+
         tiket: dict[tuple, dict] = {}
-        for t in session.scalars(select(TiketBaris).where(
-                TiketBaris.tiket_nol == False).order_by(  # noqa: E712
-                TiketBaris.ticket_date.desc(), TiketBaris.ticket_no.desc())):
-            k = (t.ticket_date, t.ticket_no)
+        for r in mentah:
+            k = (r["ticket_date"], r["ticket_no"])
             v = tiket.get(k)
             if v is None:
+                tgl = _ke_tanggal_db(r["ticket_date"])
                 v = tiket[k] = {
-                    "tanggal": t.ticket_date.isoformat(),
-                    "ticket_no": t.ticket_no,
-                    "kode_vendor": t.kode_vendor,
-                    "nama_vendor": t.nama_vendor_asli,
+                    "tanggal": tgl.isoformat() if tgl else "",
+                    "ticket_no": r["ticket_no"],
+                    "kode_vendor": (r["kode_vendor"] or "").strip().upper(),
+                    "nama_vendor": r["nama_vendor_asli"],
                     "item_code": set(),
-                    "provinsi": t.provinsi, "kabupaten": t.kabupaten,
+                    "provinsi": r["provinsi"], "kabupaten": r["kabupaten"],
+                    "kecamatan": r["kecamatan"], "desa": r["desa"],
+                    "kabupaten_norm": (r["kabupaten_norm"] or
+                                       normalisasi_kabupaten(r["kabupaten"])),
+                    "kecamatan_norm": (r["kecamatan_norm"] or
+                                       normalisasi_teks_wilayah(r["kecamatan"])),
+                    "desa_norm": (r["desa_norm"] or
+                                  normalisasi_teks_wilayah(r["desa"])),
                     "wet_kg": Decimal(0), "dry_kg": Decimal(0),
                     "reject_kg": Decimal(0), "jumlah_baris": 0,
                 }
-            if t.item_code:
-                v["item_code"].add(t.item_code)
-            v["wet_kg"] += t.wet_kg or 0
-            v["dry_kg"] += t.dry_kg or 0
-            v["reject_kg"] += t.reject_kg or 0
+            if r["item_code"]:
+                v["item_code"].add(r["item_code"])
+            for kolom in ("wet_kg", "dry_kg", "reject_kg"):
+                v[kolom] += Decimal(str(r[kolom] or 0))
             v["jumlah_baris"] += 1
 
-        urut = sorted(tiket.values(),
-                      key=lambda v: (v["tanggal"], v["ticket_no"]), reverse=True)
-        nama_vendor: dict[str, str] = {}
-        kode_vendor = {v["kode_vendor"] for v in urut}
-        if kode_vendor:
-            for vd in session.scalars(select(Vendor).where(
-                    Vendor.kode.in_(kode_vendor))):
-                nama_vendor[vd.kode] = vd.nama_baku
+        kunci_diminta = {(v["kabupaten_norm"], v["kecamatan_norm"],
+                          v["desa_norm"]) for v in tiket.values()}
+        peta_langsung, peta_koreksi = _peta_wilayah_scdf(session,
+                                                         kunci_diminta)
+        wilayah = {k: _wilayah_intake_tampil(v, peta_langsung, peta_koreksi)
+                   for k, v in tiket.items()}
+        nama_vendor = _nama_vendor_baku(session)
 
-        semua = [{
-            "tanggal": v["tanggal"], "ticket_no": v["ticket_no"],
-            "kode_vendor": v["kode_vendor"],
-            "label_vendor": (f"{v['kode_vendor']} — {nama_vendor[v['kode_vendor']]}"
-                             if nama_vendor.get(v["kode_vendor"])
-                             else (v["nama_vendor"] or v["kode_vendor"])),
-            "grade": ", ".join(sorted(v["item_code"])) or None,
-            "wet_ton": round(float(v["wet_kg"]) / 1000, 3),
-            "dry_ton": round(float(v["dry_kg"]) / 1000, 3),
-            "reject_ton": round(float(v["reject_kg"]) / 1000, 3),
-            "jumlah_baris": v["jumlah_baris"],
-            "provinsi": v["provinsi"], "kabupaten": v["kabupaten"],
-        } for v in urut]
+        urut = sorted(tiket.items(),
+                      key=lambda kv: (kv[1]["tanggal"], kv[1]["ticket_no"]),
+                      reverse=True)
+        semua = []
+        for k, v in urut:
+            w = wilayah[k]
+            kode = v["kode_vendor"]
+            semua.append({
+                "tanggal": v["tanggal"], "ticket_no": v["ticket_no"],
+                "kode_vendor": kode,
+                "label_vendor": (f"{kode} — {nama_vendor[kode]}"
+                                 if nama_vendor.get(kode)
+                                 else (v["nama_vendor"] or kode)),
+                "grade": ", ".join(sorted(v["item_code"])) or None,
+                "wet_ton": round(float(v["wet_kg"]) / 1000, 3),
+                "dry_ton": round(float(v["dry_kg"]) / 1000, 3),
+                "reject_ton": round(float(v["reject_kg"]) / 1000, 3),
+                "jumlah_baris": v["jumlah_baris"],
+                "provinsi": w["provinsi"], "kabupaten": w["kabupaten"],
+                "kecamatan": w["kecamatan"], "desa": w["desa"],
+                "sumber_wilayah": w["sumber_wilayah"],
+            })
 
         terakhir = semua[0] if semua else None
         hari_ini = dt.date.today()
         ringkas = None
         if terakhir:
             tgl = dt.date.fromisoformat(terakhir["tanggal"])
-            tiket_hari_itu = [b for b in semua if b["tanggal"] == terakhir["tanggal"]]
+            tiket_hari_itu = [b for b in semua
+                              if b["tanggal"] == terakhir["tanggal"]]
             ringkas = {
                 "tanggal": terakhir["tanggal"],
                 "umur_hari": (hari_ini - tgl).days,
@@ -3350,8 +3567,14 @@ def pasang_router(app, ambil_session):
                 "label_vendor": terakhir["label_vendor"],
                 "grade": terakhir["grade"],
                 "dry_ton": terakhir["dry_ton"],
+                "provinsi": terakhir["provinsi"],
+                "kabupaten": terakhir["kabupaten"],
+                "kecamatan": terakhir["kecamatan"],
+                "desa": terakhir["desa"],
+                "sumber_wilayah": terakhir["sumber_wilayah"],
                 "jumlah_tiket_hari_itu": len(tiket_hari_itu),
-                "dry_ton_hari_itu": round(sum(b["dry_ton"] for b in tiket_hari_itu), 3),
+                "dry_ton_hari_itu": round(
+                    sum(b["dry_ton"] for b in tiket_hari_itu), 3),
             }
         baris = semua[:limit]
 
@@ -3359,14 +3582,21 @@ def pasang_router(app, ambil_session):
             return respon_xlsx(
                 "intake_terakhir.xlsx",
                 ["Tanggal", "No tiket", "Kode vendor", "Vendor", "Grade",
-                 "Wet ton", "Dry ton", "Reject ton", "Provinsi", "Kabupaten"],
-                [[b["tanggal"], b["ticket_no"], b["kode_vendor"], b["label_vendor"],
-                  b["grade"], b["wet_ton"], b["dry_ton"], b["reject_ton"],
-                  b["provinsi"], b["kabupaten"]] for b in baris])
+                 "Wet ton", "Dry ton", "Reject ton", "Provinsi",
+                 "Kabupaten/Kota", "Kecamatan", "Desa"],
+                [[b["tanggal"], b["ticket_no"], b["kode_vendor"],
+                  b["label_vendor"], b["grade"], b["wet_ton"], b["dry_ton"],
+                  b["reject_ton"], b["provinsi"], b["kabupaten"],
+                  b["kecamatan"], b["desa"]] for b in baris])
 
         return {"terakhir": ringkas, "baris": baris, "limit": limit,
                 "jumlah_tiket_total": len(semua),
-                "tanggal_pertama": semua[-1]["tanggal"] if semua else None}
+                "tanggal_pertama": semua[-1]["tanggal"] if semua else None,
+                "filter": {"dari": dari, "sampai": sampai,
+                           "vendor": kode_diminta, "limit": limit},
+                "pilihan_vendor": opsi["pilihan_vendor"],
+                "batas_data": opsi["batas_data"],
+                "catatan_wilayah": CATATAN_WILAYAH_INTAKE_TERAKHIR}
 
     # ------------------------------------------------------------ kartu: margin harian/bulanan
     @router.get("/kartu/margin-harian")

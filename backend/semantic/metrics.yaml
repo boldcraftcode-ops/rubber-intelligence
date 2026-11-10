@@ -289,6 +289,21 @@ kartu:
       Ekspor tidak memakai batas top maupun baris Lainnya: semua dimensi
       menjadi baris detail dan semua bulan terpilih menjadi kolom; pengaman
       1.200 bulan (100 tahun). Grafik di layar tetap dibatasi agar terbaca.
+  daftar_intake_terakhir:
+    judul: Daftar intake terakhir
+    cara_dihitung: >
+      Satu baris = satu Ticket No pada tiket_baris; beberapa line_seq dengan
+      nomor sama digabung dan tiket nol tidak dihitung, lalu diurutkan dari
+      tanggal terbaru. Ringkasan, tabel, jumlah tiket, dan Ekspor Excel
+      mengikuti filter rentang tanggal YYYY-MM-DD inklusif serta kode_vendor
+      exact; limit hanya memotong baris tampilan, bukan total tiket terfilter.
+      Wilayah dipecah menjadi Provinsi, Kabupaten/Kota, Kecamatan, dan Desa,
+      bukan lagi satu kolom gabungan. Ejaan resmi SCDF dipakai bila kombinasi
+      kabupaten/kecamatan/desa normalized cocok dengan traceability_wilayah
+      atau koreksi terkontrol; tanpa padanan, nilai tiket ditampilkan apa
+      adanya dan Provinsi tidak ditebak. Dropdown vendor memuat semua Master
+      Vendor ditambah kode yang hanya ada di tiket, dengan opsi Semua vendor.
+      Data intake mentah, referensi SCDF, dan kartu lain tidak diubah.
   konsistensi_intake_vendor:
     judul: Laporan Ringkasan Vendor (Trip)
     cara_dihitung: >

@@ -1348,16 +1348,87 @@ const selKepala = `${selIntake} whitespace-nowrap bg-[#F8F8F8] text-left text-[1
 
 export function KartuIntakeTerakhir() {
   const [limit, setLimit] = useState(20);
-  const url = `/api/kartu/intake-terakhir?limit=${limit}`;
+  const [dari, setDari] = useState("");
+  const [sampai, setSampai] = useState("");
+  const [vendor, setVendor] = useState("");
+
+  const params = new URLSearchParams();
+  params.set("limit", String(limit));
+  if (dari) params.set("dari", dari);
+  if (sampai) params.set("sampai", sampai);
+  if (vendor) params.set("vendor", vendor);
+  const url = `/api/kartu/intake-terakhir?${params.toString()}`;
+
+  const paramsJelaskan = new URLSearchParams();
+  if (dari) paramsJelaskan.set("dari", dari);
+  if (sampai) paramsJelaskan.set("sampai", sampai);
+  if (vendor) paramsJelaskan.set("vendor", vendor);
+  const qsJelaskan = paramsJelaskan.size ? `?${paramsJelaskan.toString()}` : "";
+
   const q = useQueryKartu({ queryKey: ["intake-terakhir", url], queryFn: () => ambilJson(url) });
+  const qOps = useQuery({
+    queryKey: ["intake-terakhir-opsi"],
+    queryFn: () => ambilJson("/api/kartu/intake-terakhir/opsi"),
+    staleTime: 300_000,
+  });
   const t = q.data?.terakhir;
+  const daftarVendor: any[] = qOps.data?.pilihan_vendor ?? q.data?.pilihan_vendor ?? [];
+  const batasData = qOps.data?.batas_data ?? q.data?.batas_data;
+  const labelPeriode = dari && sampai
+    ? `${fmtTanggal(dari)} s.d. ${fmtTanggal(sampai)}`
+    : dari ? `sejak ${fmtTanggal(dari)}`
+      : sampai ? `s.d. ${fmtTanggal(sampai)}` : "seluruh tiket";
 
   return (
-    <Kartu idMetrik="penerimaan" judul="Daftar intake terakhir"
-           urlEkspor={url}
-           keterangan={"Satu baris = satu tiket (satu kendaraan datang). Urut dari yang paling baru, supaya kelihatan kapan intake terakhir masuk."}
+    <Kartu idMetrik="daftar_intake_terakhir" judul="Daftar intake terakhir"
+           urlEkspor={url} qsJelaskan={qsJelaskan}
+           keterangan="Satu baris = satu tiket. Wilayah dipecah 4 kolom SCDF; filter vendor dan rentang tanggal ikut tabel, ringkasan, dan Ekspor Excel."
            anak={
       <>
+        <div className="mb-3 flex flex-wrap items-end gap-2 text-xs text-[#64676C]"
+             data-uji="filter-intake-terakhir">
+          <div>
+            <label className="mb-1 block font-semibold uppercase tracking-wide text-[#64676C]">
+              Periode records
+            </label>
+            <PilihRentangTanggal dari={dari} sampai={sampai}
+                                 setDari={setDari} setSampai={setSampai}
+                                 batasData={batasData}
+                                 aksi={<TombolRefreshKartu />} />
+          </div>
+          <label className="flex items-center gap-1.5">
+            Vendor
+            <select className={kelasInput + " max-w-64"} value={vendor}
+                    aria-label="Filter vendor"
+                    onChange={(e) => setVendor(e.target.value)}>
+              <option value="">Semua vendor</option>
+              {qOps.isLoading && <option value="" disabled>Memuat vendor…</option>}
+              {daftarVendor.map((p: any) => (
+                <option key={p.kode} value={p.kode} title={p.label}>{p.label}</option>
+              ))}
+              {vendor && !daftarVendor.some((p: any) => p.kode === vendor) &&
+                <option value={vendor}>{vendor}</option>}
+            </select>
+          </label>
+          <label className="flex items-center gap-1.5">
+            Tampilkan
+            <select className={kelasInput + " max-w-24"} value={limit}
+                    onChange={(e) => setLimit(Number(e.target.value))}>
+              {[10, 20, 50, 100].map((n) => <option key={n} value={n}>{n}</option>)}
+            </select>
+            tiket terakhir
+          </label>
+        </div>
+
+        {q.error && (
+          <p className="mb-2 text-xs text-[#B91C1C]">{pesanGalat(q.error)}</p>
+        )}
+        {qOps.isError && (
+          <p className="mb-2 text-xs text-[#B45309]">
+            Gagal memuat daftar vendor: {pesanGalat(qOps.error)}
+          </p>
+        )}
+
         {t ? (
           <div className="mb-3 overflow-hidden rounded-sm border border-[#E4E5E8]">
             <table className="w-full text-xs">
@@ -1390,6 +1461,36 @@ export function KartuIntakeTerakhir() {
                   <td className={`${selIntake} text-[#1D2434]`}>{t.grade ?? "–"}</td>
                 </tr>
                 <tr className="border-b border-[#EDEFF2]">
+                  <th scope="row" className={`${selIntake} whitespace-nowrap bg-[#F8F8F8] text-left font-medium text-[#64676C]`}>Provinsi</th>
+                  <td className={`${selIntake} text-[#1D2434]`}
+                      title={t.sumber_wilayah === "SCDF" ? "Ejaan resmi SCDF" : "Nilai tiket (belum ada padanan SCDF)"}>
+                    {t.provinsi ?? "–"}
+                    {t.sumber_wilayah === "SCDF" &&
+                      <span className="ml-2 rounded-sm bg-[#ECFDF5] px-1.5 py-0.5 text-[10px] font-semibold text-[#166534]">SCDF</span>}
+                  </td>
+                </tr>
+                <tr className="border-b border-[#EDEFF2]">
+                  <th scope="row" className={`${selIntake} whitespace-nowrap bg-[#F8F8F8] text-left font-medium text-[#64676C]`}>Kabupaten/Kota</th>
+                  <td className={`${selIntake} text-[#1D2434]`}
+                      title={t.sumber_wilayah === "SCDF" ? "Ejaan resmi SCDF" : "Nilai tiket (belum ada padanan SCDF)"}>
+                    {t.kabupaten ?? "–"}
+                  </td>
+                </tr>
+                <tr className="border-b border-[#EDEFF2]">
+                  <th scope="row" className={`${selIntake} whitespace-nowrap bg-[#F8F8F8] text-left font-medium text-[#64676C]`}>Kecamatan</th>
+                  <td className={`${selIntake} text-[#1D2434]`}
+                      title={t.sumber_wilayah === "SCDF" ? "Ejaan resmi SCDF" : "Nilai tiket (belum ada padanan SCDF)"}>
+                    {t.kecamatan ?? "–"}
+                  </td>
+                </tr>
+                <tr className="border-b border-[#EDEFF2]">
+                  <th scope="row" className={`${selIntake} whitespace-nowrap bg-[#F8F8F8] text-left font-medium text-[#64676C]`}>Desa</th>
+                  <td className={`${selIntake} text-[#1D2434]`}
+                      title={t.sumber_wilayah === "SCDF" ? "Ejaan resmi SCDF" : "Nilai tiket (belum ada padanan SCDF)"}>
+                    {t.desa ?? "–"}
+                  </td>
+                </tr>
+                <tr className="border-b border-[#EDEFF2]">
                   <th scope="row" className={`${selIntake} whitespace-nowrap bg-[#F8F8F8] text-left font-medium text-[#64676C]`}>Ton kering</th>
                   <td className={`${selIntake} font-mono tabular-nums text-[#1D2434]`}>{fmtAngka(t.dry_ton, 3)} t</td>
                 </tr>
@@ -1412,29 +1513,21 @@ export function KartuIntakeTerakhir() {
           </div>
         ) : (
           <p className="mb-3 text-sm text-[#64676C]">
-            Belum ada tiket intake sama sekali. Unggah ekspor “Master Data” di menu Unggah Data.
+            {q.data
+              ? "Belum ada tiket intake pada filter ini. Ubah vendor atau rentang tanggal, atau unggah ekspor “Master Data” di menu Unggah Data."
+              : "Tekan Refresh periode ini untuk memuat daftar tiket."}
           </p>
         )}
 
-        <div className="mb-2 flex flex-wrap items-center gap-2 text-xs text-[#64676C]">
-          <label className="flex items-center gap-1.5">
-            Tampilkan
-            <select className={kelasInput + " max-w-24"} value={limit}
-                    onChange={(e) => setLimit(Number(e.target.value))}>
-              {[10, 20, 50, 100].map((n) => <option key={n} value={n}>{n}</option>)}
-            </select>
-            tiket terakhir
-          </label>
-          {q.data && (
-            <span>
-              · {q.data.baris.length} dari {q.data.jumlah_tiket_total} tiket
-              {q.data.tanggal_pertama ? ` (data sejak ${fmtTanggal(q.data.tanggal_pertama)})` : ""}
-            </span>
-          )}
-        </div>
+        {q.data && (
+          <div className="mb-2 text-xs text-[#64676C]">
+            Periode records {labelPeriode} · {q.data.baris.length} dari {q.data.jumlah_tiket_total} tiket
+            {q.data.tanggal_pertama ? ` (data sejak ${fmtTanggal(q.data.tanggal_pertama)})` : ""}
+          </div>
+        )}
 
         <div className="max-h-96 overflow-auto rounded-sm border border-[#E4E5E8]">
-          <table className="w-full min-w-[1040px] text-xs">
+          <table className="w-full min-w-[1500px] text-xs" data-uji="tabel-intake-terakhir">
             <thead className="sticky top-0 z-10">
               <tr className="border-b border-[#E4E5E8]">
                 <th scope="col" className={selKepala}>Tanggal</th>
@@ -1444,12 +1537,17 @@ export function KartuIntakeTerakhir() {
                 <th scope="col" className={`${selKepala} text-right`}>Wet (t)</th>
                 <th scope="col" className={`${selKepala} text-right`}>Dry (t)</th>
                 <th scope="col" className={`${selKepala} text-right`}>Reject (t)</th>
-                <th scope="col" className={selKepala}>Wilayah</th>
+                <th scope="col" className={selKepala}>Provinsi</th>
+                <th scope="col" className={selKepala}>Kabupaten/Kota</th>
+                <th scope="col" className={selKepala}>Kecamatan</th>
+                <th scope="col" className={selKepala}>Desa</th>
               </tr>
             </thead>
             <tbody>
               {q.data?.baris.map((b: any) => {
-                const wilayah = [b.kabupaten, b.provinsi].filter(Boolean).join(", ") || "–";
+                const catatanWilayah = b.sumber_wilayah === "SCDF"
+                  ? "Ejaan resmi SCDF"
+                  : "Nilai tiket (belum ada padanan SCDF)";
                 return (
                   <tr key={`${b.tanggal}-${b.ticket_no}`}
                       className="border-b border-[#EDEFF2] even:bg-[#FAFAFA] hover:bg-[#FFFAEB]">
@@ -1460,17 +1558,20 @@ export function KartuIntakeTerakhir() {
                     <td className={`${selIntake} whitespace-nowrap text-right font-mono tabular-nums`}>{fmtAngka(b.wet_ton, 3)}</td>
                     <td className={`${selIntake} whitespace-nowrap text-right font-mono tabular-nums`}>{fmtAngka(b.dry_ton, 3)}</td>
                     <td className={`${selIntake} whitespace-nowrap text-right font-mono tabular-nums`}>{fmtAngka(b.reject_ton, 3)}</td>
-                    <td className={`${selIntake} whitespace-nowrap text-[#374151]`} title={wilayah}>{wilayah}</td>
+                    <td className={`${selIntake} whitespace-nowrap text-[#374151]`} title={catatanWilayah}>{b.provinsi ?? "–"}</td>
+                    <td className={`${selIntake} whitespace-nowrap text-[#374151]`} title={catatanWilayah}>{b.kabupaten ?? "–"}</td>
+                    <td className={`${selIntake} whitespace-nowrap text-[#374151]`} title={catatanWilayah}>{b.kecamatan ?? "–"}</td>
+                    <td className={`${selIntake} whitespace-nowrap text-[#374151]`} title={catatanWilayah}>{b.desa ?? "–"}</td>
                   </tr>
                 );
               })}
               {!q.data && (
-                <tr><td colSpan={8} className="px-3 py-6 text-center text-[#9AA0A6]">
-                  Memuat daftar tiket… Tekan Refresh di header kartu ini bila belum muncul.
+                <tr><td colSpan={11} className="px-3 py-6 text-center text-[#9AA0A6]">
+                  Memuat daftar tiket… Tekan Refresh periode ini bila belum muncul.
                 </td></tr>
               )}
               {q.data?.baris.length === 0 && (
-                <tr><td colSpan={8} className="px-3 py-6 text-center text-[#9AA0A6]">Belum ada tiket intake.</td></tr>
+                <tr><td colSpan={11} className="px-3 py-6 text-center text-[#9AA0A6]">Belum ada tiket intake pada filter ini.</td></tr>
               )}
             </tbody>
           </table>
@@ -2280,8 +2381,9 @@ export default function Analisis() {
       <KartuMuatSaatDiminta letakRefresh="filter" judul="Margin harian" keterangan="Memuat margin harian hanya setelah Anda meminta." anak={<KartuMarginHarian />} />
       <KartuMuatSaatDiminta letakRefresh="filter" judul="Margin per grade / vendor" keterangan="Memuat perincian margin hanya setelah Anda meminta." anak={<KartuMarginPer />} />
       <div className="lg:col-span-2"><KartuMuatSaatDiminta
+        letakRefresh="filter"
         judul="Daftar intake terakhir"
-        keterangan="Memuat daftar tiket terakhir hanya setelah Anda meminta."
+        keterangan="Memuat daftar tiket terakhir hanya setelah Anda meminta. Pilih vendor dan rentang tanggal, lalu tekan Refresh di sampingnya."
         anak={<KartuIntakeTerakhir />}
       /></div>
       <p className="lg:col-span-2 text-xs text-[#64676C]">

@@ -59,6 +59,7 @@ export function KartuDaftarVendor() {
     qc.invalidateQueries({ queryKey: ["penerimaan"] });
     qc.invalidateQueries({ queryKey: ["tonase"] });
     qc.invalidateQueries({ queryKey: ["intake-terakhir"] });
+    qc.invalidateQueries({ queryKey: ["intake-terakhir-opsi"] });
   };
 
   const simpan = useMutation({

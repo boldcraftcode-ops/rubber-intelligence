@@ -32,21 +32,22 @@ def test_kartu_menyediakan_slot_refresh_di_baris_periode():
 
 
 def test_intake_analisis_refresh_di_samping_periode():
-    """9 kartu berperiode memindahkan Refresh; kartu tanpa periode tetap header."""
+    """10 kartu berperiode memindahkan Refresh; semua kontrol ikut filter."""
     analisis = _teks("frontend/src/pages/Analisis.tsx")
 
-    assert analisis.count('letakRefresh="filter"') == 9
+    assert analisis.count('letakRefresh="filter"') == 10
     # 3 PilihPeriode (tahun) + 3 PilihRentangBulan (Dari/Sampai bulan)
-    # + 1 PilihRentangTanggal (kartu konsistensi intake vendor).
-    assert analisis.count("aksi={<TombolRefreshKartu />}") == 7
+    # + 2 PilihRentangTanggal (konsistensi intake vendor & daftar intake
+    #   terakhir yang kini punya filter records).
+    assert analisis.count("aksi={<TombolRefreshKartu />}") == 8
     # Pilihan tahun+bulan pada Margin harian tidak memakai komponen pemilih bersama.
     assert "</select>\n          <TombolRefreshKartu />" in analisis
     assert "TombolRefreshKartu,\n} from \"../bersama\"" in analisis
 
-    # "Daftar intake terakhir" tidak mempunyai textbox periode, jadi Refresh
-    # miliknya tetap berada di header kartu.
-    awal = analisis.index('judul="Daftar intake terakhir"')
-    assert 'letakRefresh="filter"' not in analisis[awal - 120:awal + 120]
+    # "Daftar intake terakhir" sekarang punya Periode records + filter vendor,
+    # jadi Refresh miliknya ikut berada di baris filter.
+    awal = analisis.rindex('judul="Daftar intake terakhir"')
+    assert 'letakRefresh="filter"' in analisis[awal - 200:awal + 200]
 
 
 def test_margin_performance_refresh_di_samping_periode():

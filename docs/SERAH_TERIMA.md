@@ -302,14 +302,28 @@ pertanyaan *"kapan intake terakhir masuk?"* tanpa perlu membuka Excel:
 
 | Bagian | Isi |
 |---|---|
-| Ringkasan atas | tanggal intake terakhir + penanda umur (*hari ini / kemarin / N hari lalu*, merah bila > 7 hari), nomor tiket, vendor, grade, ton kering, dan berapa tiket masuk hari itu |
-| Tabel | 10/20/50/100 tiket terbaru: tanggal, no tiket, vendor, grade, wet ton, dry ton, reject ton, kabupaten–provinsi |
-| Penutup | *"N dari M tiket (data sejak …)"* supaya jelas daftar ini terpotong atau tidak |
+| Ringkasan atas | tanggal intake terakhir + penanda umur (*hari ini / kemarin / N hari lalu*, merah bila > 7 hari), nomor tiket, vendor, grade, **Provinsi / Kabupaten-Kota / Kecamatan / Desa**, ton kering, dan berapa tiket masuk hari itu |
+| Filter | **Periode records** `Dari/Sampai` tanggal persis `YYYY-MM-DD` + pilihan cepat (30 hari, bulan berjalan, tahun berjalan, seluruh data, pakai batas tiket), **Vendor** (Semua vendor + seluruh Master Vendor + kode khusus tiket), dan `Tampilkan` 10/20/50/100 tiket |
+| Tabel | 10/20/50/100 tiket terbaru: tanggal, no tiket, vendor, grade, wet ton, dry ton, reject ton, **Provinsi, Kabupaten/Kota, Kecamatan, Desa** |
+| Penutup | *"Periode records … · N dari M tiket (data sejak …)"* supaya jelas filter dan pemotongan baris |
 
 Satu baris tabel = **satu tiket** (satu kendaraan datang). Tiket dengan beberapa
 baris `line_seq` (beberapa grade dalam satu kendaraan) digabung: ton dijumlahkan,
 grade digabung dengan koma. **Tiket nol tidak ikut** daftar, sama seperti kartu
-Penerimaan. Endpoint: `GET /api/kartu/intake-terakhir?limit=20` (juga `&format=xlsx`).
+Penerimaan. Endpoint: `GET /api/kartu/intake-terakhir?limit=20` dengan `dari`,
+`sampai`, `vendor`, dan `&format=xlsx`; opsi dropdown tersedia di
+`GET /api/kartu/intake-terakhir/opsi` supaya bisa dimuat sebelum tombol Refresh.
+
+**Breakdown wilayah mengikuti SCDF (sejak 05/11/2026).** Kolom gabungan
+`Kabupaten, Provinsi` dihapus; empat kolom terpisah memakai ejaan resmi
+`traceability_wilayah` bila kunci `kabupaten_norm/kecamatan_norm/desa_norm`
+cocok, termasuk lewat `traceability_wilayah_koreksi`. Bila tidak ada padanan
+pasti, nilai pada tiket ditampilkan apa adanya — Provinsi **tidak ditebak**.
+Filter tanggal dan `kode_vendor` diterapkan di SQL sebelum agregasi tiket,
+sehingga ringkasan atas, tabel, `jumlah_tiket_total`, dan Ekspor Excel selalu
+memakai records yang sama. Dropdown vendor sengaja tidak ikut berubah saat
+periode diganti. Tidak ada tabel/dependensi baru dan data intake mentah tidak
+diubah.
 
 **Kartu KPI Reject %** kini dibatasi **12 bulan terakhir yang berdata**, bukan
 seluruh riwayat 2020–2026:
@@ -1352,6 +1366,9 @@ menjawab.
 
 
 | 2026-11-05 | **Label Pabrik sepi diganti menjadi pabrik tutup** pada kartu Konsistensi intake harian vendor: badge harian, label rentang kategori, catatan metode JSON, catatan sheet `Vendor Harian`, metrik 5W1H, dan dokumentasi memakai istilah **pabrik tutup**. Kunci internal `sepi_pabrik` sengaja dipertahankan agar kontrak JSON tidak berubah; entri changelog lama tetap memakai istilah historis | pemilik menulis "Pabrik Sepi diganti dengan pabrik tutup". Perubahan murni penyebutan; logika 0 Trip, penanda **Di luar data**, semua hari kalender, dan ekspor Excel 3 sheet + 3 chart tidak berubah |
+
+
+| 2026-11-05 | **Daftar intake terakhir dibreakdown wilayahnya dan diberi filter records**: kolom gabungan `Kabupaten, Provinsi` diganti **Provinsi / Kabupaten-Kota / Kecamatan / Desa** pada ringkasan, tabel, dan Ekspor Excel. Ejaan resmi SCDF dipakai bila kunci normalized cocok dengan `traceability_wilayah` atau koreksi terkontrol; tanpa padanan nilai tiket ditampilkan apa adanya tanpa menebak Provinsi. Endpoint `GET /api/kartu/intake-terakhir` menerima `dari`/`sampai` `YYYY-MM-DD` inklusif dan `vendor` exact; `GET /api/kartu/intake-terakhir/opsi` menyediakan dropdown semua Master Vendor + kode khusus tiket serta batas tanggal sebelum Refresh. Health menambah `kartu-intake-terakhir-wilayah-vendor-periode`, metrik `daftar_intake_terakhir`, dan tombol Refresh pindah ke baris filter | pemilik menanyakan "kenapa wilayah tidak di breakdown seperti di scdf, lalu sediakan juga filter per vendor, dan periode records". Lewat `ask_user` dipilih: **4 kolom terpisah** (bukan hierarki/klik dan bukan hanya nilai resmi SCDF), **semua vendor + Semua**, serta **Dari/Sampai tanggal persis** + pilihan cepat. Filter diterapkan sebelum agregasi sehingga ringkasan, tabel, total, dan XLSX konsisten; tidak ada tabel/dependensi baru dan data mentah tidak diubah |
 
 
 ---

@@ -559,6 +559,55 @@ Kartu ini tidak mengubah kartu lain. Tombol **Jelaskan ke saya** memakai entri
 `konsistensi_intake_vendor` di `backend/semantic/metrics.yaml`; health menambah
 fitur `kartu-konsistensi-intake-vendor` dan `kartu-ringkasan-vendor-trip`.
 
+## 3p. Daftar intake terakhir — breakdown wilayah SCDF & filter records
+
+Kartu **Daftar intake terakhir** (paling bawah halaman Intake Analisis) kini
+menjawab tiga hal sekaligus: kapan tiket terakhir masuk, dari wilayah mana
+secara rinci, dan records mana saja yang sedang dilihat.
+
+**Cara pakai**
+
+1. Pada baris **Periode records**, isi **Dari tanggal** / **Sampai tanggal**
+   dengan format `YYYY-MM-DD` (inklusif). Pilihan cepat: **30 hari terakhir**,
+   **Bulan berjalan s.d. hari ini**, **Tahun berjalan s.d. hari ini**,
+   **Seluruh rentang tiket**, dan **pakai batas tiket**. Kosongkan kedua kotak
+   untuk memakai seluruh data.
+2. Pada **Vendor**, pilih **Semua vendor**, salah satu **Master Vendor**, atau
+   kode yang ternyata hanya ada di tiket. Daftar dropdown dimuat lebih dulu lewat
+   `GET /api/kartu/intake-terakhir/opsi`, jadi tetap tersedia walau kartu belum
+   di-Refresh. Kode disaring **exact** (`kode_vendor`), bukan nama bebas.
+3. Tentukan **Tampilkan** 10/20/50/100 tiket terakhir, lalu tekan
+   **↻ Refresh periode ini** di samping filter. Bila Master Vendor diubah,
+   dropdown otomatis diperbarui.
+4. Baca ringkasan atas: tanggal, no tiket, vendor, grade, lalu **Provinsi**,
+   **Kabupaten/Kota**, **Kecamatan**, **Desa**, ton kering, dan total sehari itu.
+   Badge **SCDF** muncul bila ejaan wilayah berhasil dicocokkan.
+5. Tabel dan **Ekspor Excel** memakai 4 kolom wilayah yang sama. Ekspor
+   mengikuti `dari`, `sampai`, `vendor`, dan `limit` yang sedang aktif; file
+   tetap bernama `intake_terakhir.xlsx`.
+
+**Aturan wilayah**
+
+- Sumber tetap `tiket_baris`: `provinsi`, `kabupaten`, `kecamatan`, `desa`.
+  Kolom gabungan `Kabupaten, Provinsi` sudah dihapus.
+- Bila kombinasi `kabupaten_norm / kecamatan_norm / desa_norm` cocok dengan
+  `traceability_wilayah`, atau dengan target `traceability_wilayah_koreksi`,
+  ejaan resmi SCDF dipakai untuk keempat kolom.
+- Bila tidak ada padanan pasti, nilai tiket ditampilkan apa adanya. Provinsi
+  **tidak ditebak** dari nama kabupaten, sesuai aturan crosswalk SCDF.
+- `GET /api/kartu/intake-terakhir` menerima `limit`, `dari`, `sampai`, `vendor`,
+  dan `format=xlsx`; `dari > sampai`, format tanggal salah, `limit` di luar
+  1–200, rentang ekstrem ±100 tahun, atau kode vendor yang tidak dikenal
+  dibalas `422`.
+- Filter diterapkan **sebelum** penggabungan `line_seq`, sehingga ringkasan,
+  `jumlah_tiket_total`, `tanggal_pertama`, tabel, dan XLSX tidak pernah
+  bercampur dengan records di luar filter.
+
+Tombol **Jelaskan ke saya** memakai entri `daftar_intake_terakhir` di
+`backend/semantic/metrics.yaml`; health menambah fitur
+`kartu-intake-terakhir-wilayah-vendor-periode`. Tidak ada tabel database baru,
+tidak ada dependensi baru, dan data intake mentah tidak diubah.
+
 ## 4. Mengimpor data (tiket, stok, pembelian, dll.)
 
 Selain lewat tab **Unggah Data**, impor bisa dijalankan dari terminal

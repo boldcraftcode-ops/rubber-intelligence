@@ -331,7 +331,7 @@ export const KUNCI_CACHE_PREVIEW_KARTU = new Set([
   "doc-strip", "bridge-strip", "alarm-strip", "kualitas-strip", "rekomendasi-strip",
   "tren-penerimaan", "komposisi-penerimaan", "penerimaan", "penerimaan-vendor",
   "penerimaan-provinsi", "tonase", "konsentrasi", "grade", "intake-terakhir",
-  "reject", "margin-harian", "margin-per", "peta-intake-provinsi",
+  "intake-terakhir-opsi", "reject", "margin-harian", "margin-per", "peta-intake-provinsi",
   "peta-potensi-karet", "peta-batas-provinsi-indonesia",
 ]);
 

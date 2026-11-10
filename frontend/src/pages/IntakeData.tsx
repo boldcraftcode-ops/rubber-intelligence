@@ -822,7 +822,7 @@ export default function IntakeData() {
   const invalidasiDataTurunan = () => Promise.all([
     "intake-baris", "penerimaan", "penerimaan-provinsi", "penerimaan-vendor",
     "peta-intake-provinsi", "tonase", "konsentrasi", "grade", "intake-terakhir",
-    "reject", "margin-harian", "margin-per", "margin-bulanan-grafik", "grafik-margin",
+    "intake-terakhir-opsi", "reject", "margin-harian", "margin-per", "margin-bulanan-grafik", "grafik-margin",
     "ringkasan", "ringkasan-elemen", "margin-bridge", "days-of-cover", "doc-strip",
     "bridge-strip", "alarm-strip", "kualitas-strip", "rekomendasi-strip",
     "traceability", "traceability-actors", "traceability-actor-detail",
