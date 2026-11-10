@@ -32,12 +32,13 @@ def test_kartu_menyediakan_slot_refresh_di_baris_periode():
 
 
 def test_intake_analisis_refresh_di_samping_periode():
-    """8 kartu berperiode memindahkan Refresh; kartu tanpa periode tetap header."""
+    """9 kartu berperiode memindahkan Refresh; kartu tanpa periode tetap header."""
     analisis = _teks("frontend/src/pages/Analisis.tsx")
 
-    assert analisis.count('letakRefresh="filter"') == 8
-    # 3 PilihPeriode (tahun) + 3 PilihRentangBulan (Dari/Sampai bulan).
-    assert analisis.count("aksi={<TombolRefreshKartu />}") == 6
+    assert analisis.count('letakRefresh="filter"') == 9
+    # 3 PilihPeriode (tahun) + 3 PilihRentangBulan (Dari/Sampai bulan)
+    # + 1 PilihRentangTanggal (kartu konsistensi intake vendor).
+    assert analisis.count("aksi={<TombolRefreshKartu />}") == 7
     # Pilihan tahun+bulan pada Margin harian tidak memakai komponen pemilih bersama.
     assert "</select>\n          <TombolRefreshKartu />" in analisis
     assert "TombolRefreshKartu,\n} from \"../bersama\"" in analisis

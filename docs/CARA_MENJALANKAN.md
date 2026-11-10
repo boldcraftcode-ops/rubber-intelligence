@@ -490,6 +490,57 @@ Kabupaten/Kota. Ketujuh kunci itu sengaja dibiarkan `provinsi_norm = NULL`;
 dropdown tetap menampilkannya tanpa menebak Provinsi, tetapi koreksi Provinsi
 pada baris itu ditolak sampai ada pemetaan resmi yang lebih spesifik.
 
+## 3o. Konsistensi intake harian/bulanan vendor (sejak 05/11/2026)
+
+Kartu **Konsistensi intake harian vendor** di **Intake Analisis** menjawab:
+vendor mana yang masuk setiap hari dan setiap bulan pada rentang yang dipilih,
+hari/bulan apa saja yang kosong, dan siapa yang paling sering masuk. Satu kartu,
+satu endpoint: `GET /api/kartu/konsistensi-intake-vendor`.
+
+**Cara pakai**
+
+1. Pilih **Dari tanggal** dan **Sampai tanggal** (format `YYYY-MM-DD`, tanggal
+   persis — bukan hanya bulan). Tersedia juga pilihan cepat: tahun berjalan,
+   bulan berjalan, 30 hari terakhir, dan Semester 1. Kosongkan kedua kotak bila
+   ingin memakai seluruh rentang tiket yang ada; batasnya diisi otomatis dari
+   tanggal tiket paling awal/akhir. Rentang maksimal 731 hari.
+2. Tekan **↻ Refresh periode ini** di samping filter (kartu ini mengikuti pola
+   kartu lain: data dimuat saat diminta, bukan otomatis).
+3. Baca strip angka kunci dan blok biru **Vendor paling sering masuk**, lalu
+   tabel peringkat. **Klik baris vendor** untuk membuka rincian: rentang harian
+   tanpa putus, rentang bulanan tanpa putus, daftar **hari kosong** (dengan nama
+   hari), daftar **bulan kosong**, dan **bulan lengkap**.
+4. Tekan **Ekspor Excel** di kanan atas kartu. File memuat **6 sheet**:
+   `Rekap vendor`, `Hari kosong`, `Bulan kosong`, `Bulan lengkap`,
+   `Hari sepi pabrik`, dan `Metode`. Daftar di layar dibatasi 31 hari / 24 bulan
+   per vendor; **Excel memuat seluruhnya tanpa potongan**.
+
+**Aturan hitung yang dipakai (sesuai pilihan pemilik)**
+
+- **Semua hari kalender** dalam rentang dihitung wajib ada intake, termasuk
+  Sabtu, Minggu, dan hari libur. Jadi hari tanpa tiket vendor itu tercatat
+  kosong. Tanggal yang sepi untuk *semua* vendor tetap ditandai **pabrik sepi**
+  (warna merah pada rincian, sheet tersendiri di Excel), bukan dihapus.
+- **Satu hari = satu tanggal unik**. Beberapa tiket di tanggal yang sama tetap
+  dihitung satu kali. `tiket_nol` (Wet = 0) tidak dihitung.
+- **Peringkat "paling sering masuk"** diurutkan menurut jumlah hari ber-intake;
+  bila seri, dipecah oleh jumlah tiket lalu kg kering. Semua vendor yang seri
+  mendapat badge **paling sering**.
+- **Bulan kosong** = bulan dalam rentang tanpa satu pun tiket vendor itu.
+  **Bulan lengkap** = semua hari kalender bulan itu yang masuk rentang memiliki
+  tiket. Untuk bulan yang terpotong di tepi rentang, yang dihitung hanya hari
+  yang benar-benar berada di dalam rentang.
+- **Rentang harian/bulanan terpanjang** = deretan berurutan tanpa putus; ini
+  yang menjawab "pada periode kapan vendor itu selalu masuk".
+- Vendor yang ada di **Master Vendor** tetapi tidak punya tiket sama sekali pada
+  periode ini tidak masuk tabel; jumlahnya tetap dilaporkan di bawah tabel.
+- Sumber: `ticket_date` pada `tiket_baris`; kode vendor dibakukan
+  UPPER/TRIM. Tidak ada tabel database baru dan tidak ada data yang diubah.
+
+Kartu ini tidak mengubah kartu lain. Tombol **Jelaskan ke saya** memakai entri
+`konsistensi_intake_vendor` di `backend/semantic/metrics.yaml`, dan health
+menambah fitur `kartu-konsistensi-intake-vendor`.
+
 ## 4. Mengimpor data (tiket, stok, pembelian, dll.)
 
 Selain lewat tab **Unggah Data**, impor bisa dijalankan dari terminal

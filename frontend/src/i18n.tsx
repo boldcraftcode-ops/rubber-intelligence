@@ -247,6 +247,7 @@ const KAMUS: Record<string, string> = {
   // ---- kartu umum
   "Cara dihitung": "How it's calculated",
   "Ekspor Excel": "Export to Excel",
+  "Konsistensi intake harian vendor": "Vendor daily intake consistency",
   "Tutup": "Close",
   // ---- halaman depan: angka kunci & perlu perhatian
   "Perubahan vs": "Change vs",

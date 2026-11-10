@@ -277,6 +277,7 @@ def buat_app(engine: Engine | None = None) -> FastAPI:
                     "scdf-provinsi-crosswalk",
                     "intake-quick-fill",
                     "intake-excel-diff",
+                    "kartu-konsistensi-intake-vendor",
                 ],
                 # versi kode ikut dilaporkan supaya mudah membandingkan
                 # folder yang dijalankan dengan kode terbaru di repo

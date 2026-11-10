@@ -283,6 +283,20 @@ kartu:
       Dipisah dua tumpukan - grade biasa dan grade EUDR (grade ber-flag EUDR
       atau kode mengandung TTSR). Filter "Hanya EUDR" menampilkan vendor/
       wilayah yang memasok karet EUDR saja. Tanggal memakai Ticket Date.
+  konsistensi_intake_vendor:
+    judul: Konsistensi intake harian/bulanan vendor
+    cara_dihitung: >
+      Untuk setiap vendor dihitung jumlah tanggal unik dengan tiket intake
+      (Ticket Date, tiket nol tidak dihitung) pada rentang tanggal persis yang
+      dipilih. Dasar penilaian adalah SEMUA HARI KALENDER: tiap tanggal dalam
+      rentang wajib ada intake, termasuk Sabtu/Minggu/libur. Hari tanpa tiket
+      vendor itu dicatat sebagai hari kosong; bulan tanpa satu pun tiket
+      dicatat sebagai bulan kosong. Bulan lengkap berarti semua hari kalender
+      bulan itu yang masuk rentang memiliki tiket. Rentang harian/bulanan
+      terpanjang adalah deretan berurutan tanpa terputus. Peringkat
+      "paling sering masuk" diurutkan menurut jumlah hari ber-intake, lalu
+      jumlah tiket, lalu kg kering. Hari tanpa tiket dari vendor mana pun
+      tetap dihitung kosong tetapi ditandai sebagai hari sepi pabrik.
   analisa_5w1h:
     judul: Analisa grafik (5W1H)
     cara_dihitung: >

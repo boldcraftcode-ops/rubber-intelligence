@@ -16,6 +16,8 @@ import openpyxl
 import yaml
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
+from openpyxl.styles import Font, PatternFill
+from openpyxl.utils import get_column_letter
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -23,6 +25,7 @@ from sqlalchemy.orm import Session
 from .auth_lokal import info_pengguna, wajib_admin
 from .core import rumus
 from .core.alarm import catat_audit, evaluasi_alarm
+from .core.konsistensi_intake import MAKS_HARI, hitung_konsistensi
 from .core.kualitas import (
     data_terlambat,
     hari_pembelian_tanpa_sicom,
@@ -123,6 +126,40 @@ def respon_xlsx(nama_file: str, judul: list[str], baris: list[list]) -> Streamin
     ws.append(judul)
     for b in baris:
         ws.append(b)
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return StreamingResponse(
+        buf,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{nama_file}"'})
+
+
+def respon_xlsx_banyak(nama_file: str,
+                       sheets: list[tuple[str, list[str], list[list]]]) -> StreamingResponse:
+    """Ekspor beberapa sheet: dipakai kartu konsistensi intake vendor.
+
+    Header dibuat tebal + biru muda, baris pertama dibekukan, dan lebar kolom
+    mengikuti isi (dibatasi 48 karakter) supaya langsung bisa dibaca di Excel.
+    """
+    wb = openpyxl.Workbook()
+    wb.remove(wb.active)
+    tebal = Font(bold=True)
+    biru = PatternFill("solid", fgColor="D7E7FF")
+    for nama, judul, baris in sheets:
+        ws = wb.create_sheet(nama[:31])
+        ws.append(judul)
+        for sel in ws[1]:
+            sel.font, sel.fill = tebal, biru
+        for b in baris:
+            ws.append(b)
+        ws.freeze_panes = "A2"
+        for i, _ in enumerate(judul, start=1):
+            terpanjang = len(str(judul[i - 1] or ""))
+            for b in baris[:200]:
+                if i - 1 < len(b):
+                    terpanjang = max(terpanjang, len(str(b[i - 1] or "")))
+            ws.column_dimensions[get_column_letter(i)].width = min(48, terpanjang + 2)
     buf = io.BytesIO()
     wb.save(buf)
     buf.seek(0)
@@ -865,6 +902,130 @@ def _tanggal_teks(teks: str | None, nama: str, akhir_bulan: bool = False):
     except Exception:
         raise HTTPException(422, f"Parameter '{nama}' harus format YYYY-MM atau "
                                  f"YYYY-MM-DD, bukan '{teks}'.")
+
+
+def _tanggal_iso(teks: str | None, nama: str) -> dt.date | None:
+    """Parse 'YYYY-MM-DD' (filter tanggal persis kartu konsistensi vendor)."""
+    if not teks:
+        return None
+    try:
+        return dt.date.fromisoformat(teks)
+    except Exception:
+        raise HTTPException(422, f"Parameter '{nama}' harus format YYYY-MM-DD "
+                                 f"(contoh: 2026-01-05), bukan '{teks}'.")
+
+
+def _ringkas_konsistensi(hasil: dict, maks_hari: int = 31,
+                         maks_bulan: int = 24) -> dict:
+    """Pangkas daftar panjang untuk JSON layar; Excel tetap memakai versi penuh."""
+    d = dict(hasil)
+    terpotong = False
+    baris: list[dict] = []
+    for b in hasil["baris"]:
+        nb = dict(b)
+        nb["hari_kosong"] = b["hari_kosong"][:maks_hari]
+        nb["hari_kosong_terpotong"] = len(b["hari_kosong"]) > maks_hari
+        nb["bulan_kosong"] = b["bulan_kosong"][:maks_bulan]
+        nb["bulan_kosong_terpotong"] = len(b["bulan_kosong"]) > maks_bulan
+        nb["bulan_lengkap"] = b["bulan_lengkap"][:maks_bulan]
+        nb["bulan_lengkap_terpotong"] = len(b["bulan_lengkap"]) > maks_bulan
+        terpotong = terpotong or nb["hari_kosong_terpotong"] or \
+            nb["bulan_kosong_terpotong"]
+        baris.append(nb)
+    d["baris"] = baris
+    if hasil["paling_sering"] is not None:
+        d["paling_sering"] = dict(baris[0])
+    d["hari_sepi_pabrik"] = hasil["hari_sepi_pabrik"][:maks_hari]
+    d["hari_sepi_pabrik_terpotong"] = len(hasil["hari_sepi_pabrik"]) > maks_hari
+    d["peringatan"] = list(hasil["peringatan"])
+    if terpotong or d["hari_sepi_pabrik_terpotong"]:
+        d["peringatan"].append(
+            f"Daftar hari/bulan kosong di layar dibatasi {maks_hari} hari dan "
+            f"{maks_bulan} bulan per vendor. Ekspor Excel memuat seluruh "
+            "rincian tanpa potongan.")
+    return d
+
+
+def _xlsx_konsistensi(hasil: dict) -> StreamingResponse:
+    """Excel 6 sheet: rekap, hari kosong, bulan kosong, bulan lengkap,
+    hari sepi pabrik, dan metode. Rincian hari kosong TIDAK dipotong."""
+    p, m, r = hasil["periode"], hasil["catatan_metode"], hasil["ringkasan"]
+    judul_rekap = [
+        "Peringkat", "Kode vendor", "Nama vendor", "Hari masuk", "Hari wajib",
+        "Cakupan hari %", "Status harian", "Bulan masuk", "Bulan wajib",
+        "Cakupan bulan %", "Status bulanan", "Rentang harian terpanjang",
+        "Lama rentang (hari)", "Rentang bulanan terpanjang",
+        "Lama rentang (bulan)", "Jumlah tiket", "Total kg",
+        "Jumlah hari kosong", "Jumlah bulan kosong", "Paling sering",
+    ]
+    rekap: list[list] = []
+    hari_kosong: list[list] = []
+    bulan_kosong: list[list] = []
+    bulan_lengkap: list[list] = []
+    for b in hasil["baris"]:
+        rh = b["rentang_harian_terpanjang"]
+        rb = b["rentang_bulanan_terpanjang"]
+        rekap.append([
+            b["peringkat"], b["kode"], b["nama"],
+            b["jumlah_hari_masuk"], b["jumlah_hari_wajib"],
+            b["cakupan_hari_pct"], b["status_harian"],
+            b["jumlah_bulan_masuk"], b["jumlah_bulan_wajib"],
+            b["cakupan_bulan_pct"], b["status_bulanan"],
+            f"{rh['dari']} s.d. {rh['sampai']}" if rh["dari"] else "–",
+            rh["jumlah_hari"],
+            f"{rb['dari']} s.d. {rb['sampai']}" if rb["dari"] else "–",
+            rb["jumlah_bulan"],
+            b["jumlah_tiket"], b["total_kg"],
+            b["jumlah_hari_kosong"], b["jumlah_bulan_kosong"],
+            "YA" if b["paling_sering"] else "",
+        ])
+        for h in b["hari_kosong"]:
+            hari_kosong.append([
+                b["kode"], b["nama"], h["tanggal"], h["hari"], h["bulan"],
+                "Tidak ada intake dari vendor mana pun (pabrik sepi)"
+                if h["sepi_pabrik"] else "Tidak ada intake dari vendor ini"])
+        for x in b["bulan_kosong"]:
+            bulan_kosong.append([b["kode"], b["nama"], x["ym"],
+                                 x["label"], x["jumlah_hari"]])
+        for x in b["bulan_lengkap"]:
+            bulan_lengkap.append([b["kode"], b["nama"], x["ym"],
+                                  x["label"], x["jumlah_hari"]])
+
+    sepi = [[h["tanggal"], h["hari"], h["bulan"],
+             "Tidak ada tiket intake pada tanggal ini"]
+            for h in hasil["hari_sepi_pabrik"]]
+    metode = [
+        ["Kartu", "Konsistensi intake harian/bulanan vendor"],
+        ["Periode", f"{p['dari']} s.d. {p['sampai']}"],
+        ["Jumlah hari kalender wajib", p["jumlah_hari"]],
+        ["Jumlah bulan dalam rentang", p["jumlah_bulan"]],
+        ["Dasar penilaian hari", hasil["dasar"]["label_hari"]],
+        ["Dasar urutan", hasil["dasar"]["label_urutan"]],
+        ["Jumlah vendor dinilai", r["total_vendor"]],
+        ["Vendor paling sering masuk",
+         hasil["paling_sering"]["label"] if hasil["paling_sering"] else "–"],
+        ["Hari sepi pabrik", r["hari_tanpa_intake_sama_sekali"]],
+        ["Sumber data", m["sumber"]],
+        ["Aturan hari kalender", m["dasar_hari"]],
+        ["Aturan urutan", m["dasar_urutan"]],
+        ["Bulan kosong", m["bulan_kosong"]],
+        ["Bulan lengkap", m["bulan_lengkap"]],
+        ["Rentang terpanjang", m["rentang_terpanjang"]],
+        ["Sepi pabrik", m["sepi_pabrik"]],
+        ["Vendor tidak aktif", m["vendor_tidak_aktif"]],
+        ["Batas rentang", m["batas"]],
+    ]
+    return respon_xlsx_banyak("konsistensi_intake_vendor.xlsx", [
+        ("Rekap vendor", judul_rekap, rekap),
+        ("Hari kosong", ["Kode vendor", "Nama vendor", "Tanggal", "Hari",
+                         "Bulan", "Keterangan"], hari_kosong),
+        ("Bulan kosong", ["Kode vendor", "Nama vendor", "Bulan", "Label",
+                          "Jumlah hari dalam periode"], bulan_kosong),
+        ("Bulan lengkap", ["Kode vendor", "Nama vendor", "Bulan", "Label",
+                           "Jumlah hari dalam periode"], bulan_lengkap),
+        ("Hari sepi pabrik", ["Tanggal", "Hari", "Bulan", "Keterangan"], sepi),
+        ("Metode", ["Hal", "Keterangan"], metode),
+    ])
 
 
 def _baris_periode_bulanan(session: Session, tahun: int, bulan: int):
@@ -2362,6 +2523,74 @@ def pasang_router(app, ambil_session):
                         for b in baris]
             return respon_xlsx(f"komposisi_penerimaan_{dimensi}.xlsx", judul, isi_xlsx)
         return hasil
+
+    # --------------------------------------------- kartu: konsistensi intake vendor
+    @router.get("/kartu/konsistensi-intake-vendor")
+    def kartu_konsistensi_intake_vendor(dari: str | None = None,
+                                        sampai: str | None = None,
+                                        format: str | None = None,
+                                        session: Session = dep):
+        """Vendor mana yang selalu masuk setiap hari/bulan, mana yang bolong.
+
+        Dasar yang dipakai (sesuai keputusan pemilik):
+        - **Semua hari kalender** dalam rentang dihitung wajib ada intake,
+          termasuk Sabtu/Minggu/libur. Hari tanpa tiket vendor = hari kosong.
+        - **Urutan** memakai jumlah tanggal unik ber-intake ("paling sering
+          masuk"), bukan jumlah tiket atau kg.
+        - Rentang memakai **tanggal persis** `YYYY-MM-DD`.
+        - `format=xlsx` menghasilkan 6 sheet (rekap + seluruh rincian kosong).
+
+        Bila `dari`/`sampai` kosong, batas diisi dari tanggal tiket paling awal
+        / paling akhir yang ada. Rentang dibatasi `MAKS_HARI` hari.
+        """
+        d = _tanggal_iso(dari, "dari")
+        s = _tanggal_iso(sampai, "sampai")
+        if d and s and d > s:
+            raise HTTPException(422, f"Periode terbalik: 'dari' ({dari}) lebih "
+                                     f"akhir daripada 'sampai' ({sampai}).")
+
+        batas = session.execute(
+            select(func.min(TiketBaris.ticket_date),
+                   func.max(TiketBaris.ticket_date)).where(
+                TiketBaris.tiket_nol == False,  # noqa: E712
+                TiketBaris.ticket_date.is_not(None))).one()
+        min_d, max_d = batas[0], batas[1]
+        hari_ini = dt.date.today()
+        awal = d or min_d or dt.date(hari_ini.year, 1, 1)
+        akhir = s or max_d or hari_ini
+        if awal > akhir:
+            raise HTTPException(422, f"Periode terbalik: {awal} lebih akhir "
+                                     f"daripada {akhir}.")
+        jumlah_hari = (akhir - awal).days + 1
+        if jumlah_hari > MAKS_HARI:
+            raise HTTPException(422, f"Rentang {jumlah_hari} hari terlalu panjang; "
+                                     f"maksimal {MAKS_HARI} hari. Persempit "
+                                     "'Dari/Sampai' agar daftar hari kosong "
+                                     "tetap dapat dibaca.")
+
+        mentah = session.execute(
+            select(TiketBaris.ticket_date, TiketBaris.kode_vendor,
+                   TiketBaris.ticket_no, TiketBaris.dry_kg).where(
+                TiketBaris.tiket_nol == False,  # noqa: E712
+                TiketBaris.ticket_date.is_not(None),
+                TiketBaris.ticket_date >= awal,
+                TiketBaris.ticket_date <= akhir)).all()
+        nama_vendor = {v.kode: v.nama_baku
+                       for v in session.scalars(select(Vendor))}
+        hasil = hitung_konsistensi(mentah, awal, akhir, nama_vendor)
+        hasil["periode"]["dari_otomatis"] = d is None
+        hasil["periode"]["sampai_otomatis"] = s is None
+        if d is None or s is None:
+            hasil["peringatan"].append(
+                "Batas periode yang tidak diisi diambil otomatis dari tanggal "
+                "tiket paling awal/akhir pada database.")
+        hasil["sumber"] = ("tiket_baris (Ticket Date, tanpa tiket nol); "
+                           "dasar hari = semua hari kalender; urutan = jumlah "
+                           "tanggal unik ber-intake")
+
+        if format == "xlsx":
+            return _xlsx_konsistensi(hasil)
+        return _ringkas_konsistensi(hasil)
 
     # ------------------------------------------------------------ kartu: konsentrasi vendor
     @router.get("/kartu/konsentrasi-vendor")
