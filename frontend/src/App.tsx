@@ -18,6 +18,7 @@ import UnggahData from "./pages/UnggahData";
 import GradeHarga from "./pages/GradeHarga";
 import MasterVendor from "./pages/MasterVendor";
 import MasterCollector from "./pages/MasterCollector";
+import MasterScdf from "./pages/MasterScdf";
 import Database from "./pages/Database";
 import Pengguna from "./pages/Pengguna";
 import Login, { LayarApiLama, LayarGalat } from "./pages/Login";
@@ -54,6 +55,7 @@ const TAB = [
   { id: "kepatuhan", label: "Kepatuhan vendor sampling", ikon: "☑", grup: "pantau" },
   { id: "vendor", label: "Master Vendor", ikon: "◈", grup: "master" },
   { id: "collector", label: "Master Collector", ikon: "◎", grup: "master" },
+  { id: "scdf", label: "SCDF", ikon: "▣", grup: "master" },
   { id: "gradeharga", label: "Grade & Harga", ikon: "◇", grup: "master" },
   { id: "input", label: "Input Harian", ikon: "✎", grup: "input" },
   { id: "intakedata", label: "Data Intake Details", ikon: "▤", grup: "input" },
@@ -477,6 +479,7 @@ export default function App() {
             {tab === "kepatuhan" && <KepatuhanVendorSampling />}
             {tab === "vendor" && <MasterVendor />}
             {tab === "collector" && <MasterCollector />}
+            {tab === "scdf" && <MasterScdf />}
             {tab === "gradeharga" && <GradeHarga />}
             {tab === "unggah" && <UnggahData />}
             {tab === "intakedata" && <IntakeData />}

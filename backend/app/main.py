@@ -198,6 +198,10 @@ def buat_app(engine: Engine | None = None) -> FastAPI:
     from .api_collector import pasang_router_collector
     pasang_router_collector(app, ambil_session)
 
+    # Master Data → SCDF (katalog lokasi Indonesia, baca saja)
+    from .api_master_scdf import pasang_router_master_scdf
+    pasang_router_master_scdf(app, ambil_session)
+
     # Traceability (agregasi server-side + referensi ID_AUX)
     from .api_traceability import pasang_router_traceability
     pasang_router_traceability(app, ambil_session)
@@ -281,6 +285,7 @@ def buat_app(engine: Engine | None = None) -> FastAPI:
                     "kartu-konsistensi-intake-vendor",
                     "kartu-ringkasan-vendor-trip",
                     "kartu-intake-terakhir-wilayah-vendor-periode",
+                    "master-scdf-hierarki",
                 ],
                 # versi kode ikut dilaporkan supaya mudah membandingkan
                 # folder yang dijalankan dengan kode terbaru di repo

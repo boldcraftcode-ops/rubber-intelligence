@@ -320,6 +320,18 @@ kartu:
       Kabupaten/Kota sumber yang sama untuk satu kunci sumber, tercatat di
       audit, dan berlaku bagi semua tiket dengan kunci itu. Intake asli dan
       referensi SCDF tetap tidak diubah.
+  master_scdf:
+    judul: SCDF — Referensi lokasi Indonesia
+    cara_dihitung: >
+      Modul Master Data → SCDF hanya membaca traceability_wilayah hasil
+      ID_AUX, dengan Provinsi dari crosswalk resmi Kepmendagri. Ringkasan
+      menghitung Provinsi non-null, Kabupaten/Kota unik, pasangan
+      Kabupaten/Kota + Kecamatan unik, dan baris kombinasi Desa/Kelurahan.
+      Pohon empat tingkat menampilkan jumlah anak serta jumlah baris per
+      node; rincian menampilkan nama resmi, normalized key, dan status
+      pemetaan Provinsi. Baris tanpa padanan Provinsi tetap tampil sebagai
+      Belum dipetakan, tidak disembunyikan atau ditebak. Tidak ada CRUD,
+      impor, ekspor, tabel baru, atau perubahan data intake.
   konsistensi_intake_vendor:
     judul: Laporan Ringkasan Vendor (Trip)
     cara_dihitung: >

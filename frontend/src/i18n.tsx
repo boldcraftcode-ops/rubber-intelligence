@@ -24,6 +24,7 @@ const KAMUS: Record<string, string> = {
   "Intake Analisis": "Intake Analytics",
   "Master Vendor": "Vendor Master",
   "Master Collector": "Collector Master",
+  "SCDF": "SCDF",
   "Stok": "Stock",
   "Stok vs Margin": "Stock vs Margin",
   "Aturan Harga": "Pricing Rules",
