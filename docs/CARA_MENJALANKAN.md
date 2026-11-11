@@ -608,6 +608,60 @@ Tombol **Jelaskan ke saya** memakai entri `daftar_intake_terakhir` di
 `kartu-intake-terakhir-wilayah-vendor-periode`. Tidak ada tabel database baru,
 tidak ada dependensi baru, dan data intake mentah tidak diubah.
 
+## 3q. Drill-down Data belum traceable sampai ke tiket (sejak 05/11/2026)
+
+Klik salah satu KPI **Traceable** pada menu Traceability, lalu pada modal
+**Data belum traceable** tekan **Lihat tiket & perbaiki** pada baris wilayah
+yang ingin ditelusuri. Untuk contoh `MESUJI / OGAN KOMERING ILIR`, rincian ini
+menjawab ticket_no mana yang menyebabkan volume **Belum traceable**, bukan
+hanya menampilkan agregat Dry/Traceable/Ticket lines.
+
+**Cara pakai**
+
+1. Modal tingkat pertama tetap menampilkan rekap wilayah, volume Dry,
+   Traceable, Belum traceable, persentase, dan Ticket lines. Filter
+   **tahun / periode / supplier / EUDR / LATEX OP** mengikuti halaman.
+2. **Lihat tiket & perbaiki** memanggil
+   `GET /api/traceability/gap-details` untuk **satu node** (`tingkat`, `name`,
+   `parent_path`) dengan filter yang sama. Jawaban berisi kombinasi lokasi
+   sumber yang belum cocok, volume, jumlah Ticket No, alasan, dan baris tiket:
+   `ticket_no`, `line_seq`, tanggal, vendor, `item_code`, `Asal Getah`,
+   Kabupaten/Kecamatan/Desa sumber, Dry (kg), serta alasan per baris.
+   `batas_tiket` 1–500 membatasi baris tampil, bukan agregat; penanda
+   `tiket_terpotong` muncul bila daftar dipotong.
+3. Tekan **Perbaiki** pada **satu kombinasi sumber**. Tabel tiket penyebab gap
+   dan form **District SCDF** + **Sub-district SCDF** muncul di modal yang
+   sama. Dropdown memakai endpoint resmi yang sudah ada; tidak ada tebakan
+   otomatis dari kemiripan nama.
+4. **Simpan koreksi** memanggil
+   `PUT /api/traceability/gap-correction`. Server memverifikasi bahwa kunci
+   sumber masih menjadi penyebab node/filter tersebut, bahwa target berupa
+   pasangan resmi `traceability_wilayah`, dan bahwa Kabupaten/Kota target masih
+   sama dengan induk sumber. Koreksi dicatat di audit dan berlaku untuk semua
+   tiket dengan kombinasi lokasi sumber itu. KPI, tabel, dan rincian dimuat
+   ulang setelah simpan.
+
+**Batas yang sengaja dipertahankan**
+
+- Aturan deteksi `belum traceable` **tidak berubah**: dedup
+  `source_fingerprint`, baris intake valid, `asal_getah_valid`, koreksi manual,
+  dan kecocokan normalized SCDF pada tingkat KPI bersangkutan.
+- `GET /api/traceability/gap-details` **hanya membaca**. Tidak ada
+  auto-correct, tidak ada perubahan `ticket_no`, `Asal Getah`, kolom wilayah
+  intake, maupun `traceability_wilayah`.
+- Koreksi inline hanya menulis `traceability_wilayah_koreksi` setelah klik
+  **Simpan koreksi**. Untuk mengubah isi tiket asli, tetap gunakan
+  **Data Intake Details → Edit/Quick-fill**.
+- Cakupan koreksi adalah **satu kombinasi Kabupaten/Kecamatan/Desa sumber**,
+  bukan seluruh node sekaligus. Pemetaan lintas Kabupaten/Kota sengaja tidak
+  dibuka dari modal ini; bila memang disengaja, gunakan alur
+  **Supplier Actors → Edit** yang sudah punya peringatan induk berbeda.
+- Alur lama tetap utuh: **⬇ Unduh belum termapping**, unggah hasil mapping,
+  koreksi di detail Supplier Actors, deteksi salah ketik SCDF, dan ekspor
+  Excel. Health menambah fitur `traceability-gap-drilldown`; definisi metrik
+  ada pada entri `traceability_gap_drilldown` di
+  `backend/semantic/metrics.yaml`.
+
 ## 4. Mengimpor data (tiket, stok, pembelian, dll.)
 
 Selain lewat tab **Unggah Data**, impor bisa dijalankan dari terminal

@@ -304,6 +304,22 @@ kartu:
       adanya dan Provinsi tidak ditebak. Dropdown vendor memuat semua Master
       Vendor ditambah kode yang hanya ada di tiket, dengan opsi Semua vendor.
       Data intake mentah, referensi SCDF, dan kartu lain tidak diubah.
+  traceability_gap_drilldown:
+    judul: Data belum traceable — rincian tiket
+    cara_dihitung: >
+      Modal gap memanggil GET /api/traceability/gap-details dengan tingkat
+      KPI, nama node, parent path, dan filter aktif yang sama. Baris yang
+      dihitung adalah baris intake valid hasil dedup yang gagal aturan
+      traceable pada tingkat itu: Asal Getah tidak valid dan tidak memiliki
+      koreksi manual, atau kombinasi Kabupaten/Kota/Kecamatan/Desa normalized
+      tidak cocok dengan traceability_wilayah. Baris dikelompokkan per kunci
+      koreksi sumber; tiap kelompok memuat ticket_no, tanggal, vendor,
+      item_code, Asal Getah, kabupaten/kecamatan/desa, Dry kg, dan alasan.
+      GET tidak menulis data. PUT /api/traceability/gap-correction hanya
+      menyimpan satu pasangan District/Sub-district SCDF resmi pada induk
+      Kabupaten/Kota sumber yang sama untuk satu kunci sumber, tercatat di
+      audit, dan berlaku bagi semua tiket dengan kunci itu. Intake asli dan
+      referensi SCDF tetap tidak diubah.
   konsistensi_intake_vendor:
     judul: Laporan Ringkasan Vendor (Trip)
     cara_dihitung: >
