@@ -329,9 +329,12 @@ kartu:
       Kabupaten/Kota + Kecamatan unik, dan baris kombinasi Desa/Kelurahan.
       Pohon empat tingkat menampilkan jumlah anak serta jumlah baris per
       node; rincian menampilkan nama resmi, normalized key, dan status
-      pemetaan Provinsi. Baris tanpa padanan Provinsi tetap tampil sebagai
-      Belum dipetakan, tidak disembunyikan atau ditebak. Tidak ada CRUD,
-      impor, ekspor, tabel baru, atau perubahan data intake.
+      pemetaan Provinsi. Kolom pencarian GET mencari case-insensitive pada
+      keempat nama resmi, keempat normalized key, dan status Provinsi, lalu
+      menampilkan hasil berhalaman tanpa mengubah data. Baris tanpa padanan
+      Provinsi tetap tampil sebagai Belum dipetakan, tidak disembunyikan
+      atau ditebak. Tidak ada CRUD, impor, ekspor, tabel baru, atau
+      perubahan data intake.
   konsistensi_intake_vendor:
     judul: Laporan Ringkasan Vendor (Trip)
     cara_dihitung: >

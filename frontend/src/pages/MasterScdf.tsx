@@ -1,4 +1,4 @@
-import { Fragment, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   Kartu, Pesan, ambilJson, fmtAngka, kelasTombolKecil,
@@ -40,6 +40,14 @@ function paramsDetail(detail: DetailTerpilih, offset: number) {
   if (detail.induk.kabupaten !== undefined) p.set("kabupaten_norm", detail.induk.kabupaten);
   if (detail.induk.kecamatan !== undefined) p.set("kecamatan_norm", detail.induk.kecamatan);
   if (detail.induk.desa !== undefined) p.set("desa_norm", detail.induk.desa);
+  return p;
+}
+
+function paramsCari(kata: string, offset: number) {
+  const p = new URLSearchParams({
+    q: kata, cari: kata,
+    limit: String(BATAS_BARIS), offset: String(offset),
+  });
   return p;
 }
 
@@ -107,7 +115,20 @@ function CabangScdf({ simpul, tingkat, induk, depth, onPilih, kunciDipilih }: {
 
 export default function MasterScdf() {
   const [detail, setDetail] = useState<DetailTerpilih | null>(null);
-  const [offset, setOffset] = useState(0);
+  const [offsetDetail, setOffsetDetail] = useState(0);
+  const [teksCari, setTeksCari] = useState("");
+  const [kataCari, setKataCari] = useState("");
+  const [offsetCari, setOffsetCari] = useState(0);
+
+  useEffect(() => {
+    const tunggu = window.setTimeout(() => {
+      setKataCari(teksCari.trim());
+      setOffsetCari(0);
+    }, 250);
+    return () => window.clearTimeout(tunggu);
+  }, [teksCari]);
+
+  const cariAktif = kataCari.length > 0;
   const ringkasan = useQuery({
     queryKey: ["master-scdf-ringkasan"],
     queryFn: () => ambilJson("/api/master/scdf/ringkasan"),
@@ -117,11 +138,27 @@ export default function MasterScdf() {
     queryFn: () => ambilJson(`/api/master/scdf/pohon?${paramsPohon("provinsi", {})}`),
   });
   const rincian = useQuery({
-    queryKey: ["master-scdf-detail", detail?.kunci, offset],
-    queryFn: () => ambilJson(`/api/master/scdf/detail?${paramsDetail(detail!, offset)}`),
-    enabled: Boolean(detail),
+    queryKey: ["master-scdf-detail", detail?.kunci, offsetDetail],
+    queryFn: () => ambilJson(`/api/master/scdf/detail?${paramsDetail(detail!, offsetDetail)}`),
+    enabled: Boolean(detail) && !cariAktif,
   });
-  const pilih = (d: DetailTerpilih) => { setDetail(d); setOffset(0); };
+  const pencarian = useQuery({
+    queryKey: ["master-scdf-cari", kataCari, offsetCari],
+    queryFn: () => ambilJson(`/api/master/scdf/cari?${paramsCari(kataCari, offsetCari)}`),
+    enabled: cariAktif,
+  });
+  const pilih = (d: DetailTerpilih) => {
+    setDetail(d);
+    setOffsetDetail(0);
+    setTeksCari("");
+    setKataCari("");
+    setOffsetCari(0);
+  };
+  const hapusCari = () => {
+    setTeksCari("");
+    setKataCari("");
+    setOffsetCari(0);
+  };
   const s = ringkasan.data;
   const ringkas: { label: string; nilai: number | undefined; satuan: string }[] = [
     { label: "Provinsi terpetakan", nilai: s?.provinsi, satuan: "provinsi" },
@@ -131,6 +168,12 @@ export default function MasterScdf() {
     { label: "Kunci tanpa Provinsi", nilai: s?.kunci_tanpa_provinsi, satuan: "kunci" },
     { label: "Baris tanpa Provinsi", nilai: s?.baris_tanpa_provinsi, satuan: "baris" },
   ];
+  const dataTabel = cariAktif ? pencarian.data : rincian.data;
+  const sedangMuat = cariAktif ? pencarian.isLoading : rincian.isLoading;
+  const sedangSegarkan = cariAktif ? pencarian.isFetching : rincian.isFetching;
+  const galat = cariAktif ? pencarian.error : rincian.error;
+  const offsetAktif = cariAktif ? offsetCari : offsetDetail;
+  const setOffsetAktif = cariAktif ? setOffsetCari : setOffsetDetail;
 
   return <section data-uji="modul-master-scdf" className="space-y-4">
     <Kartu idMetrik="master_scdf" judul="SCDF — Referensi lokasi Indonesia"
@@ -147,6 +190,29 @@ export default function MasterScdf() {
           <b className="text-[#1D2434]">Sumber & batas.</b> {s?.catatan ?? "Sumber: traceability_wilayah dari ID_AUX; Provinsi berasal dari crosswalk resmi Kepmendagri."} Tidak ada tombol Tambah/Edit/Hapus maupun Ekspor Excel: modul ini hanya menampilkan referensi yang dipakai Traceability dan validasi Data Intake.
         </p>
       </>} />
+
+    <section data-uji="pencarian-scdf" className="kartu-aksen rounded-sm border border-[#E4E5E8] bg-white p-5 shadow-[0_1px_3px_rgba(29,36,52,0.08)]">
+      <label htmlFor="cari-scdf" className="block text-sm font-semibold text-[#1D2434]">Cari lokasi SCDF</label>
+      <div className="mt-2 flex flex-wrap items-center gap-2">
+        <input id="cari-scdf" data-uji="input-pencarian-scdf" type="text"
+               autoComplete="off" value={teksCari}
+               onChange={(e) => setTeksCari(e.target.value)}
+               placeholder="Cari Provinsi, Kabupaten/Kota, Kecamatan, Desa, normalized key, atau Belum dipetakan…"
+               className="min-w-[260px] flex-1 rounded-sm border border-[#D9DCE1] px-3 py-2 text-sm text-[#1D2434] outline-none focus:border-[#B91C1C]" />
+        {teksCari && <button type="button" className={kelasTombolKecil}
+                            onClick={hapusCari} aria-label="Hapus pencarian"
+                            title="Hapus pencarian">✕</button>}
+      </div>
+      <p className="mt-2 text-[10px] leading-relaxed text-[#64676C]">
+        Mencari <b>4 nama resmi</b> + <b>4 normalized key</b> + <b>status Provinsi</b> di seluruh
+        <code className="mx-1 font-mono">traceability_wilayah</code>, case-insensitive dan tetap baca saja.
+        Baris <b>Belum dipetakan</b> ikut terindeks; Provinsi tidak ditebak.
+      </p>
+      {cariAktif && <p data-uji="status-pencarian-scdf" className="mt-2 rounded-sm bg-[#FFFAEB] p-2 text-[10px] leading-relaxed text-[#B54708]">
+        Mode pencarian: <b>"{kataCari}"</b> · {fmtAngka(dataTabel?.total ?? 0, 0)} baris cocok.
+        Klik ✕ atau pilih node pohon untuk kembali ke rincian per node.
+      </p>}
+    </section>
 
     <section className="kartu-aksen rounded-sm border border-[#E4E5E8] bg-white p-5 shadow-[0_1px_3px_rgba(29,36,52,0.08)]">
       <h2 className="text-lg font-semibold text-[#1D2434]">Hierarki wilayah SCDF</h2>
@@ -169,26 +235,30 @@ export default function MasterScdf() {
       <p className="mt-2 text-[10px] leading-relaxed text-[#9AA0A6]">Baris dengan <b>Belum dipetakan</b> tetap ditampilkan apa adanya; Provinsi tidak ditebak dari nama Kabupaten/Kota maupun data intake.</p>
     </section>
 
-    <section className="kartu-aksen rounded-sm border border-[#E4E5E8] bg-white p-5 shadow-[0_1px_3px_rgba(29,36,52,0.08)]">
+    <section data-uji={cariAktif ? "hasil-pencarian-scdf" : undefined}
+             className="kartu-aksen rounded-sm border border-[#E4E5E8] bg-white p-5 shadow-[0_1px_3px_rgba(29,36,52,0.08)]">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div>
-          <h2 className="text-lg font-semibold text-[#1D2434]">Rincian lokasi</h2>
-          <p className="text-sm text-[#64676C]">{detail
-            ? `${detail.simpul.name} · ${detail.simpul.label_tingkat} · ${fmtAngka(detail.simpul.jumlah_baris, 0)} baris SCDF`
-            : "Pilih salah satu node pada hierarki di atas."}</p>
+          <h2 className="text-lg font-semibold text-[#1D2434]">{cariAktif ? "Hasil pencarian SCDF" : "Rincian lokasi"}</h2>
+          <p className="text-sm text-[#64676C]">{cariAktif
+            ? `Kata kunci: "${kataCari}" · ${fmtAngka(dataTabel?.total ?? 0, 0)} baris cocok · pencarian mencakup seluruh 4 tingkat SCDF.`
+            : detail
+              ? `${detail.simpul.name} · ${detail.simpul.label_tingkat} · ${fmtAngka(detail.simpul.jumlah_baris, 0)} baris SCDF`
+              : "Pilih salah satu node pada hierarki di atas."}</p>
         </div>
-        {rincian.data && <p className="text-xs text-[#64676C]">Menampilkan {fmtAngka(rincian.data.offset + 1, 0)}–{fmtAngka(Math.min(rincian.data.offset + rincian.data.baris.length, rincian.data.total), 0)} dari {fmtAngka(rincian.data.total, 0)} baris</p>}
+        {dataTabel && dataTabel.total > 0 && <p className="text-xs text-[#64676C]">Menampilkan {fmtAngka(dataTabel.offset + 1, 0)}–{fmtAngka(Math.min(dataTabel.offset + dataTabel.baris.length, dataTabel.total), 0)} dari {fmtAngka(dataTabel.total, 0)} baris</p>}
       </div>
-      {rincian.isError && <Pesan jenis="error" teks={(rincian.error as Error).message} />}
-      {detail && rincian.isLoading && <p className="py-6 text-center text-sm text-[#64676C]">Memuat rincian lokasi…</p>}
-      {detail && rincian.data && <>
+      {galat && <Pesan jenis="error" teks={(galat as Error).message} />}
+      {cariAktif && sedangMuat && <p className="py-6 text-center text-sm text-[#64676C]">Mencari lokasi SCDF…</p>}
+      {!cariAktif && detail && sedangMuat && <p className="py-6 text-center text-sm text-[#64676C]">Memuat rincian lokasi…</p>}
+      {(cariAktif || detail) && dataTabel && <>
         <div className="mt-3 max-h-[46vh] overflow-auto rounded-sm border border-[#E4E5E8]">
           <table data-uji="rincian-scdf" className="w-full min-w-[1250px] text-xs">
             <thead className="sticky top-0 bg-[#F8F8F8] text-left text-[10px] uppercase tracking-wide text-[#64676C]">
               <tr><th className="py-2 pl-3">Provinsi</th><th className="px-2">Kabupaten/Kota</th><th className="px-2">Kecamatan</th><th className="px-2">Desa/Kelurahan</th><th className="px-2">Provinsi norm</th><th className="px-2">Kabupaten norm</th><th className="px-2">Kecamatan norm</th><th className="px-2">Desa norm</th><th className="px-2 pr-3">Status Provinsi</th></tr>
             </thead>
             <tbody>
-              {rincian.data.baris.map((b: any, i: number) => <tr key={`${b.kabupaten_norm}/${b.kecamatan_norm}/${b.desa_norm}/${i}`} className="border-t border-[#EDEFF2]">
+              {dataTabel.baris.map((b: any, i: number) => <tr key={`${b.kabupaten_norm}/${b.kecamatan_norm}/${b.desa_norm}/${i}`} className="border-t border-[#EDEFF2]">
                 <td className="py-2 pl-3">{b.provinsi}</td>
                 <td className="px-2">{b.kabupaten}</td>
                 <td className="px-2">{b.kecamatan}</td>
@@ -199,21 +269,21 @@ export default function MasterScdf() {
                 <td className="px-2 font-mono text-[10px] text-[#64676C]">{b.desa_norm}</td>
                 <td className="px-2 pr-3"><BadgeStatus status={b.status_provinsi} /></td>
               </tr>)}
-              {!rincian.data.baris.length && <tr><td colSpan={9} className="py-8 text-center text-[#9AA0A6]">Tidak ada baris SCDF pada node/filter ini.</td></tr>}
+              {!dataTabel.baris.length && <tr><td colSpan={9} className="py-8 text-center text-[#9AA0A6]">{cariAktif ? "Tidak ada baris SCDF yang cocok dengan pencarian ini." : "Tidak ada baris SCDF pada node/filter ini."}</td></tr>}
             </tbody>
           </table>
         </div>
         <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
-          <button type="button" className={kelasTombolKecil} disabled={offset === 0 || rincian.isFetching}
-                  onClick={() => setOffset(Math.max(0, offset - BATAS_BARIS))}>← Sebelumnya</button>
-          <span className="text-[10px] text-[#64676C]">Halaman {fmtAngka(rincian.data.halaman, 0)} / {fmtAngka(rincian.data.jumlah_halaman || 1, 0)} · {rincian.isFetching ? "menyegarkan…" : `${BATAS_BARIS} baris per halaman`}</span>
+          <button type="button" className={kelasTombolKecil} disabled={offsetAktif === 0 || sedangSegarkan}
+                  onClick={() => setOffsetAktif(Math.max(0, offsetAktif - BATAS_BARIS))}>← Sebelumnya</button>
+          <span className="text-[10px] text-[#64676C]">Halaman {fmtAngka(dataTabel.halaman, 0)} / {fmtAngka(dataTabel.jumlah_halaman || 1, 0)} · {sedangSegarkan ? "menyegarkan…" : `${BATAS_BARIS} baris per halaman`}</span>
           <button type="button" className={kelasTombolKecil}
-                  disabled={offset + BATAS_BARIS >= rincian.data.total || rincian.isFetching}
-                  onClick={() => setOffset(offset + BATAS_BARIS)}>Berikutnya →</button>
+                  disabled={offsetAktif + BATAS_BARIS >= dataTabel.total || sedangSegarkan}
+                  onClick={() => setOffsetAktif(offsetAktif + BATAS_BARIS)}>Berikutnya →</button>
         </div>
-        <p className="mt-2 text-[10px] leading-relaxed text-[#9AA0A6]">{rincian.data.catatan}</p>
+        <p className="mt-2 text-[10px] leading-relaxed text-[#9AA0A6]">{dataTabel.catatan}</p>
       </>}
-      {!detail && <p className="mt-3 rounded-sm bg-[#F8F8F8] p-4 text-center text-sm text-[#64676C]">Klik nama wilayah atau tombol <b>Rincian</b> pada pohon untuk melihat 4 nama resmi, normalized key, dan status pemetaan Provinsi.</p>}
+      {!cariAktif && !detail && <p className="mt-3 rounded-sm bg-[#F8F8F8] p-4 text-center text-sm text-[#64676C]">Klik nama wilayah atau tombol <b>Rincian</b> pada pohon untuk melihat 4 nama resmi, normalized key, dan status pemetaan Provinsi.</p>}
     </section>
   </section>;
 }

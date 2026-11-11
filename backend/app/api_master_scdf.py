@@ -3,13 +3,14 @@
 Sumbernya tetap `traceability_wilayah` (ID_AUX) dan crosswalk Provinsi resmi
 yang sudah dipakai Traceability/Intake. Endpoint tidak menerima input, impor,
 atau perubahan dari pengguna; inisialisasi referensi bawaan yang sudah ada
-hanya dijalankan bila katalog belum terisi/terpetakan. Modul ini tidak
-menebak Provinsi dan tidak menyediakan CRUD/ekspor sesuai pilihan pengguna.
+hanya dijalankan bila katalog belum terisi/terpetakan. Kolom pencarian juga
+hanya membaca. Modul ini tidak menebak Provinsi dan tidak menyediakan
+CRUD/ekspor sesuai pilihan pengguna.
 """
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import distinct, func, select
+from sqlalchemy import case, distinct, func, or_, select
 from sqlalchemy.orm import Session
 
 from .api_traceability import muat_referensi_bawaan
@@ -35,6 +36,11 @@ CATATAN = (
     "resmi Kepmendagri. Baris tanpa padanan Provinsi tetap tampil sebagai "
     "'Belum dipetakan' dan tidak ditebak. Modul ini baca saja."
 )
+CATATAN_PENCARIAN = (
+    "Pencarian baca saja mencakup 4 nama resmi, 4 normalized key, dan status "
+    "Provinsi pada traceability_wilayah, case-insensitive. Baris tanpa "
+    "Provinsi tetap tampil sebagai 'Belum dipetakan' dan tidak ditebak."
+)
 
 
 def _norm(nilai: str | None, kabupaten: bool = False) -> str:
@@ -46,6 +52,60 @@ def _norm(nilai: str | None, kabupaten: bool = False) -> str:
 
 def _status(provinsi_norm: str | None) -> str:
     return "terpetakan" if provinsi_norm else "belum_dipetakan"
+
+
+def _pola_like(teks: str) -> str:
+    """Aman untuk LIKE: `%`, `_`, dan `\` dari pengguna bukan wildcard."""
+    bersih = (teks.replace("\\", "\\\\")
+                  .replace("%", "\\%")
+                  .replace("_", "\\_"))
+    return f"%{bersih.lower()}%"
+
+
+def _cocok(kolom, pola: str):
+    return func.lower(func.coalesce(kolom, "")).like(pola, escape="\\")
+
+
+def _kondisi_pencarian(R, kata: str):
+    """Cari di 4 nama resmi, 4 normalized key, dan label status Provinsi."""
+    pola = _pola_like(kata)
+    label_status = case(
+        (R.provinsi_norm.is_not(None), "Terpetakan"),
+        else_="Belum dipetakan")
+    syarat = [
+        func.lower(func.coalesce(R.provinsi, "Belum dipetakan"))
+        .like(pola, escape="\\"),
+        _cocok(R.kabupaten, pola),
+        _cocok(R.kecamatan, pola),
+        _cocok(R.desa, pola),
+        func.lower(label_status).like(pola, escape="\\"),
+    ]
+    norm_teks = _norm(kata)
+    if norm_teks:
+        pola_teks = _pola_like(norm_teks)
+        syarat.extend([
+            _cocok(R.provinsi_norm, pola_teks),
+            _cocok(R.kecamatan_norm, pola_teks),
+            _cocok(R.desa_norm, pola_teks),
+        ])
+    norm_kab = _norm(kata, True)
+    if norm_kab:
+        syarat.append(_cocok(R.kabupaten_norm, _pola_like(norm_kab)))
+    return or_(*syarat)
+
+
+def _format_baris(rows) -> list[dict]:
+    return [{
+        "provinsi": r["provinsi"] or "Belum dipetakan",
+        "provinsi_norm": r["provinsi_norm"] or "",
+        "kabupaten": r["kabupaten"],
+        "kabupaten_norm": r["kabupaten_norm"],
+        "kecamatan": r["kecamatan"],
+        "kecamatan_norm": r["kecamatan_norm"],
+        "desa": r["desa"],
+        "desa_norm": r["desa_norm"],
+        "status_provinsi": _status(r["provinsi_norm"]),
+    } for r in rows]
 
 
 def _pastikan_referensi_siap(session: Session) -> None:
@@ -259,17 +319,7 @@ def pasang_router_master_scdf(app, ambil_session):
             .order_by(R.provinsi_norm.is_(None), R.provinsi_norm,
                       R.kabupaten_norm, R.kecamatan_norm, R.desa_norm, R.id)
             .limit(limit).offset(offset)).mappings()
-        baris = [{
-            "provinsi": r["provinsi"] or "Belum dipetakan",
-            "provinsi_norm": r["provinsi_norm"] or "",
-            "kabupaten": r["kabupaten"],
-            "kabupaten_norm": r["kabupaten_norm"],
-            "kecamatan": r["kecamatan"],
-            "kecamatan_norm": r["kecamatan_norm"],
-            "desa": r["desa"],
-            "desa_norm": r["desa_norm"],
-            "status_provinsi": _status(r["provinsi_norm"]),
-        } for r in rows]
+        baris = _format_baris(rows)
         return {
             "tingkat": tingkat,
             "label_tingkat": LABEL[tingkat],
@@ -283,5 +333,45 @@ def pasang_router_master_scdf(app, ambil_session):
             "baris": baris,
             "catatan": CATATAN,
         }
+
+    def _cari(q: str | None, cari_param: str | None, limit: int,
+              offset: int, session: Session) -> dict:
+        kata = (q or cari_param or "").strip()
+        if not kata:
+            raise HTTPException(422, "Kata pencarian wajib diisi.")
+        _pastikan_referensi_siap(session)
+        R = ReferensiWilayahTrace
+        kondisi = _kondisi_pencarian(R, kata)
+        total = int(session.scalar(
+            select(func.count(R.id)).where(kondisi)) or 0)
+        rows = session.execute(
+            select(R.provinsi, R.provinsi_norm,
+                   R.kabupaten, R.kabupaten_norm,
+                   R.kecamatan, R.kecamatan_norm,
+                   R.desa, R.desa_norm)
+            .where(kondisi)
+            .order_by(R.provinsi_norm.is_(None), R.provinsi_norm,
+                      R.kabupaten_norm, R.kecamatan_norm, R.desa_norm, R.id)
+            .limit(limit).offset(offset)).mappings()
+        return {
+            "kata": kata,
+            "total": total,
+            "limit": limit,
+            "offset": offset,
+            "halaman": offset // limit + 1,
+            "jumlah_halaman": (total + limit - 1) // limit if total else 0,
+            "baris": _format_baris(rows),
+            "catatan": CATATAN_PENCARIAN,
+        }
+
+    @router.get("/cari")
+    @router.get("/pencarian")
+    def cari(q: str | None = Query(default=None, max_length=120),
+             cari_param: str | None = Query(default=None, alias="cari",
+                                            max_length=120),
+             limit: int = Query(50, ge=1, le=200),
+             offset: int = Query(0, ge=0),
+             session: Session = dep):
+        return _cari(q, cari_param, limit, offset, session)
 
     app.include_router(router)

@@ -286,6 +286,7 @@ def buat_app(engine: Engine | None = None) -> FastAPI:
                     "kartu-ringkasan-vendor-trip",
                     "kartu-intake-terakhir-wilayah-vendor-periode",
                     "master-scdf-hierarki",
+                    "master-scdf-pencarian",
                 ],
                 # versi kode ikut dilaporkan supaya mudah membandingkan
                 # folder yang dijalankan dengan kode terbaru di repo

@@ -64,7 +64,9 @@ def test_ringkasan_dan_health_tanpa_mengubah_referensi(client_scdf):
     assert d["baris_tanpa_provinsi"] == 2
     assert d["kunci_tanpa_provinsi"] == 2
     assert "baca saja" in d["catatan"]
-    assert "master-scdf-hierarki" in klien.get("/api/health").json()["fitur"]
+    fitur = klien.get("/api/health").json()["fitur"]
+    assert "master-scdf-hierarki" in fitur
+    assert "master-scdf-pencarian" in fitur
     j = klien.get("/api/jelaskan/master_scdf")
     assert j.status_code == 200, j.text
     assert "SCDF" in j.json()["judul"]
@@ -87,6 +89,8 @@ def test_get_tidak_memanggil_seed_pada_katalog_sudah_siap(client_scdf,
         ("/api/master/scdf/pohon", {"tingkat": "provinsi"}),
         ("/api/master/scdf/detail", {
             "tingkat": "provinsi", "provinsi_norm": "ACEH"}),
+        ("/api/master/scdf/cari", {"q": "MEULABOH"}),
+        ("/api/master/scdf/pencarian", {"cari": "BANJAR"}),
     ):
         assert klien.get(url, params=params).status_code == 200
     assert _snapshot_referensi(eng) == sebelum
@@ -199,3 +203,107 @@ def test_validasi_induk_batas_dan_hanya_endpoint_get(client_scdf):
             if p.startswith("/api/master/scdf")}
     assert rute
     assert all(set(m) == {"get"} for m in rute.values())
+
+
+def test_pencarian_nama_normalized_status_dan_alias(client_scdf):
+    klien, _ = client_scdf
+    nama = klien.get("/api/master/scdf/cari", params={"q": "meulaboh"})
+    assert nama.status_code == 200, nama.text
+    d = nama.json()
+    assert d["kata"] == "meulaboh"
+    assert d["total"] == 1
+    assert d["baris"][0]["desa"] == "MEULABOH"
+    assert d["baris"][0]["status_provinsi"] == "terpetakan"
+    assert {"provinsi", "kabupaten", "kecamatan", "desa",
+            "provinsi_norm", "kabupaten_norm", "kecamatan_norm",
+            "desa_norm", "status_provinsi"} <= set(d["baris"][0])
+    assert "baca saja" in d["catatan"]
+    assert "Belum dipetakan" in d["catatan"]
+
+    norm = klien.get("/api/master/scdf/cari",
+                     params={"q": "MEUREUBO"}).json()
+    assert norm["total"] == 2
+    assert {b["desa"] for b in norm["baris"]} == {
+        "GAMPONG PASI ACEH BAROH", "MEULABOH"}
+
+    alias = klien.get("/api/master/scdf/cari",
+                      params={"q": "Kota Banjar"}).json()
+    assert alias["total"] == 1
+    assert alias["baris"][0]["kabupaten_norm"] == "BANJAR"
+    assert alias["baris"][0]["provinsi"] == "Belum dipetakan"
+    assert alias["baris"][0]["provinsi_norm"] == ""
+    assert alias["baris"][0]["status_provinsi"] == "belum_dipetakan"
+
+    belum = klien.get("/api/master/scdf/cari",
+                      params={"q": "Belum dipetakan"}).json()
+    assert belum["total"] == 2
+    assert all(b["provinsi"] == "Belum dipetakan"
+               and b["provinsi_norm"] == ""
+               and b["status_provinsi"] == "belum_dipetakan"
+               for b in belum["baris"])
+
+    terpetakan = klien.get("/api/master/scdf/cari",
+                           params={"q": "Terpetakan"}).json()
+    assert terpetakan["total"] == 3
+    assert all(b["status_provinsi"] == "terpetakan"
+               for b in terpetakan["baris"])
+
+    provinsi = klien.get("/api/master/scdf/cari",
+                         params={"q": "sumatera utara"}).json()
+    assert provinsi["total"] == 1
+    assert provinsi["baris"][0]["desa"] == "BABURA"
+
+    alias_rute = klien.get("/api/master/scdf/pencarian",
+                           params={"cari": "babura"})
+    assert alias_rute.status_code == 200, alias_rute.text
+    assert alias_rute.json()["total"] == 1
+
+    utamakan_q = klien.get("/api/master/scdf/cari", params={
+        "q": "MEULABOH", "cari": "BANJAR"}).json()
+    assert utamakan_q["kata"] == "MEULABOH"
+    assert utamakan_q["total"] == 1
+
+    spasi = klien.get("/api/master/scdf/cari",
+                      params={"q": "  meulaboh  "}).json()
+    assert spasi["kata"] == "meulaboh"
+    assert spasi["total"] == 1
+
+
+def test_pencarian_paginasi_validasi_wildcard_dan_tidak_menulis(client_scdf):
+    klien, eng = client_scdf
+    sebelum = _snapshot_referensi(eng)
+    halaman2 = klien.get("/api/master/scdf/cari", params={
+        "q": "MEUREUBO", "limit": 1, "offset": 1})
+    assert halaman2.status_code == 200, halaman2.text
+    d = halaman2.json()
+    assert d["total"] == 2
+    assert d["halaman"] == 2
+    assert d["jumlah_halaman"] == 2
+    assert len(d["baris"]) == 1
+    assert d["baris"][0]["desa"] == "MEULABOH"
+
+    kosong = klien.get("/api/master/scdf/cari",
+                       params={"q": "tidak ada wilayah ini"}).json()
+    assert kosong["total"] == 0
+    assert kosong["baris"] == []
+    assert kosong["jumlah_halaman"] == 0
+
+    for karakter in ("%", "_"):
+        liar = klien.get("/api/master/scdf/cari",
+                         params={"q": karakter}).json()
+        assert liar["total"] == 0, karakter
+        assert liar["baris"] == []
+
+    assert klien.get("/api/master/scdf/cari").status_code == 422
+    assert klien.get("/api/master/scdf/cari",
+                     params={"q": "   "}).status_code == 422
+    assert klien.get("/api/master/scdf/cari", params={
+        "q": "ACEH", "limit": 0}).status_code == 422
+    assert klien.get("/api/master/scdf/cari", params={
+        "q": "ACEH", "limit": 201}).status_code == 422
+    assert klien.get("/api/master/scdf/cari", params={
+        "q": "ACEH", "offset": -1}).status_code == 422
+    for metode in ("post", "put", "delete"):
+        assert getattr(klien, metode)(
+            "/api/master/scdf/cari").status_code == 405
+    assert _snapshot_referensi(eng) == sebelum

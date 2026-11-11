@@ -675,22 +675,29 @@ dipakai Data Intake, Master Collector, dan Traceability.
 1. Buka menu **SCDF**. Ringkasan atas menampilkan jumlah Provinsi
    terpetakan, Kabupaten/Kota, Kecamatan, Desa/Kelurahan, kunci tanpa
    Provinsi, dan baris tanpa Provinsi.
-2. Pada **Hierarki wilayah SCDF**, klik tanda `▸` untuk membuka cabang. Tiap
+2. **Kolom pencarian**: ketik nama wilayah atau normalized key, misalnya
+   `Aceh Barat`, `MEUREUBO`, `BANJAR`, atau `Belum dipetakan`. Pencarian
+   berjalan otomatis setelah jeda singkat, case-insensitive, dan mencakup
+   **4 nama resmi + 4 normalized key + status Provinsi** di seluruh
+   `traceability_wilayah`. Hasilnya tampil berhalaman pada tabel rincian;
+   klik `✕` atau pilih node pohon untuk kembali ke rincian per node.
+3. Pada **Hierarki wilayah SCDF**, klik tanda `▸` untuk membuka cabang. Tiap
    node menampilkan **Jumlah anak** dan **Baris SCDF**. Klik nama node atau
    tombol **Rincian** untuk mengisi tabel detail di bawahnya.
-3. **Rincian lokasi** menampilkan 4 nama resmi, 4 normalized key, dan status
+4. **Rincian lokasi** menampilkan 4 nama resmi, 4 normalized key, dan status
    **Terpetakan / Belum dipetakan**, dengan 50 baris per halaman. Tidak ada
    tombol Tambah, Edit, Hapus, Impor, maupun Ekspor Excel.
 
 **Aturan data**
 
-- `GET /api/master/scdf/ringkasan`, `GET /api/master/scdf/pohon`, dan
-  `GET /api/master/scdf/detail` hanya membaca katalog dan tidak menerima
-  input/impor dari pengguna. Bila `traceability_wilayah` belum terisi atau
-  belum ada pemetaan Provinsi sama sekali, mekanisme inisialisasi ID_AUX +
-  crosswalk yang sudah dipakai Traceability/Intake dijalankan otomatis;
-  setelah itu GET tidak menulis. Modul tidak mengubah intake, koreksi
-  wilayah, audit, atau data master lain.
+- `GET /api/master/scdf/ringkasan`, `/pohon`, `/detail`, serta
+  `GET /api/master/scdf/cari` (alias `/pencarian`) hanya membaca katalog dan
+  tidak menerima input/impor dari pengguna. Pencarian memakai parameter `q`
+  atau `cari`, `limit` 1..200, dan `offset`; `q`/`cari` kosong ditolak 422.
+  Bila `traceability_wilayah` belum terisi atau belum ada pemetaan Provinsi
+  sama sekali, mekanisme inisialisasi ID_AUX + crosswalk yang sudah dipakai
+  Traceability/Intake dijalankan otomatis; setelah itu GET tidak menulis.
+  Modul tidak mengubah intake, koreksi wilayah, audit, atau data master lain.
 - Tujuh kunci Kabupaten/Kota yang belum punya padanan pasti — `BANJAR`,
   `DANAU`, `DANAU TOBA`, `HUTAN`, `UNKNOWN`, `WADUK CIRATA`, dan `WADUNG
   KEDUNGOMBO` — tetap masuk pohon pada node **Belum dipetakan**. Provinsi
@@ -700,8 +707,8 @@ dipakai Data Intake, Master Collector, dan Traceability.
 - Lewat `ask_user` dipilih: **hierarki 4 tingkat**, **baca saja**, serta
   kolom **nama resmi + normalized + status Provinsi**. Tidak ada tabel
   database baru, dependensi baru, atau endpoint tulis. Health menambah fitur
-  `master-scdf-hierarki`; Jelaskan memakai entri `master_scdf` di
-  `backend/semantic/metrics.yaml`.
+  `master-scdf-hierarki` dan `master-scdf-pencarian`; Jelaskan memakai entri
+  `master_scdf` di `backend/semantic/metrics.yaml`.
 
 ## 4. Mengimpor data (tiket, stok, pembelian, dll.)
 
