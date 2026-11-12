@@ -124,13 +124,37 @@ def test_ekspor_xlsx_penerimaan_format_contoh(klien):
     assert ws.freeze_panes is None and not list(ws.merged_cells.ranges)
 
 
-def test_ekspor_xlsx_penerimaan_judul_filter_vendor(klien):
+def _judul_chart(ws):
+    ch = ws._charts[0]
+    try:
+        return ch.title.tx.rich.p[0].r[0].t
+    except Exception:
+        return ""
+
+
+def test_ekspor_xlsx_penerimaan_vendor_mengikuti_template(klien):
+    # V998 punya tiket di data contoh; V1112 hanya ada di Master Vendor.
     r = klien.get("/api/kartu/penerimaan", params={
-        "dimensi": "vendor", "vendor": "V1112", "format": "xlsx"})
-    ws = _buku_xlsx(r).active
-    assert "V1112" in ws["A2"].value
-    assert ws["A5"].value == "Vendor"      # semua dimensi, bukan hanya desa
-    assert ws["A3"].value.startswith("Periode :  [")
+        "dimensi": "vendor", "vendor": "V998", "format": "xlsx"})
+    wb = _buku_xlsx(r)
+    ws = wb.active
+    assert "penerimaan_per_vendor.xlsx" in r.headers["content-disposition"]
+    assert "_template" not in r.headers["content-disposition"]
+    assert wb.sheetnames == ["Sheet"]
+    assert ws["A1"].value == "Rubber Intake - Total Periods - All Vendors"
+    assert ws["A2"].value == "Purchasing - Raw Material Section"
+    assert ws["A3"].value.startswith("Periode : ") and "[" not in ws["A3"].value
+    assert [ws.cell(4, i).value for i in range(1, 7)] == [
+        "Vendor", "Kg biasa", "Kg EUDR", "Kg total", "Porsi", "Jumlah tiket"]
+    assert "V998" in str(ws["A5"].value)
+    assert any("Created by [user login]" in str(c.value)
+               for c in ws[ws.max_row])
+    assert len(ws._charts) == 1
+    ch = ws._charts[0]
+    assert _judul_chart(ws) == "Rubber Intake - Total Periods - All Vendors"
+    assert ch.type == "col" and ch.grouping == "clustered"
+    assert ch.overlap == -90 and ch.legend.position == "t"
+    assert len(ch.series) == 1
 
 
 def test_format_baru_hanya_kartu_penerimaan(klien):

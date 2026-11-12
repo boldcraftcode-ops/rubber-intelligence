@@ -228,7 +228,7 @@ def test_ekspor_xlsx_mode_bulan(klien):
 
 
 def test_ekspor_xlsx_mode_bulan_format_contoh(klien):
-    """Rincian per bulan juga memakai format Penerimaan Karet yang sama."""
+    """Vendor per bulan mengikuti `Template Export` (bukan format lama)."""
     import io
     import openpyxl
     from app.api_analisis import FORMAT_KG_PENERIMAAN
@@ -236,23 +236,27 @@ def test_ekspor_xlsx_mode_bulan_format_contoh(klien):
                   params={"dimensi": "vendor", "per": "bulan",
                           "dari": "2026-01-01", "sampai": "2026-03-31",
                           "format": "xlsx"})
-    ws = openpyxl.load_workbook(io.BytesIO(r.content)).active
-    assert ws["A1"].value is None and ws["A4"].value is None
-    assert ws["A2"].value.startswith("Penerimaan Karet dari - [")
-    assert ws["A3"].value == "Periode :  [January ~ March 2026]"
-    assert [ws.cell(5, i).value for i in range(1, 7)] == [
-        "Vendor", "Jan-26", "Feb-26", "Mar-26", "Total kg", "Porsi"]
+    wb = openpyxl.load_workbook(io.BytesIO(r.content))
+    ws = wb.active
+    assert wb.sheetnames == ["Data Sheet"]
+    assert ws["A1"].value == "Rubber Intake - Monthly Details"
+    assert ws["A2"].value == "Purchasing - Raw Material Section"
+    assert ws["A3"].value.startswith("Periode : ") and "[" not in ws["A3"].value
+    assert [ws.cell(4, i).value for i in range(1, 7)] == [
+        "Vendor", "Jan-26", "Feb-26", "Mar-26", "Total kg", "%tage"]
+    assert ws["A4"].font.name == "Courier New"
+    assert ws["A4"].fill.fgColor.theme == 3
+    assert ws["A4"].border.left.style == "thin"
+    assert ws["B4"].number_format == FORMAT_KG_PENERIMAAN
+    assert ws["E4"].number_format == FORMAT_KG_PENERIMAAN
+    assert ws["F4"].number_format == "0%"
     assert ws["A5"].font.name == "Courier New"
-    assert ws["A5"].fill.fgColor.theme == 3
     assert ws["A5"].border.left.style == "thin"
-    assert ws["B5"].number_format == FORMAT_KG_PENERIMAAN
-    assert ws["E5"].number_format == FORMAT_KG_PENERIMAAN
-    assert ws["F5"].number_format == "0%"
-    assert ws["A6"].font.name == "Courier New"
-    assert ws["A6"].border.left.style == "thin"
-    assert "PT Alpha" in ws["A6"].value     # isi/agregasi tidak berubah
-    assert ws["A9"].value == "TOTAL"        # 3 vendor + baris TOTAL
+    assert "PT Alpha" in ws["A5"].value     # isi/agregasi tidak berubah
+    assert ws["A8"].value == "TOTAL"        # 3 vendor + baris TOTAL
+    assert "Created by [user login]" in str(ws["A9"].value)
     assert "G" not in ws.column_dimensions  # mode bulan tak memakai lebar G
+    assert len(ws._charts) == 1
 
 
 def test_ekspor_xlsx_mode_bulan_satu_bulan_lebar_kolom(klien):
@@ -264,12 +268,12 @@ def test_ekspor_xlsx_mode_bulan_satu_bulan_lebar_kolom(klien):
                           "dari": "2026-01-01", "sampai": "2026-01-31",
                           "format": "xlsx"})
     ws = openpyxl.load_workbook(io.BytesIO(r.content)).active
-    assert [ws.cell(5, i).value for i in range(1, 5)] == [
-        "Vendor", "Jan-26", "Total kg", "Porsi"]
-    assert ws["A3"].value == "Periode :  [January 2026]"
-    assert round(ws.column_dimensions["B"].width, 5) == 14.28516
-    assert round(ws.column_dimensions["C"].width, 5) == 19.57031
-    assert round(ws.column_dimensions["D"].width, 5) == 9.28516
+    assert [ws.cell(4, i).value for i in range(1, 5)] == [
+        "Vendor", "Jan-26", "Total kg", "%tage"]
+    assert ws["A3"].value == "Periode : January 2026"
+    assert abs(ws.column_dimensions["B"].width - 14.140625) < 1e-6
+    assert abs(ws.column_dimensions["C"].width - 19.5703125) < 1e-6
+    assert abs(ws.column_dimensions["D"].width - 9.28515625) < 1e-6
 
 
 # ------------------------------------------- ekspor Excel = SEMUA baris detail

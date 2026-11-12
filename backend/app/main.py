@@ -287,6 +287,7 @@ def buat_app(engine: Engine | None = None) -> FastAPI:
                     "kartu-intake-terakhir-wilayah-vendor-periode",
                     "master-scdf-hierarki",
                     "master-scdf-pencarian",
+                    "ekspor-template-export",
                 ],
                 # versi kode ikut dilaporkan supaya mudah membandingkan
                 # folder yang dijalankan dengan kode terbaru di repo

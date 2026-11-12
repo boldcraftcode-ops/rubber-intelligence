@@ -18,6 +18,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 from openpyxl.cell import WriteOnlyCell
 from openpyxl.chart import BarChart, LineChart, Reference
+from openpyxl.drawing.spreadsheet_drawing import AnchorMarker, TwoCellAnchor
 from openpyxl.formatting.rule import ColorScaleRule
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.styles.colors import Color
@@ -121,6 +122,42 @@ LEBAR_PENERIMAAN = (26.5703125, 19.5703125, 14.28515625, 19.5703125,
 NAMA_BULAN_INGGRIS = ("", "January", "February", "March", "April", "May",
                       "June", "July", "August", "September", "October",
                       "November", "December")
+
+# ---------------------------------------------------------------------------
+# Format baku 3 ekspor sesuai folder `Template Export` yang diunggah pemilik.
+# Nama file hasil unduh = nama berkas template TANPA akhiran `_template`.
+# Style ditanam di kode (bukan menyalin workbook template saat runtime).
+# ---------------------------------------------------------------------------
+TEMPLATE_EKSPOR = {
+    "penerimaan_vendor": "penerimaan_per_vendor_template.xlsx",
+    "penerimaan_vendor_bulanan":
+        "penerimaan_per_vendor_per_bulan_template.xlsx",
+    "rm_stock": "rm_stock_intake_vs_pricing_template.xlsx",
+}
+JUDUL_TEMPLATE_EKSPOR = {
+    "penerimaan_vendor": "Rubber Intake - Total Periods - All Vendors",
+    "penerimaan_vendor_bulanan": "Rubber Intake - Monthly Details",
+    "rm_stock": "RM Stock – Intake vs Pricing",
+}
+SHEET_TEMPLATE_EKSPOR = {
+    "penerimaan_vendor": "Sheet",
+    "penerimaan_vendor_bulanan": "Data Sheet",
+    "rm_stock": "Sheet",
+}
+SUBJUDUL_TEMPLATE_EKSPOR = "Purchasing - Raw Material Section"
+FOOTER_TEMPLATE_EKSPOR = "Created by [user login] Raw Material Big Data"
+WARNA_HEADER_TEMPLATE_RM = "FF0070C0"
+#: `Desember` sengaja mengikuti ejaan pada baris periode template.
+NAMA_BULAN_TEMPLATE = ("", "January", "February", "March", "April", "May",
+                       "June", "July", "August", "September", "October",
+                       "November", "Desember")
+LEBAR_TEMPLATE_EKSPOR = {
+    "penerimaan_vendor": (49.42578125, 19.5703125, 14.28515625,
+                          19.5703125, 9.28515625, 19.28515625),
+    "rm_stock": (9.140625, 14.42578125, 15.140625, 15.28515625,
+                 12.42578125, 14.0, 14.0),
+}
+LEBAR_TEMPLATE_BULANAN = (49.5703125, 14.140625, 19.5703125, 9.28515625)
 
 
 class RekonsiliasiKeputusanMasuk(BaseModel):
@@ -260,6 +297,174 @@ def respon_xlsx_penerimaan(nama_file: str, judul: str, periode: str,
         ws.column_dimensions["G"].width = LEBAR_PENERIMAAN[6]
     for i, nilai in enumerate(lebar, start=1):
         ws.column_dimensions[get_column_letter(i)].width = nilai
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return StreamingResponse(
+        buf,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{nama_file}"'})
+
+
+def respon_xlsx_template(kunci_template: str, periode: str,
+                         header: list[str], baris: list[list],
+                         tipe_kolom: list[str], mode_chart: str,
+                         baris_total: list | None = None,
+                         jumlah_bulan: int = 0,
+                         kolom_tengah: int | None = None) -> StreamingResponse:
+    """Ekspor 3 laporan mengikuti workbook di folder `Template Export`.
+
+    Nama sheet, judul/subjudul/periode, header di baris 4, data mulai baris 5,
+    baris TOTAL (khusus bulanan), footer, lebar kolom, dan satu chart native
+    disamakan dengan template. Berkas template hanya jadi referensi style;
+    data tetap dihitung dari database.
+    """
+    nama_file = _nama_ekspor_template(kunci_template)
+    judul = JUDUL_TEMPLATE_EKSPOR[kunci_template]
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = SHEET_TEMPLATE_EKSPOR[kunci_template]
+
+    font_judul = Font(name=FONT_PENERIMAAN, sz=11, bold=True)
+    font_sub = Font(name=FONT_PENERIMAAN, sz=11)
+    font_periode = Font(name=FONT_PENERIMAAN, sz=9)
+    font_header = Font(name=FONT_PENERIMAAN, sz=11, bold=True,
+                       color=Color(theme=0))
+    font_isi = Font(name=FONT_PENERIMAAN, sz=11, color=Color(theme=1))
+    font_footer = Font(name=FONT_PENERIMAAN, sz=9, color=Color(theme=1))
+    if kunci_template == "rm_stock":
+        fill_header = PatternFill(fill_type="solid",
+                                  fgColor=WARNA_HEADER_TEMPLATE_RM)
+    else:
+        fill_header = PatternFill(
+            fill_type="solid",
+            fgColor=Color(theme=3, tint=TINT_HEADER_PENERIMAAN))
+    sisi = Side(style="thin", color=Color(auto=True))
+    border = Border(left=sisi, right=sisi, top=sisi, bottom=sisi)
+
+    ws["A1"] = judul
+    ws["A1"].font = font_judul
+    ws["A2"] = SUBJUDUL_TEMPLATE_EKSPOR
+    ws["A2"].font = font_sub
+    ws["A3"] = f"Periode : {periode}"
+    ws["A3"].font = font_periode
+
+    def _format_nilai(tipe: str) -> str:
+        if tipe == "kg":
+            return FORMAT_KG_PENERIMAAN
+        if tipe == "persen":
+            return FORMAT_PORSEN_PENERIMAAN
+        return "General"
+
+    for i, teks in enumerate(header, start=1):
+        c = ws.cell(row=4, column=i, value=teks)
+        c.font = font_header
+        c.fill = fill_header
+        c.border = border
+        c.alignment = Alignment(horizontal="center")
+        c.number_format = _format_nilai(
+            tipe_kolom[i - 1] if i - 1 < len(tipe_kolom) else "teks")
+
+    data_akhir = 4 + len(baris)
+    baris_akhir = data_akhir
+    for indeks, nilai_baris in enumerate(baris, start=5):
+        for i, nilai in enumerate(nilai_baris, start=1):
+            c = ws.cell(row=indeks, column=i, value=nilai)
+            c.font = font_isi
+            c.border = border
+            c.number_format = _format_nilai(
+                tipe_kolom[i - 1] if i - 1 < len(tipe_kolom) else "teks")
+            if kolom_tengah is not None and i - 1 == kolom_tengah:
+                c.alignment = Alignment(horizontal="center")
+    if baris_total is not None:
+        baris_akhir += 1
+        for i, nilai in enumerate(baris_total, start=1):
+            c = ws.cell(row=baris_akhir, column=i, value=nilai)
+            c.font = Font(name=FONT_PENERIMAAN, sz=11, bold=True)
+            c.border = border
+            c.number_format = _format_nilai(
+                tipe_kolom[i - 1] if i - 1 < len(tipe_kolom) else "teks")
+    ws.cell(row=baris_akhir + 1, column=1,
+            value=FOOTER_TEMPLATE_EKSPOR).font = font_footer
+
+    if kunci_template == "penerimaan_vendor_bulanan":
+        bulan = jumlah_bulan or max(0, len(header) - 3)
+        lebar = ([LEBAR_TEMPLATE_BULANAN[0]]
+                 + [LEBAR_TEMPLATE_BULANAN[1]] * bulan
+                 + [LEBAR_TEMPLATE_BULANAN[2], LEBAR_TEMPLATE_BULANAN[3]])
+    else:
+        lebar = list(LEBAR_TEMPLATE_EKSPOR[kunci_template])
+    for i, nilai in enumerate(lebar[:len(header)], start=1):
+        ws.column_dimensions[get_column_letter(i)].width = nilai
+
+    if baris:
+        chart = BarChart()
+        chart.type = "col"
+        chart.title = judul
+        chart.width = 15
+        chart.height = 7.5
+        def _anchor_dua_sel(dari_kol: int, sampai_kol: int,
+                            sampai_baris: int) -> None:
+            chart.anchor = TwoCellAnchor(
+                _from=AnchorMarker(col=dari_kol, row=3),
+                to=AnchorMarker(col=sampai_kol, row=sampai_baris))
+
+        if mode_chart == "vendor_total":
+            chart.grouping = "clustered"
+            chart.overlap = -90
+            chart.legend.position = "t"
+            chart.add_data(Reference(ws, min_col=4, min_row=4,
+                                     max_row=data_akhir),
+                           titles_from_data=True)
+            chart.set_categories(Reference(ws, min_col=1, min_row=5,
+                                           max_row=data_akhir))
+            seri = chart.series[0]
+            seri.tx.strRef.f = f"{ws.title}!$D$4"
+            seri.val.numRef.f = f"{ws.title}!$D$5:$D${data_akhir}"
+            if seri.cat.numRef is not None:
+                seri.cat.numRef.f = f"{ws.title}!$A$5:$A${data_akhir}"
+            elif seri.cat.strRef is not None:
+                seri.cat.strRef.f = f"{ws.title}!$A$5:$A${data_akhir}"
+            _anchor_dua_sel(6, 16, max(30, data_akhir))
+        elif mode_chart == "vendor_bulanan":
+            chart.grouping = "stacked"
+            chart.overlap = 100
+            chart.legend.position = "b"
+            bulan = jumlah_bulan or max(0, len(header) - 3)
+            chart.add_data(Reference(ws, min_col=1, max_col=1 + bulan,
+                                     min_row=5, max_row=data_akhir),
+                           titles_from_data=True, from_rows=True)
+            chart.set_categories(Reference(ws, min_col=2, max_col=1 + bulan,
+                                           min_row=4, max_row=4))
+            kutip = f"'{ws.title}'" if " " in ws.title else ws.title
+            for i, seri in enumerate(chart.series):
+                seri.tx.strRef.f = f"{kutip}!$A${5 + i}"
+            dari_kol = 3 + bulan
+            _anchor_dua_sel(dari_kol, dari_kol + 22,
+                            max(40, data_akhir + 1))
+        else:  # rm_stock
+            chart.grouping = "clustered"
+            chart.overlap = -5
+            chart.legend.position = "b"
+            chart.add_data(Reference(ws, min_col=2, max_col=3, min_row=4,
+                                     max_row=data_akhir),
+                           titles_from_data=True)
+            chart.set_categories(Reference(ws, min_col=1, min_row=5,
+                                           max_row=data_akhir))
+            for i, kolom in enumerate(("B", "C")):
+                seri = chart.series[i]
+                seri.tx.strRef.f = f"{ws.title}!${kolom}$4"
+                seri.val.numRef.f = (
+                    f"{ws.title}!${kolom}$5:${kolom}${data_akhir}")
+                if seri.cat.numRef is not None:
+                    seri.cat.numRef.f = (
+                        f"{ws.title}!$A$5:$A${data_akhir}")
+                elif seri.cat.strRef is not None:
+                    seri.cat.strRef.f = (
+                        f"{ws.title}!$A$5:$A${data_akhir}")
+            _anchor_dua_sel(7, 18, max(16, data_akhir))
+        ws.add_chart(chart, None)
 
     buf = io.BytesIO()
     wb.save(buf)
@@ -521,6 +726,44 @@ def _bulan_xlsx_penuh(dari: dt.date | None, sampai: dt.date | None,
     return bulan
 
 
+def _rentang_periode_ekspor(dari: dt.date | None, sampai: dt.date | None,
+                            potongan: list[tuple]) -> tuple[tuple[int, int] | None,
+                                                            tuple[int, int] | None]:
+    """Rentang (tahun, bulan) untuk baris periode ekspor."""
+    berdata = sorted({b for _k, b, *_ in potongan if b})
+    awal = (dari.year, dari.month) if dari else None
+    akhir = (sampai.year, sampai.month) if sampai else None
+    if awal and akhir:
+        pass
+    elif awal:
+        akhir = berdata[-1] if berdata else awal
+    elif akhir:
+        awal = berdata[0] if berdata else akhir
+    elif berdata:
+        awal, akhir = berdata[0], berdata[-1]
+    return awal, akhir
+
+
+def _fmt_periode_template(awal: tuple[int, int] | None,
+                          akhir: tuple[int, int] | None) -> str:
+    """`((2025,1),(2025,12))` → `January 2025 - Desember 2025`."""
+    if not awal or not akhir:
+        return "Tidak ada data"
+    if awal > akhir:
+        awal, akhir = akhir, awal
+    th1, bl1 = awal
+    th2, bl2 = akhir
+    if awal == akhir:
+        return f"{NAMA_BULAN_TEMPLATE[bl1]} {th1}"
+    return (f"{NAMA_BULAN_TEMPLATE[bl1]} {th1} - "
+            f"{NAMA_BULAN_TEMPLATE[bl2]} {th2}")
+
+
+def _nama_ekspor_template(kunci: str) -> str:
+    """Nama berkas unduh mengikuti template, tanpa akhiran `_template`."""
+    return TEMPLATE_EKSPOR[kunci].replace("_template.xlsx", ".xlsx")
+
+
 def _info_ekspor_penerimaan(dari: dt.date | None, sampai: dt.date | None,
                             vendor: str | None, provinsi: str | None,
                             kabupaten: str | None, kecamatan: str | None,
@@ -541,18 +784,7 @@ def _info_ekspor_penerimaan(dari: dt.date | None, sampai: dt.date | None,
             bagian.append(f"{label}: {' '.join(nilai.split()).upper()}")
     isi_filter = " | ".join(bagian) if bagian else "Semua vendor"
     judul = f"Penerimaan Karet dari - [{isi_filter}] "
-
-    berdata = sorted({b for _k, b, _kg, _e, _t in potongan if b})
-    awal = (dari.year, dari.month) if dari else None
-    akhir = (sampai.year, sampai.month) if sampai else None
-    if awal and akhir:
-        pass
-    elif awal:
-        akhir = berdata[-1] if berdata else awal
-    elif akhir:
-        awal = berdata[0] if berdata else akhir
-    elif berdata:
-        awal, akhir = berdata[0], berdata[-1]
+    awal, akhir = _rentang_periode_ekspor(dari, sampai, potongan)
     return judul, _fmt_periode_penerimaan(awal, akhir)
 
 
@@ -710,11 +942,24 @@ def _penerimaan_per_bulan(potongan: list[tuple], dimensi: str,
             for i in range(len(bulan_xlsx))]
 
         judul = ([dimensi.capitalize()] + label_bulan_xlsx
-                 + ["Total kg", "Porsi"])
+                 + ["Total kg", "%tage" if dimensi == "vendor" else "Porsi"])
         isi_xlsx = [[b["label"]] + b["kg_per_bulan"]
                     + [b["kg_total"], b["porsi"]] for b in baris_xlsx]
-        isi_xlsx.append(["TOTAL"] + total_per_bulan_xlsx
-                        + [round(sum(total_per_bulan_xlsx), 1), None])
+        baris_total_xlsx = (["TOTAL"] + total_per_bulan_xlsx
+                            + [round(sum(total_per_bulan_xlsx), 1), None])
+        if dimensi == "vendor":
+            awal_tpl = bulan_xlsx[0] if bulan_xlsx else None
+            akhir_tpl = bulan_xlsx[-1] if bulan_xlsx else None
+            return respon_xlsx_template(
+                "penerimaan_vendor_bulanan",
+                _fmt_periode_template(awal_tpl, akhir_tpl),
+                judul, isi_xlsx,
+                ["teks"] + ["kg"] * len(label_bulan_xlsx)
+                + ["kg", "persen"],
+                mode_chart="vendor_bulanan",
+                baris_total=baris_total_xlsx,
+                jumlah_bulan=len(label_bulan_xlsx))
+        isi_xlsx.append(baris_total_xlsx)
         if info_ekspor is None:
             awal = (dari.year, dari.month) if dari else (
                 berdata[0] if berdata else None)
@@ -2372,18 +2617,19 @@ def pasang_router(app, ambil_session):
             "halaman Rekonsiliasi bila sudah disimpan; data asli tidak diubah.",
         ]}
         if format == "xlsx":
-            return respon_xlsx(
-                "rm_stock_intake_vs_pricing.xlsx",
+            awal_tpl = kunci[0] if kunci else None
+            akhir_tpl = kunci[-1] if kunci else None
+            return respon_xlsx_template(
+                "rm_stock",
+                _fmt_periode_template(awal_tpl, akhir_tpl),
                 ["Date", "RM Stock (MT)", "Intake (MT)",
                  "Safety Level Stock (MT)", "SICOM (US¢/kg)",
-                 "OP Price (US¢/kg)", "OP Margin (US¢/kg)",
-                 "Sumber intake", "Catatan",
-                 "RM Stock (kg)", "Intake (kg)", "Safety (kg)"],
-                [[b["label"], b["rm_stock_ton"], b["intake_ton"], b["safety_ton"],
-                  b["sicom"], b["op_price"], b["op_margin"], b["sumber_intake"],
-                  "stok sebagian" if b["stok_sebagian"] else "",
-                  b["rm_stock_kg"], b["intake_kg"], b["safety_kg"]]
-                 for b in baris])
+                 "OP Price (US¢/kg)", "OP Margin (US¢/kg)"],
+                [[b["label"], b["rm_stock_ton"], b["intake_ton"],
+                  b["safety_ton"], b["sicom"], b["op_price"], b["op_margin"]]
+                 for b in baris],
+                ["teks", "angka", "angka", "angka", "angka", "angka", "angka"],
+                mode_chart="rm_stock")
         return hasil
 
     @router.get("/ringkasan-elemen/analisa")
@@ -2792,6 +3038,17 @@ def pasang_router(app, ambil_session):
         if laporan_wilayah:
             hasil["wilayah"] = laporan_wilayah
         if format == "xlsx":
+            if dimensi == "vendor":
+                awal, akhir = _rentang_periode_ekspor(dari, sampai, potongan)
+                return respon_xlsx_template(
+                    "penerimaan_vendor",
+                    _fmt_periode_template(awal, akhir),
+                    ["Vendor", "Kg biasa", "Kg EUDR", "Kg total",
+                     "Porsi", "Jumlah tiket"],
+                    [[b["label"], b["kg_biasa"], b["kg_eudr"], b["kg_total"],
+                      b["porsi"], b["jumlah_tiket"]] for b in baris],
+                    ["teks", "kg", "kg", "kg", "persen", "teks"],
+                    mode_chart="vendor_total", kolom_tengah=5)
             judul_xlsx, periode_xlsx = info_ekspor or (
                 "Penerimaan Karet", "Tidak ada data")
             return respon_xlsx_penerimaan(

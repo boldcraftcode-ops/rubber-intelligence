@@ -1023,6 +1023,38 @@ Kartu lain tetap memakai format ekspornya masing-masing; perhitungan, agregasi,
 dan grafik tidak berubah. Style ditanam di kode, jadi ekspor tidak bergantung
 pada berkas contoh.
 
+### Format Excel sesuai folder `Template Export` (sejak 05/11/2026)
+
+Pemilik mengunggah 3 workbook ke folder **`Template Export`** di GitHub:
+`penerimaan_per_vendor_template.xlsx`,
+`penerimaan_per_vendor_per_bulan_template.xlsx`, dan
+`rm_stock_intake_vs_pricing_template.xlsx`. Lewat `ask_user` dipilih
+**nama + format workbook** serta **nama unduh tanpa akhiran `_template`**.
+
+Tiga tombol ekspor berikut kini mengikuti template itu:
+
+| Endpoint | Nama unduh | Sheet | Chart |
+| --- | --- | --- | --- |
+| `GET /api/kartu/penerimaan?dimensi=vendor&format=xlsx` | `penerimaan_per_vendor.xlsx` | `Sheet` | 1 batang `Kg total` per vendor |
+| `GET /api/kartu/penerimaan?dimensi=vendor&per=bulan&format=xlsx` | `penerimaan_per_vendor_per_bulan.xlsx` | `Data Sheet` | 1 batang bertumpuk per vendor per bulan |
+| `GET /api/ringkasan-elemen?format=xlsx` | `rm_stock_intake_vs_pricing.xlsx` | `Sheet` | 1 batang `RM Stock (MT)` + `Intake (MT)` |
+
+Susunan yang disamakan: A1 judul (`Rubber Intake - Total Periods - All Vendors`,
+`Rubber Intake - Monthly Details`, atau `RM Stock – Intake vs Pricing`), A2
+`Purchasing - Raw Material Section`, A3 `Periode : …` tanpa tanda `[...]`,
+header di **baris 4**, data mulai **baris 5**, baris `TOTAL` khusus laporan
+bulanan, footer `Created by [user login] Raw Material Big Data`, lebar kolom,
+serta **1 chart Excel native** yang bisa diedit. Header bulanan memakai
+`%tage`, bukan `Porsi`. Periode memakai format `January 2026 - Desember 2026`.
+
+Yang **tidak berubah**: payload JSON (termasuk kunci `*_kg` pada ringkasan
+elemen), kartu/grafik di layar, agregasi, dan filter. Ekspor Penerimaan Karet
+untuk dimensi **selain vendor** tetap memakai format
+`Format_penerimaan_per_desa.xlsx` di bagian atas. Workbook dibuat dari kode;
+file template tidak disalin saat runtime, jadi ekspor tetap jalan tanpa folder
+tersebut. Health menambah `ekspor-template-export`, Jelaskan memakai entri
+`ekspor_template_export` di `backend/semantic/metrics.yaml`.
+
 ## Kalau ada tombol analisa yang bilang "Fitur ini tidak dikenali"
 
 Gejalanya: misalnya **Margin Bridge** atau **Days of Cover** tidak mau terbuka

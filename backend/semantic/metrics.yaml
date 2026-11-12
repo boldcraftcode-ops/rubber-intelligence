@@ -275,6 +275,19 @@ kartu:
       proyeksi belum ditetapkan. Tonase disediakan dalam MT (kunci *_ton)
       sekaligus kg (kunci *_kg, 1 MT = 1.000 kg); kartu bisa diganti satuan
       MT/kg dan ekspor Excel memuat kedua satuan. Harga tetap US¢/kg.
+  ekspor_template_export:
+    judul: Ekspor Excel sesuai Template Export
+    cara_dihitung: >
+      Tiga unduhan mengikuti nama berkas di folder Template Export tanpa
+      akhiran `_template`: `penerimaan_per_vendor.xlsx`,
+      `penerimaan_per_vendor_per_bulan.xlsx`, dan
+      `rm_stock_intake_vs_pricing.xlsx`. Workbook dibuat dari kode, bukan
+      menyalin template saat runtime: nama sheet, judul, subjudul, baris
+      periode tanpa tanda kurung, header di baris 4, data mulai baris 5,
+      baris TOTAL untuk laporan bulanan, footer, lebar kolom, serta satu
+      chart Excel native disamakan dengan template. Data tetap dihitung dari
+      database; payload JSON, kartu layar, dan ekspor dimensi lain tidak
+      diubah. Health menambah fitur `ekspor-template-export`.
   penerimaan:
     judul: Penerimaan karet biasa vs EUDR
     cara_dihitung: >
@@ -283,12 +296,15 @@ kartu:
       Dipisah dua tumpukan - grade biasa dan grade EUDR (grade ber-flag EUDR
       atau kode mengandung TTSR). Filter "Hanya EUDR" menampilkan vendor/
       wilayah yang memasok karet EUDR saja. Tanggal memakai Ticket Date.
-      Ekspor Excel mengikuti Format_penerimaan_per_desa.xlsx: judul & periode
-      di A2/A3, header di baris 5, font Courier New, fill biru theme dk2+tint
-      40%, border tipis, format accounting/0%, dan data mulai baris 6.
-      Ekspor tidak memakai batas top maupun baris Lainnya: semua dimensi
-      menjadi baris detail dan semua bulan terpilih menjadi kolom; pengaman
-      1.200 bulan (100 tahun). Grafik di layar tetap dibatasi agar terbaca.
+      Ekspor Excel dimensi selain vendor mengikuti
+      Format_penerimaan_per_desa.xlsx: judul & periode di A2/A3, header di
+      baris 5, font Courier New, fill biru theme dk2+tint 40%, border tipis,
+      format accounting/0%, dan data mulai baris 6. Khusus dimensi vendor,
+      ekspor total dan per-bulan mengikuti folder Template Export lewat
+      entri `ekspor_template_export`. Ekspor tidak memakai batas top maupun
+      baris Lainnya: semua dimensi menjadi baris detail dan semua bulan
+      terpilih menjadi kolom; pengaman 1.200 bulan (100 tahun). Grafik di
+      layar tetap dibatasi agar terbaca.
   daftar_intake_terakhir:
     judul: Daftar intake terakhir
     cara_dihitung: >
