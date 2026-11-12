@@ -8,6 +8,11 @@ import calendar
 import datetime as dt
 import io
 import pathlib
+import posixpath
+import re
+import xml.etree.ElementTree as ET
+import zipfile
+from copy import deepcopy
 from collections import defaultdict
 from decimal import Decimal
 from typing import Iterable, Literal
@@ -22,7 +27,7 @@ from openpyxl.drawing.spreadsheet_drawing import AnchorMarker, TwoCellAnchor
 from openpyxl.formatting.rule import ColorScaleRule
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.styles.colors import Color
-from openpyxl.utils import get_column_letter
+from openpyxl.utils import column_index_from_string, get_column_letter
 from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -124,9 +129,10 @@ NAMA_BULAN_INGGRIS = ("", "January", "February", "March", "April", "May",
                       "November", "December")
 
 # ---------------------------------------------------------------------------
-# Format baku 3 ekspor sesuai folder `Template Export` yang diunggah pemilik.
+# Basis ekspor 3 laporan sesuai folder `Template Export` yang diunggah pemilik.
 # Nama file hasil unduh = nama berkas template TANPA akhiran `_template`.
-# Style ditanam di kode (bukan menyalin workbook template saat runtime).
+# Workbook template dibuka sebagai dasar agar tinggi/lebar, gaya, dan chart
+# ikut aslinya; sel data/chart diisi dari database secara dinamis.
 # ---------------------------------------------------------------------------
 TEMPLATE_EKSPOR = {
     "penerimaan_vendor": "penerimaan_per_vendor_template.xlsx",
@@ -134,30 +140,10 @@ TEMPLATE_EKSPOR = {
         "penerimaan_per_vendor_per_bulan_template.xlsx",
     "rm_stock": "rm_stock_intake_vs_pricing_template.xlsx",
 }
-JUDUL_TEMPLATE_EKSPOR = {
-    "penerimaan_vendor": "Rubber Intake - Total Periods - All Vendors",
-    "penerimaan_vendor_bulanan": "Rubber Intake - Monthly Details",
-    "rm_stock": "RM Stock – Intake vs Pricing",
-}
-SHEET_TEMPLATE_EKSPOR = {
-    "penerimaan_vendor": "Sheet",
-    "penerimaan_vendor_bulanan": "Data Sheet",
-    "rm_stock": "Sheet",
-}
-SUBJUDUL_TEMPLATE_EKSPOR = "Purchasing - Raw Material Section"
-FOOTER_TEMPLATE_EKSPOR = "Created by [user login] Raw Material Big Data"
-WARNA_HEADER_TEMPLATE_RM = "FF0070C0"
 #: `Desember` sengaja mengikuti ejaan pada baris periode template.
 NAMA_BULAN_TEMPLATE = ("", "January", "February", "March", "April", "May",
                        "June", "July", "August", "September", "October",
                        "November", "Desember")
-LEBAR_TEMPLATE_EKSPOR = {
-    "penerimaan_vendor": (49.42578125, 19.5703125, 14.28515625,
-                          19.5703125, 9.28515625, 19.28515625),
-    "rm_stock": (9.140625, 14.42578125, 15.140625, 15.28515625,
-                 12.42578125, 14.0, 14.0),
-}
-LEBAR_TEMPLATE_BULANAN = (49.5703125, 14.140625, 19.5703125, 9.28515625)
 
 
 class RekonsiliasiKeputusanMasuk(BaseModel):
@@ -307,170 +293,811 @@ def respon_xlsx_penerimaan(nama_file: str, judul: str, periode: str,
         headers={"Content-Disposition": f'attachment; filename="{nama_file}"'})
 
 
+TEMPLATE_SHEET_NS = "http://schemas.openxmlformats.org/spreadsheetml/2006/main"
+TEMPLATE_X14AC_NS = (
+    "http://schemas.microsoft.com/office/spreadsheetml/2009/9/ac")
+TEMPLATE_MC_NS = "http://schemas.openxmlformats.org/markup-compatibility/2006"
+TEMPLATE_REL_NS = (
+    "http://schemas.openxmlformats.org/officeDocument/2006/relationships")
+TEMPLATE_CHART_NS = (
+    "http://schemas.openxmlformats.org/drawingml/2006/chart")
+TEMPLATE_DRAW_NS = "http://schemas.openxmlformats.org/drawingml/2006/main"
+TEMPLATE_NS = {
+    "m": TEMPLATE_SHEET_NS,
+    "r": TEMPLATE_REL_NS,
+    "c": TEMPLATE_CHART_NS,
+    "a": TEMPLATE_DRAW_NS,
+    "mc": TEMPLATE_MC_NS,
+}
+
+
+def _daftarkan_namespace_xlsx() -> None:
+    """Daftarkan prefix umum agar serialisasi XML tetap memakai prefix asli."""
+    ET.register_namespace("", TEMPLATE_SHEET_NS)
+    ET.register_namespace("r", TEMPLATE_REL_NS)
+    ET.register_namespace("mc", TEMPLATE_MC_NS)
+    ET.register_namespace("x14ac", TEMPLATE_X14AC_NS)
+    ET.register_namespace("xr",
+                          "http://schemas.microsoft.com/office/spreadsheetml/2014/revision")
+    ET.register_namespace("xr2",
+                          "http://schemas.microsoft.com/office/spreadsheetml/2015/revision2")
+    ET.register_namespace("xr3",
+                          "http://schemas.microsoft.com/office/spreadsheetml/2016/revision3")
+    ET.register_namespace("c", TEMPLATE_CHART_NS)
+    ET.register_namespace("a", TEMPLATE_DRAW_NS)
+    for prefix, uri in {
+        "c14": "http://schemas.microsoft.com/office/drawing/2007/8/2/chart",
+        "c15": "http://schemas.microsoft.com/office/drawing/2012/chart",
+        "c16": "http://schemas.microsoft.com/office/drawing/2014/chart",
+        "c16r2": "http://schemas.microsoft.com/office/drawing/2015/06/chart",
+        "c16r3": "http://schemas.microsoft.com/office/drawing/2017/03/chart",
+    }.items():
+        ET.register_namespace(prefix, uri)
+
+
+_AKAR_REPO = pathlib.Path(__file__).resolve().parents[2]
+
+
+def _template_path(kunci_template: str) -> pathlib.Path:
+    path = _AKAR_REPO / "Template Export" / TEMPLATE_EKSPOR[kunci_template]
+    if not path.is_file():
+        raise HTTPException(
+            500,
+            "Berkas Template Export tidak ditemukan di server: "
+            f"{path.as_posix()}. Folder `Template Export` wajib ikut saat "
+            "instalasi/deployment.")
+    return path
+
+
+def _ns(ns: str, tag: str) -> str:
+    return f"{{{ns}}}{tag}"
+
+
+def _angka_xml(nilai) -> str:
+    if nilai is None:
+        return "0"
+    angka = float(nilai)
+    if angka.is_integer() and abs(angka) < 1e16:
+        return str(int(angka))
+    return repr(angka)
+
+
+def _ref_sheet(sheet_name: str) -> str:
+    aman = sheet_name.replace("'", "''")
+    if any(ch in aman for ch in (" ", "-")):
+        return f"'{aman}'"
+    return aman
+
+
+def _sel_xml(row, kolom: int, nilai, gaya: int,
+             formula: str | None = None,
+             nilai_formula=None) -> None:
+    koordinat = f"{get_column_letter(kolom)}{row.attrib['r']}"
+    atribut = {"r": koordinat, "s": str(gaya)}
+    sel = ET.SubElement(row, _ns(TEMPLATE_SHEET_NS, "c"), atribut)
+    if formula is None and nilai is None:
+        return
+    if formula is not None:
+        f = ET.SubElement(sel, _ns(TEMPLATE_SHEET_NS, "f"))
+        f.text = formula
+        v = ET.SubElement(sel, _ns(TEMPLATE_SHEET_NS, "v"))
+        v.text = _angka_xml(nilai_formula)
+        return
+    if isinstance(nilai, str):
+        sel.set("t", "inlineStr")
+        is_el = ET.SubElement(sel, _ns(TEMPLATE_SHEET_NS, "is"))
+        t_el = ET.SubElement(is_el, _ns(TEMPLATE_SHEET_NS, "t"))
+        if nilai[:1].isspace() or nilai[-1:].isspace():
+            t_el.set(_ns("http://www.w3.org/XML/1998/namespace", "space"),
+                     "preserve")
+        t_el.text = nilai
+        return
+    v = ET.SubElement(sel, _ns(TEMPLATE_SHEET_NS, "v"))
+    v.text = _angka_xml(nilai)
+
+
+def _gaya_sel(root, referensi: str, bawaan: int = 0) -> int:
+    sel = root.find(f".//m:c[@r='{referensi}']", TEMPLATE_NS)
+    if sel is None:
+        return int(bawaan)
+    try:
+        return int(sel.attrib.get("s", bawaan))
+    except (TypeError, ValueError):
+        return int(bawaan)
+
+
+def _baris_maksimum_sheet(root) -> int:
+    terakhir = 0
+    for row in root.findall(".//m:row", TEMPLATE_NS):
+        try:
+            terakhir = max(terakhir, int(row.attrib.get("r", "0")))
+        except ValueError:
+            pass
+    return terakhir
+
+
+def _gaya_kosong_awal(root) -> dict[tuple[int, int], int]:
+    """Simpan sel kosong bergaya pada baris 1-4 agar layout tidak bergeser."""
+    hasil: dict[tuple[int, int], int] = {}
+    for row in root.findall(".//m:row", TEMPLATE_NS):
+        try:
+            nomor_baris = int(row.attrib.get("r", "0"))
+        except ValueError:
+            continue
+        if nomor_baris > 4:
+            continue
+        for sel in row.findall("m:c", TEMPLATE_NS):
+            if len(sel) == 0 and not sel.attrib.get("t"):
+                koordinat = sel.attrib.get("r", "")
+                huruf = "".join(ch for ch in koordinat if ch.isalpha())
+                angka = "".join(ch for ch in koordinat if ch.isdigit())
+                if not huruf or not angka:
+                    continue
+                kolom = 0
+                for ch in huruf.upper():
+                    kolom = kolom * 26 + (ord(ch) - 64)
+                hasil[(nomor_baris, kolom)] = _gaya_sel(root, koordinat)
+    return hasil
+
+
+def _buat_baris(sheet_data, nomor: int, jumlah_kolom: int,
+                tinggi: float | None = None, kustom: bool = False,
+                tebal_bawah: bool = False, gaya_baris: int | None = None,
+                dy: str = "0.25", span_footer: bool = False):
+    atribut = {"r": str(nomor),
+               "spans": "1:1" if span_footer else f"1:{jumlah_kolom}"}
+    if gaya_baris is not None:
+        atribut["s"] = str(gaya_baris)
+        atribut["customFormat"] = "1"
+    if tinggi is not None:
+        atribut["ht"] = str(tinggi)
+        if kustom:
+            atribut["customHeight"] = "1"
+    if tebal_bawah:
+        atribut["thickBot"] = "1"
+    baris = ET.SubElement(sheet_data, _ns(TEMPLATE_SHEET_NS, "row"), atribut)
+    baris.set(_ns(TEMPLATE_X14AC_NS, "dyDescent"), dy)
+    return baris
+
+
+def _jadikan_kolom_bulanan(root, jumlah_bulan: int) -> None:
+    """Susun `<cols>` bila jumlah bulan tidak sebelas seperti template 12 bulan."""
+    if jumlah_bulan == 12:
+        return
+    kolom_total = get_column_letter(2 + jumlah_bulan)
+    kolom_persen = get_column_letter(3 + jumlah_bulan)
+    cols = root.find("m:cols", TEMPLATE_NS)
+    if cols is not None:
+        root.remove(cols)
+    cols = ET.Element(_ns(TEMPLATE_SHEET_NS, "cols"))
+    format_col = [
+        (1, 1, "49.5703125"),
+        (2, 1 + jumlah_bulan, "14.140625"),
+        (2 + jumlah_bulan, 2 + jumlah_bulan, "19.5703125"),
+        (3 + jumlah_bulan, 3 + jumlah_bulan, "9.28515625"),
+    ]
+    # Tempatkan cols sebelum sheetData.
+    sheet_data = root.find("m:sheetData", TEMPLATE_NS)
+    index = list(root).index(sheet_data)
+    root.insert(index, cols)
+    for minimum, maksimum, lebar in format_col:
+        if minimum > maksimum:
+            continue
+        ET.SubElement(cols, _ns(TEMPLATE_SHEET_NS, "col"), {
+            "min": str(minimum), "max": str(maksimum),
+            "width": lebar, "customWidth": "1",
+        })
+
+
+def _hapus_selection(root) -> None:
+    for view in root.findall(".//m:sheetView", TEMPLATE_NS):
+        for selection in list(view.findall("m:selection", TEMPLATE_NS)):
+            view.remove(selection)
+
+
+def _buat_worksheet_xml(template_bytes: bytes, kunci_template: str,
+                        periode: str, header: list, baris: list,
+                        baris_total: list | None,
+                        jumlah_bulan: int) -> tuple[bytes, str]:
+    root = ET.fromstring(template_bytes)
+    sheet_data = root.find("m:sheetData", TEMPLATE_NS)
+    if sheet_data is None:
+        raise HTTPException(500, "Berkas template tidak memiliki sheetData.")
+
+    peta_gaya_kosong = _gaya_kosong_awal(root)
+    footer_awal = _baris_maksimum_sheet(root)
+    gaya = {
+        "judul": _gaya_sel(root, "A1", 1),
+        "subjudul": _gaya_sel(root, "A2", 1),
+        "periode": _gaya_sel(root, "A3", 1),
+        "header_a": _gaya_sel(root, "A4", 1),
+        "header_b": _gaya_sel(root, "B4", 1),
+        "header_total": _gaya_sel(root, "N4", _gaya_sel(root, "B4", 1)),
+        "header_persen": _gaya_sel(root, "O4", _gaya_sel(root, "E4", 1)),
+        "header_e": _gaya_sel(root, "E4", _gaya_sel(root, "B4", 1)),
+        "header_f": _gaya_sel(root, "F4", _gaya_sel(root, "A4", 1)),
+        "header_rm_akhir": _gaya_sel(root, "G4",
+                                      _gaya_sel(root, "F4", 1)),
+        "data_a": _gaya_sel(root, "A5", 1),
+        "data_b": _gaya_sel(root, "B5", 1),
+        "data_e": _gaya_sel(root, "E5", _gaya_sel(root, "B5", 1)),
+        "data_f": _gaya_sel(root, "F5", _gaya_sel(root, "B5", 1)),
+        "data_rm_akhir": _gaya_sel(root, "G5", _gaya_sel(root, "B5", 1)),
+        "data_persen": _gaya_sel(root, "O5", _gaya_sel(root, "E5", 1)),
+        "data_rm_akhir_a": _gaya_sel(root, f"A{footer_awal - 1}",
+                                      _gaya_sel(root, "A5", 1)),
+        "data_rm_akhir_b": _gaya_sel(root, f"B{footer_awal - 1}",
+                                      _gaya_sel(root, "B5", 1)),
+        "data_rm_akhir_g": _gaya_sel(root, f"G{footer_awal - 1}",
+                                      _gaya_sel(root, "G5", 1)),
+        "total_a": _gaya_sel(root, f"A{footer_awal - 1}",
+                             _gaya_sel(root, "A5", 1)),
+        "total_b": _gaya_sel(root, f"B{footer_awal - 1}",
+                             _gaya_sel(root, "B5", 1)),
+        "total_persen": _gaya_sel(root, f"O{footer_awal - 1}",
+                                  _gaya_sel(root, "O5", 1)),
+        "footer": _gaya_sel(root, f"A{footer_awal}", 1),
+    }
+
+    for row in list(sheet_data):
+        sheet_data.remove(row)
+
+    jumlah_kolom = len(header)
+    sheet_title = next((s for s in {TEMPLATE_EKSPOR[kunci_template]}), "")
+    # Nama sheet sheet tetap dari template; sheet title terbaca dari workbook.
+    # Untuk namespace sheet tidak perlu dikirim balik.
+    if kunci_template == "rm_stock":
+        sheet_title = "Sheet"
+    elif kunci_template == "penerimaan_vendor_bulanan":
+        sheet_title = "Data Sheet"
+    else:
+        sheet_title = "Sheet"
+
+    if kunci_template == "penerimaan_vendor_bulanan" and jumlah_kolom != 15:
+        jumlah_bulan = max(0, len(header) - 3)
+
+    def _judul_dan_kosong(nomor: int, referensi: str, nilai, gaya: int) -> None:
+        tinggi = {1: (15.75 if kunci_template != "penerimaan_vendor_bulanan"
+                    else 16.5),
+                  2: (15.75 if kunci_template == "penerimaan_vendor" else
+                      (16.5 if kunci_template == "penerimaan_vendor_bulanan"
+                       else None)),
+                  3: (16.5 if kunci_template == "penerimaan_vendor_bulanan"
+                      else None),
+                  4: (38.25 if kunci_template == "penerimaan_vendor_bulanan"
+                      else (42 if kunci_template == "rm_stock" else 43.5))}[nomor]
+        kustom = tinggi is not None
+        if kunci_template == "rm_stock" and nomor == 3:
+            tinggi, kustom, tebal = 15.75, True, True
+            dy = "0.3"
+        elif nomor == 1:
+            tebal, dy = False, "0.3"
+        elif kunci_template == "rm_stock" and nomor == 4:
+            tebal, dy = False, "0.25"
+        elif nomor == 3:
+            tebal, dy = False, "0.25"
+        else:
+            tebal, dy = False, "0.25"
+        kwargs = {}
+        if kunci_template == "rm_stock" and nomor == 4:
+            kwargs["gaya_baris"] = 2
+        row_el = _buat_baris(sheet_data, nomor, jumlah_kolom, tinggi,
+                             kustom=kustom, tebal_bawah=tebal,
+                             dy=dy, **kwargs)
+        _sel_xml(row_el, 1, nilai, gaya)
+        terpakai = {1}
+        for (rb, kol), gaya_kosong in peta_gaya_kosong.items():
+            if rb == nomor and kol <= jumlah_kolom and kol not in terpakai:
+                ET.SubElement(
+                    row_el, _ns(TEMPLATE_SHEET_NS, "c"),
+                    {"r": f"{get_column_letter(kol)}{nomor}",
+                     "s": str(gaya_kosong)})
+
+    _judul_dan_kosong(1, "A1", {"penerimaan_vendor":
+        "Rubber Intake - Total Periods - All Vendors",
+        "penerimaan_vendor_bulanan":
+        "Rubber Intake - Monthly Details",
+        "rm_stock": "RM Stock – Intake vs Pricing"}[kunci_template],
+        gaya["judul"])
+    _judul_dan_kosong(2, "A2", "Purchasing - Raw Material Section",
+                      gaya["subjudul"])
+    _judul_dan_kosong(3, "A3", f"Periode : {periode}", gaya["periode"])
+
+    if kunci_template == "rm_stock":
+        row_el = _buat_baris(sheet_data, 4, jumlah_kolom, 42,
+                             kustom=True, dy="0.25", gaya_baris=2)
+    elif kunci_template == "penerimaan_vendor_bulanan":
+        row_el = _buat_baris(sheet_data, 4, jumlah_kolom, 38.25,
+                             kustom=True, dy="0.25")
+    else:
+        row_el = _buat_baris(sheet_data, 4, jumlah_kolom, 43.5,
+                             kustom=True, dy="0.25")
+
+    if kunci_template == "penerimaan_vendor":
+        gaya_header = [gaya["header_a"], gaya["header_b"], gaya["header_b"],
+                       gaya["header_b"], gaya["header_e"], gaya["header_f"]]
+        for i, teks in enumerate(header, start=1):
+            _sel_xml(row_el, i, teks, gaya_header[i - 1])
+    elif kunci_template == "penerimaan_vendor_bulanan":
+        for i, teks in enumerate(header, start=1):
+            if i == 1:
+                gaya_sel = gaya["header_a"]
+            elif i == len(header):
+                gaya_sel = gaya["header_persen"]
+            elif i == len(header) - 1:
+                gaya_sel = gaya["header_total"]
+            else:
+                gaya_sel = gaya["header_b"]
+            _sel_xml(row_el, i, teks, gaya_sel)
+    else:
+        for i, teks in enumerate(header, start=1):
+            gaya_sel = gaya["header_a"] if i == 1 else (
+                gaya["header_rm_akhir"] if i == len(header)
+                else gaya["header_b"])
+            _sel_xml(row_el, i, teks, gaya_sel)
+
+    for indeks, nilai_baris in enumerate(baris, start=5):
+        if kunci_template == "rm_stock":
+            terakhir = indeks == 4 + len(baris)
+            tinggi = 15.75 if terakhir else None
+            row_el = _buat_baris(sheet_data, indeks, jumlah_kolom, tinggi,
+                                 kustom=False, tebal_bawah=terakhir,
+                                 dy="0.3" if terakhir else "0.25")
+            for i, nilai in enumerate(nilai_baris, start=1):
+                if terakhir:
+                    gaya_sel = (gaya["data_rm_akhir_a"] if i == 1 else
+                                gaya["data_rm_akhir_g"] if i == len(header)
+                                else gaya["data_rm_akhir_b"])
+                else:
+                    gaya_sel = (gaya["data_a"] if i == 1 else
+                                (gaya["data_rm_akhir"] if i == len(header)
+                                 else gaya["data_b"]))
+                _sel_xml(row_el, i, nilai, gaya_sel)
+        elif kunci_template == "penerimaan_vendor_bulanan":
+            row_el = _buat_baris(sheet_data, indeks, jumlah_kolom,
+                                 dy="0.25")
+            for i, nilai in enumerate(nilai_baris, start=1):
+                if i == 1:
+                    gaya_sel = gaya["data_a"]
+                elif i == len(header):
+                    gaya_sel = gaya["data_persen"]
+                else:
+                    gaya_sel = gaya["data_b"]
+                _sel_xml(row_el, i, nilai, gaya_sel)
+        else:
+            row_el = _buat_baris(sheet_data, indeks, jumlah_kolom,
+                                 dy="0.25")
+            for i, nilai in enumerate(nilai_baris, start=1):
+                if i == 1:
+                    gaya_sel = gaya["data_a"]
+                elif i in (2, 3, 4):
+                    gaya_sel = gaya["data_b"]
+                elif i == 5:
+                    gaya_sel = gaya["data_e"]
+                else:
+                    gaya_sel = gaya["data_f"]
+                _sel_xml(row_el, i, nilai, gaya_sel)
+
+    baris_terakhir = 4 + len(baris)
+    if kunci_template == "penerimaan_vendor_bulanan":
+        baris_terakhir += 1
+        row_el = _buat_baris(sheet_data, baris_terakhir, jumlah_kolom,
+                             dy="0.25")
+        total_nilai = baris_total or (["TOTAL"] + [0] * (jumlah_kolom - 2)
+                                      + [None])
+        for i, nilai in enumerate(total_nilai, start=1):
+            if i == 1:
+                _sel_xml(row_el, i, nilai, gaya["total_a"])
+            elif i == jumlah_kolom:
+                rumus = (f"SUM({get_column_letter(i)}5:"
+                         f"{get_column_letter(i)}{baris_terakhir - 1})"
+                         if baris_terakhir > 5 else None)
+                cache_persen = sum(
+                    (row[-1] or 0) for row in baris) if baris else 0
+                _sel_xml(row_el, i, None if rumus else 0,
+                         gaya["total_persen"], formula=rumus,
+                         nilai_formula=cache_persen)
+            else:
+                _sel_xml(row_el, i, nilai, gaya["total_b"])
+
+    footer_row = baris_terakhir + 1
+    row_el = _buat_baris(sheet_data, footer_row, jumlah_kolom,
+                         dy="0.25",
+                         span_footer=kunci_template == "rm_stock")
+    _sel_xml(row_el, 1, "Created by [user login] Raw Material Big Data",
+             gaya["footer"])
+
+    if kunci_template == "penerimaan_vendor_bulanan":
+        _jadikan_kolom_bulanan(root, max(0, len(header) - 3))
+
+    dimensi = root.find("m:dimension", TEMPLATE_NS)
+    if dimensi is not None:
+        dimensi.set("ref", f"A1:{get_column_letter(jumlah_kolom)}{footer_row}")
+    _hapus_selection(root)
+
+    xml_bytes = ET.tostring(root)
+    return (b'<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n' +
+            xml_bytes, sheet_title)
+
+
+def _xml_bytes(root) -> bytes:
+    return (b'<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n' +
+            ET.tostring(root))
+
+
+def _q(ns: str, tag: str) -> str:
+    return f"{{{ns}}}{tag}"
+
+
+def _hapus_extlst_series(root) -> None:
+    for ser in root.findall(".//c:ser", TEMPLATE_NS):
+        for ext in list(ser.findall("c:extLst", TEMPLATE_NS)):
+            ser.remove(ext)
+
+
+def _baris_dari_ref(ref: str) -> int:
+    if not ref:
+        return 1
+    match = re.search(r"(\d+)", str(ref).split("$")[-1])
+    return int(match.group(1)) if match else 1
+
+
+def _baris_footer_worksheet(xml_bytes: bytes) -> int:
+    _daftarkan_namespace_xlsx()
+    root = ET.fromstring(xml_bytes)
+    data = root.find("m:sheetData", TEMPLATE_NS)
+    if data is None:
+        return 0
+    baris = [_baris_dari_ref(row.attrib.get("r", ""))
+             for row in data.findall("m:row", TEMPLATE_NS)]
+    return max(baris) if baris else 0
+
+
+def _geser_anchor_drawing(drawing_xml: bytes, delta: int) -> bytes:
+    if delta == 0:
+        return drawing_xml
+    ns_xdr = "http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing"
+    ns_a = "http://schemas.openxmlformats.org/drawingml/2006/main"
+    ET.register_namespace("xdr", ns_xdr)
+    ET.register_namespace("a", ns_a)
+    root = ET.fromstring(drawing_xml)
+    _daftarkan_namespace_xlsx()
+    for jangkar in list(root):
+        if jangkar.tag not in (f"{{{ns_xdr}}}twoCellAnchor",
+                               f"{{{ns_xdr}}}oneCellAnchor"):
+            continue
+        for nama in ("from", "to"):
+            sisi = jangkar.find(f"{{{ns_xdr}}}{nama}")
+            if sisi is None:
+                continue
+            row = sisi.find(f"{{{ns_xdr}}}row")
+            if row is not None and row.text:
+                row.text = str(max(0, int(row.text) + delta))
+    return _xml_bytes(root)
+
+
+def _isi_cache_str(cache, nilai: list) -> None:
+    for anak in list(cache):
+        if anak.tag in (_q(TEMPLATE_CHART_NS, "ptCount"),
+                        _q(TEMPLATE_CHART_NS, "pt")):
+            cache.remove(anak)
+    ET.SubElement(cache, _q(TEMPLATE_CHART_NS, "ptCount"),
+                  {"val": str(len(nilai))})
+    for indeks, teks in enumerate(nilai):
+        if teks is None:
+            continue
+        teks = str(teks)
+        pt = ET.SubElement(cache, _q(TEMPLATE_CHART_NS, "pt"),
+                           {"idx": str(indeks)})
+        v = ET.SubElement(pt, _q(TEMPLATE_CHART_NS, "v"))
+        if teks[:1].isspace() or teks[-1:].isspace():
+            v.set(_q("http://www.w3.org/XML/1998/namespace", "space"),
+                  "preserve")
+        v.text = teks
+
+
+def _isi_cache_num(cache, nilai: list) -> None:
+    for anak in list(cache):
+        if anak.tag in (_q(TEMPLATE_CHART_NS, "ptCount"),
+                        _q(TEMPLATE_CHART_NS, "pt")):
+            cache.remove(anak)
+    ET.SubElement(cache, _q(TEMPLATE_CHART_NS, "ptCount"),
+                  {"val": str(len(nilai))})
+    for indeks, angka in enumerate(nilai):
+        if angka is None:
+            continue
+        pt = ET.SubElement(cache, _q(TEMPLATE_CHART_NS, "pt"),
+                           {"idx": str(indeks)})
+        v = ET.SubElement(pt, _q(TEMPLATE_CHART_NS, "v"))
+        v.text = _angka_xml(angka)
+
+
+def _ref_kolom(sheet_ref: str, kolom: str, baris: int) -> str:
+    return f"{sheet_ref}!${kolom}${baris}"
+
+
+def _ref_rentang(sheet_ref: str, kolom_awal: str, baris_awal: int,
+                 kolom_akhir: str, baris_akhir: int) -> str:
+    return f"{sheet_ref}!${kolom_awal}${baris_awal}:${kolom_akhir}${baris_akhir}"
+
+
+def _set_str_ref(ser, jenis: str, formula: str, nilai: list) -> None:
+    ref = ser.find(f"c:{jenis}/c:strRef", TEMPLATE_NS)
+    if ref is None:
+        return
+    f = ref.find("c:f", TEMPLATE_NS)
+    if f is not None:
+        f.text = formula
+    cache = ref.find("c:strCache", TEMPLATE_NS)
+    if cache is not None:
+        _isi_cache_str(cache, nilai)
+
+
+def _set_num_ref(ser, formula: str, nilai: list) -> None:
+    ref = ser.find("c:val/c:numRef", TEMPLATE_NS)
+    if ref is None:
+        return
+    f = ref.find("c:f", TEMPLATE_NS)
+    if f is not None:
+        f.text = formula
+    cache = ref.find("c:numCache", TEMPLATE_NS)
+    if cache is not None:
+        _isi_cache_num(cache, nilai)
+
+
+def _set_idx_order(ser, indeks: int) -> None:
+    idx = ser.find("c:idx", TEMPLATE_NS)
+    order = ser.find("c:order", TEMPLATE_NS)
+    if idx is not None:
+        idx.set("val", str(indeks))
+    if order is not None:
+        order.set("val", str(indeks))
+
+
+def _hapus_extlst_chart_bar(root) -> None:
+    for bar in root.findall(".//c:barChart", TEMPLATE_NS):
+        for ext in list(bar.findall("c:extLst", TEMPLATE_NS)):
+            bar.remove(ext)
+
+
+def _ubah_series_vendor_total(root, header, baris) -> None:
+    _hapus_extlst_chart_bar(root)
+    bar = root.find(".//c:barChart", TEMPLATE_NS)
+    if bar is None:
+        return
+    sers = bar.findall("c:ser", TEMPLATE_NS)
+    if not sers:
+        return
+    keep = sers[0]
+    for ser in sers[1:]:
+        bar.remove(ser)
+    _set_idx_order(keep, 0)
+    sheet_ref = _ref_sheet("Sheet")
+    akhir = max(5, 4 + len(baris))
+    labels = [row[0] for row in baris]
+    nilai = [row[3] for row in baris]
+    _set_str_ref(keep, "tx", _ref_kolom(sheet_ref, "D", 4), [header[3]])
+    _set_str_ref(keep, "cat",
+                 _ref_rentang(sheet_ref, "A", 5, "A", akhir), labels)
+    _set_num_ref(keep,
+                 _ref_rentang(sheet_ref, "D", 5, "D", akhir), nilai)
+
+
+def _ubah_series_rm_stock(root, header, baris) -> None:
+    sheet_ref = _ref_sheet("Sheet")
+    akhir = max(5, 4 + len(baris))
+    labels = [row[0] for row in baris]
+    for ser in root.findall(".//c:ser", TEMPLATE_NS):
+        tx = ser.find("c:tx/c:strRef/c:f", TEMPLATE_NS)
+        if tx is None:
+            continue
+        match = re.search(r"\$([A-Z]+)\$4$", tx.text or "")
+        if not match:
+            continue
+        kolom = match.group(1)
+        try:
+            indeks = column_index_from_string(kolom)
+        except ValueError:
+            continue
+        if indeks > len(header):
+            continue
+        _set_str_ref(ser, "tx", _ref_kolom(sheet_ref, kolom, 4),
+                     [header[indeks - 1]])
+        _set_str_ref(ser, "cat",
+                     _ref_rentang(sheet_ref, "A", 5, "A", akhir), labels)
+        _set_num_ref(ser,
+                     _ref_rentang(sheet_ref, kolom, 5, kolom, akhir),
+                     [row[indeks - 1] for row in baris])
+
+
+def _ubah_series_vendor_bulanan(root, header, baris) -> None:
+    bar = root.find(".//c:barChart", TEMPLATE_NS)
+    if bar is None:
+        return
+    bulan = max(0, len(header) - 3)
+    kolom_terakhir = get_column_letter(1 + bulan)
+    sheet_ref = _ref_sheet("Data Sheet")
+    n = len(baris)
+    sers = bar.findall("c:ser", TEMPLATE_NS)
+    if len(sers) > n:
+        for ser in sers[n:]:
+            bar.remove(ser)
+        sers = bar.findall("c:ser", TEMPLATE_NS)
+    if len(sers) < n and sers:
+        prototype = deepcopy(sers[-1])
+        d_lbls = bar.find("c:dLbls", TEMPLATE_NS)
+        posisi = list(bar).index(d_lbls) if d_lbls is not None else len(bar)
+        for nomor in range(len(sers), n):
+            baru = deepcopy(prototype)
+            bar.insert(posisi, baru)
+            posisi += 1
+        sers = bar.findall("c:ser", TEMPLATE_NS)
+    kategori = header[1:1 + bulan]
+    for indeks, ser in enumerate(sers[:n]):
+        nomor_baris = 5 + indeks
+        _set_idx_order(ser, indeks)
+        sp_pr = ser.find("c:spPr", TEMPLATE_NS)
+        if sp_pr is not None:
+            warna = sp_pr.find(".//a:schemeClr", TEMPLATE_NS)
+            if warna is not None:
+                warna.set("val", f"accent{indeks % 6 + 1}")
+        _set_str_ref(ser, "tx",
+                     _ref_kolom(sheet_ref, "A", nomor_baris),
+                     [baris[indeks][0]])
+        _set_str_ref(ser, "cat",
+                     _ref_rentang(sheet_ref, "B", 4,
+                                  kolom_terakhir, 4), kategori)
+        _set_num_ref(ser,
+                     _ref_rentang(sheet_ref, "B", nomor_baris,
+                                  kolom_terakhir, nomor_baris),
+                     baris[indeks][1:1 + bulan])
+
+
+def _ubah_chart_xml(chart_bytes: bytes, kunci_template: str,
+                    header, baris) -> bytes:
+    _daftarkan_namespace_xlsx()
+    root = ET.fromstring(chart_bytes)
+    _hapus_extlst_series(root)
+    if kunci_template == "penerimaan_vendor":
+        _ubah_series_vendor_total(root, header, baris)
+    elif kunci_template == "penerimaan_vendor_bulanan":
+        _ubah_series_vendor_bulanan(root, header, baris)
+    else:
+        _ubah_series_rm_stock(root, header, baris)
+    return _xml_bytes(root)
+
+
+def _lokasi_sheet_chart(isi: dict[str, bytes]) -> tuple[str, str]:
+    pkg_ns = "http://schemas.openxmlformats.org/package/2006/relationships"
+    wb = ET.fromstring(isi["xl/workbook.xml"])
+    rel = ET.fromstring(isi["xl/_rels/workbook.xml.rels"])
+    sheet_el = wb.find("m:sheets/m:sheet", TEMPLATE_NS)
+    sheet_id = sheet_el.attrib.get(_q(TEMPLATE_REL_NS, "id"))
+    target = None
+    for anak in rel.findall(_q(pkg_ns, "Relationship")):
+        if anak.attrib.get("Id") == sheet_id:
+            target = anak.attrib.get("Target")
+            break
+    if not target:
+        raise HTTPException(500, "Worksheet dalam template tidak ditemukan.")
+    if target.startswith("/"):
+        sheet_path = target.lstrip("/")
+    else:
+        sheet_path = posixpath.normpath(
+            posixpath.join("xl", target))
+
+    sheet_rel_path = posixpath.join(
+        posixpath.dirname(sheet_path), "_rels",
+        posixpath.basename(sheet_path) + ".rels")
+    drawing_target = None
+    if sheet_rel_path in isi:
+        sheet_rel = ET.fromstring(isi[sheet_rel_path])
+        for anak in sheet_rel.findall(_q(pkg_ns, "Relationship")):
+            if (anak.attrib.get("Type") or "").endswith("/drawing"):
+                drawing_target = anak.attrib.get("Target")
+                break
+    if not drawing_target:
+        raise HTTPException(500, "Drawing chart dalam template tidak ditemukan.")
+    drawing_path = posixpath.normpath(posixpath.join(
+        posixpath.dirname(sheet_path), drawing_target))
+
+    drawing_rel_path = posixpath.join(
+        posixpath.dirname(drawing_path), "_rels",
+        posixpath.basename(drawing_path) + ".rels")
+    chart_target = None
+    if drawing_rel_path in isi:
+        drawing_rel = ET.fromstring(isi[drawing_rel_path])
+        for anak in drawing_rel.findall(_q(pkg_ns, "Relationship")):
+            if (anak.attrib.get("Type") or "").endswith("/chart"):
+                chart_target = anak.attrib.get("Target")
+                break
+    if not chart_target:
+        raise HTTPException(500, "Chart dalam template tidak ditemukan.")
+    chart_path = posixpath.normpath(posixpath.join(
+        posixpath.dirname(drawing_path), chart_target))
+    return sheet_path, chart_path
+
+
+def _lokasi_drawing_sheet(isi: dict[str, bytes], sheet_path: str) -> str:
+    pkg_ns = "http://schemas.openxmlformats.org/package/2006/relationships"
+    sheet_rel_path = posixpath.join(
+        posixpath.dirname(sheet_path), "_rels",
+        posixpath.basename(sheet_path) + ".rels")
+    sheet_rel = ET.fromstring(isi[sheet_rel_path])
+    target = None
+    for anak in sheet_rel.findall(_q(pkg_ns, "Relationship")):
+        if (anak.attrib.get("Type") or "").endswith("/drawing"):
+            target = anak.attrib.get("Target")
+            break
+    if not target:
+        raise HTTPException(500, "Drawing chart dalam template tidak ditemukan.")
+    return posixpath.normpath(posixpath.join(posixpath.dirname(sheet_path), target))
+
+
+def _bersihkan_referensi_opsional(isi: dict[str, bytes]) -> None:
+    content_type = isi.get("[Content_Types].xml", b"").decode("utf-8")
+    content_type = re.sub(r"<Override[^>]+PartName=\"/xl/sharedStrings\.xml\"[^>]*/>", "", content_type)
+    content_type = re.sub(r"<Override[^>]+PartName=\"/xl/calcChain\.xml\"[^>]*/>", "", content_type)
+    isi["[Content_Types].xml"] = content_type.encode("utf-8")
+
+    rels_name = "xl/_rels/workbook.xml.rels"
+    rels = isi.get(rels_name, b"").decode("utf-8")
+    rels = re.sub(r"<Relationship[^>]*sharedStrings[^>]*/>", "", rels)
+    rels = re.sub(r"<Relationship[^>]*calcChain[^>]*/>", "", rels)
+    isi[rels_name] = rels.encode("utf-8")
+
+
+def _paket_xlsx_template(kunci_template: str, periode: str,
+                         header, baris, baris_total,
+                         jumlah_bulan: int) -> tuple[bytes, str]:
+    _daftarkan_namespace_xlsx()
+    path = _template_path(kunci_template)
+    with zipfile.ZipFile(path, "r") as zin:
+        isi = {nama: zin.read(nama) for nama in zin.namelist()}
+
+    sheet_path, chart_path = _lokasi_sheet_chart(isi)
+    footer_lama = _baris_footer_worksheet(isi[sheet_path])
+    sheet_xml, _sheet_title = _buat_worksheet_xml(
+        isi[sheet_path], kunci_template, periode, header, baris,
+        baris_total, jumlah_bulan)
+    footer_baru = _baris_footer_worksheet(sheet_xml)
+    isi[sheet_path] = sheet_xml
+    isi[chart_path] = _ubah_chart_xml(isi[chart_path],
+                                      kunci_template, header, baris)
+    drawing_path = _lokasi_drawing_sheet(isi, sheet_path)
+    isi[drawing_path] = _geser_anchor_drawing(isi[drawing_path],
+                                              footer_baru - footer_lama)
+
+    for opsional in ("xl/sharedStrings.xml", "xl/calcChain.xml"):
+        isi.pop(opsional, None)
+    _bersihkan_referensi_opsional(isi)
+
+    keluar = io.BytesIO()
+    with zipfile.ZipFile(keluar, "w", compression=zipfile.ZIP_DEFLATED) as zout:
+        for nama, data in isi.items():
+            zout.writestr(nama, data)
+    return keluar.getvalue(), _nama_ekspor_template(kunci_template)
+
+
 def respon_xlsx_template(kunci_template: str, periode: str,
                          header: list[str], baris: list[list],
                          tipe_kolom: list[str], mode_chart: str,
                          baris_total: list | None = None,
                          jumlah_bulan: int = 0,
                          kolom_tengah: int | None = None) -> StreamingResponse:
-    """Ekspor 3 laporan mengikuti workbook di folder `Template Export`.
+    """Ekspor 3 laporan memakai workbook `Template Export` sebagai dasar.
 
-    Nama sheet, judul/subjudul/periode, header di baris 4, data mulai baris 5,
-    baris TOTAL (khusus bulanan), footer, lebar kolom, dan satu chart native
-    disamakan dengan template. Berkas template hanya jadi referensi style;
-    data tetap dihitung dari database.
+    Permintaan pemilik: format unduhan harus mengikuti berkas template yang
+    diunggah, termasuk ukuran kolom/baris, gaya sel, layout chart, dan warna
+    seri. Data tetap dinamis dari database; jumlah baris/seri menyesuaikan
+    hasil query, sedangkan nama unduh tidak memakai akhiran `_template`.
     """
-    nama_file = _nama_ekspor_template(kunci_template)
-    judul = JUDUL_TEMPLATE_EKSPOR[kunci_template]
-    wb = openpyxl.Workbook()
-    ws = wb.active
-    ws.title = SHEET_TEMPLATE_EKSPOR[kunci_template]
-
-    font_judul = Font(name=FONT_PENERIMAAN, sz=11, bold=True)
-    font_sub = Font(name=FONT_PENERIMAAN, sz=11)
-    font_periode = Font(name=FONT_PENERIMAAN, sz=9)
-    font_header = Font(name=FONT_PENERIMAAN, sz=11, bold=True,
-                       color=Color(theme=0))
-    font_isi = Font(name=FONT_PENERIMAAN, sz=11, color=Color(theme=1))
-    font_footer = Font(name=FONT_PENERIMAAN, sz=9, color=Color(theme=1))
-    if kunci_template == "rm_stock":
-        fill_header = PatternFill(fill_type="solid",
-                                  fgColor=WARNA_HEADER_TEMPLATE_RM)
-    else:
-        fill_header = PatternFill(
-            fill_type="solid",
-            fgColor=Color(theme=3, tint=TINT_HEADER_PENERIMAAN))
-    sisi = Side(style="thin", color=Color(auto=True))
-    border = Border(left=sisi, right=sisi, top=sisi, bottom=sisi)
-
-    ws["A1"] = judul
-    ws["A1"].font = font_judul
-    ws["A2"] = SUBJUDUL_TEMPLATE_EKSPOR
-    ws["A2"].font = font_sub
-    ws["A3"] = f"Periode : {periode}"
-    ws["A3"].font = font_periode
-
-    def _format_nilai(tipe: str) -> str:
-        if tipe == "kg":
-            return FORMAT_KG_PENERIMAAN
-        if tipe == "persen":
-            return FORMAT_PORSEN_PENERIMAAN
-        return "General"
-
-    for i, teks in enumerate(header, start=1):
-        c = ws.cell(row=4, column=i, value=teks)
-        c.font = font_header
-        c.fill = fill_header
-        c.border = border
-        c.alignment = Alignment(horizontal="center")
-        c.number_format = _format_nilai(
-            tipe_kolom[i - 1] if i - 1 < len(tipe_kolom) else "teks")
-
-    data_akhir = 4 + len(baris)
-    baris_akhir = data_akhir
-    for indeks, nilai_baris in enumerate(baris, start=5):
-        for i, nilai in enumerate(nilai_baris, start=1):
-            c = ws.cell(row=indeks, column=i, value=nilai)
-            c.font = font_isi
-            c.border = border
-            c.number_format = _format_nilai(
-                tipe_kolom[i - 1] if i - 1 < len(tipe_kolom) else "teks")
-            if kolom_tengah is not None and i - 1 == kolom_tengah:
-                c.alignment = Alignment(horizontal="center")
-    if baris_total is not None:
-        baris_akhir += 1
-        for i, nilai in enumerate(baris_total, start=1):
-            c = ws.cell(row=baris_akhir, column=i, value=nilai)
-            c.font = Font(name=FONT_PENERIMAAN, sz=11, bold=True)
-            c.border = border
-            c.number_format = _format_nilai(
-                tipe_kolom[i - 1] if i - 1 < len(tipe_kolom) else "teks")
-    ws.cell(row=baris_akhir + 1, column=1,
-            value=FOOTER_TEMPLATE_EKSPOR).font = font_footer
-
-    if kunci_template == "penerimaan_vendor_bulanan":
-        bulan = jumlah_bulan or max(0, len(header) - 3)
-        lebar = ([LEBAR_TEMPLATE_BULANAN[0]]
-                 + [LEBAR_TEMPLATE_BULANAN[1]] * bulan
-                 + [LEBAR_TEMPLATE_BULANAN[2], LEBAR_TEMPLATE_BULANAN[3]])
-    else:
-        lebar = list(LEBAR_TEMPLATE_EKSPOR[kunci_template])
-    for i, nilai in enumerate(lebar[:len(header)], start=1):
-        ws.column_dimensions[get_column_letter(i)].width = nilai
-
-    if baris:
-        chart = BarChart()
-        chart.type = "col"
-        chart.title = judul
-        chart.width = 15
-        chart.height = 7.5
-        def _anchor_dua_sel(dari_kol: int, sampai_kol: int,
-                            sampai_baris: int) -> None:
-            chart.anchor = TwoCellAnchor(
-                _from=AnchorMarker(col=dari_kol, row=3),
-                to=AnchorMarker(col=sampai_kol, row=sampai_baris))
-
-        if mode_chart == "vendor_total":
-            chart.grouping = "clustered"
-            chart.overlap = -90
-            chart.legend.position = "t"
-            chart.add_data(Reference(ws, min_col=4, min_row=4,
-                                     max_row=data_akhir),
-                           titles_from_data=True)
-            chart.set_categories(Reference(ws, min_col=1, min_row=5,
-                                           max_row=data_akhir))
-            seri = chart.series[0]
-            seri.tx.strRef.f = f"{ws.title}!$D$4"
-            seri.val.numRef.f = f"{ws.title}!$D$5:$D${data_akhir}"
-            if seri.cat.numRef is not None:
-                seri.cat.numRef.f = f"{ws.title}!$A$5:$A${data_akhir}"
-            elif seri.cat.strRef is not None:
-                seri.cat.strRef.f = f"{ws.title}!$A$5:$A${data_akhir}"
-            _anchor_dua_sel(6, 16, max(30, data_akhir))
-        elif mode_chart == "vendor_bulanan":
-            chart.grouping = "stacked"
-            chart.overlap = 100
-            chart.legend.position = "b"
-            bulan = jumlah_bulan or max(0, len(header) - 3)
-            chart.add_data(Reference(ws, min_col=1, max_col=1 + bulan,
-                                     min_row=5, max_row=data_akhir),
-                           titles_from_data=True, from_rows=True)
-            chart.set_categories(Reference(ws, min_col=2, max_col=1 + bulan,
-                                           min_row=4, max_row=4))
-            kutip = f"'{ws.title}'" if " " in ws.title else ws.title
-            for i, seri in enumerate(chart.series):
-                seri.tx.strRef.f = f"{kutip}!$A${5 + i}"
-            dari_kol = 3 + bulan
-            _anchor_dua_sel(dari_kol, dari_kol + 22,
-                            max(40, data_akhir + 1))
-        else:  # rm_stock
-            chart.grouping = "clustered"
-            chart.overlap = -5
-            chart.legend.position = "b"
-            chart.add_data(Reference(ws, min_col=2, max_col=3, min_row=4,
-                                     max_row=data_akhir),
-                           titles_from_data=True)
-            chart.set_categories(Reference(ws, min_col=1, min_row=5,
-                                           max_row=data_akhir))
-            for i, kolom in enumerate(("B", "C")):
-                seri = chart.series[i]
-                seri.tx.strRef.f = f"{ws.title}!${kolom}$4"
-                seri.val.numRef.f = (
-                    f"{ws.title}!${kolom}$5:${kolom}${data_akhir}")
-                if seri.cat.numRef is not None:
-                    seri.cat.numRef.f = (
-                        f"{ws.title}!$A$5:$A${data_akhir}")
-                elif seri.cat.strRef is not None:
-                    seri.cat.strRef.f = (
-                        f"{ws.title}!$A$5:$A${data_akhir}")
-            _anchor_dua_sel(7, 18, max(16, data_akhir))
-        ws.add_chart(chart, None)
-
-    buf = io.BytesIO()
-    wb.save(buf)
-    buf.seek(0)
+    del tipe_kolom, mode_chart, kolom_tengah  # gaya ditentukan template.
+    isi, nama_file = _paket_xlsx_template(
+        kunci_template, periode, header, baris, baris_total,
+        jumlah_bulan or max(0, len(header) - 3))
     return StreamingResponse(
-        buf,
+        io.BytesIO(isi),
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": f'attachment; filename="{nama_file}"'})
 

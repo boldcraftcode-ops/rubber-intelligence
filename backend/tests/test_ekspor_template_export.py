@@ -132,7 +132,8 @@ def test_penerimaan_vendor_per_bulan_sesuai_template(klien):
     assert len(ch.series) >= 1
     assert ch.series[0].tx.strRef.f == "'Data Sheet'!$A$5"
     assert ch.series[0].val.numRef.f == "'Data Sheet'!$B$5:$M$5"
-    assert ch.series[0].cat.numRef.f == "'Data Sheet'!$B$4:$M$4"
+    # Template asli menyimpan label bulan sebagai kategori teks (strRef).
+    assert ch.series[0].cat.strRef.f == "'Data Sheet'!$B$4:$M$4"
 
 
 def test_rm_stock_intake_vs_pricing_sesuai_template(klien):

@@ -1004,10 +1004,12 @@ Tombol **Ekspor Excel** pada kartu **Penerimaan Karet** kini mengikuti
   `Jumlah tiket` rata tengah; lebar kolom A–G dan tinggi baris 2 (18,75)
   mengikuti berkas contoh.
 
-Format ini berlaku untuk **semua dimensi** dan juga saat periode lebih dari
-satu bulan (`per=bulan`, kolom bulan disisipkan sebelum `Total kg`/`Porsi`).
-Judul mencerminkan filter vendor/wilayah yang aktif; periode mengikuti bulan
-`Dari/Sampai` atau bulan berdata bila filter kosong.
+Format ini berlaku untuk ekspor dimensi **selain vendor** dan juga saat
+periode lebih dari satu bulan (`per=bulan`, kolom bulan disisipkan sebelum
+`Total kg`/`Porsi`). Ekspor vendor total dan per-bulan kini memakai workbook
+khusus di folder `Template Export` (lihat bagian di bawah). Judul mencerminkan
+filter vendor/wilayah yang aktif; periode mengikuti bulan `Dari/Sampai` atau
+bulan berdata bila filter kosong.
 
 **Data panjang tetap lengkap di Excel.** Batas `Tampilkan N terbesar` dan baris
 `Lainnya (N provinsi/desa/…)` hanya dipakai grafik/tabel di layar supaya tetap
@@ -1020,8 +1022,8 @@ rentang lebih panjang ditolak 422 dengan pesan untuk mempersempit
 terlepas dari `top`.
 
 Kartu lain tetap memakai format ekspornya masing-masing; perhitungan, agregasi,
-dan grafik tidak berubah. Style ditanam di kode, jadi ekspor tidak bergantung
-pada berkas contoh.
+dan grafik tidak berubah. Ekspor dimensi selain vendor tetap memakai style
+berbasis kode dan tidak bergantung pada berkas contoh.
 
 ### Format Excel sesuai folder `Template Export` (sejak 05/11/2026)
 
@@ -1050,10 +1052,14 @@ serta **1 chart Excel native** yang bisa diedit. Header bulanan memakai
 Yang **tidak berubah**: payload JSON (termasuk kunci `*_kg` pada ringkasan
 elemen), kartu/grafik di layar, agregasi, dan filter. Ekspor Penerimaan Karet
 untuk dimensi **selain vendor** tetap memakai format
-`Format_penerimaan_per_desa.xlsx` di bagian atas. Workbook dibuat dari kode;
-file template tidak disalin saat runtime, jadi ekspor tetap jalan tanpa folder
-tersebut. Health menambah `ekspor-template-export`, Jelaskan memakai entri
-`ekspor_template_export` di `backend/semantic/metrics.yaml`.
+`Format_penerimaan_per_desa.xlsx` di bagian atas. Ketiga ekspor ini membaca
+workbook `*_template.xlsx` dari folder tersebut pada runtime, menyalin paket
+Excel asli, lalu memperbarui lembar kerja, referensi/cache chart, serta anchor
+chart agar mengikuti jumlah baris/bulan aktual. Karena itu berkas template
+wajib ikut tersedia di folder `Template Export` saat aplikasi berjalan. Data
+laporan tetap dihitung dari database; yang disalin adalah format workbook,
+bukan data contoh. Health menambah `ekspor-template-export`; Jelaskan memakai
+entri `ekspor_template_export` di `backend/semantic/metrics.yaml`.
 
 ## Kalau ada tombol analisa yang bilang "Fitur ini tidak dikenali"
 

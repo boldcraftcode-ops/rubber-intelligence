@@ -281,13 +281,15 @@ kartu:
       Tiga unduhan mengikuti nama berkas di folder Template Export tanpa
       akhiran `_template`: `penerimaan_per_vendor.xlsx`,
       `penerimaan_per_vendor_per_bulan.xlsx`, dan
-      `rm_stock_intake_vs_pricing.xlsx`. Workbook dibuat dari kode, bukan
-      menyalin template saat runtime: nama sheet, judul, subjudul, baris
-      periode tanpa tanda kurung, header di baris 4, data mulai baris 5,
-      baris TOTAL untuk laporan bulanan, footer, lebar kolom, serta satu
-      chart Excel native disamakan dengan template. Data tetap dihitung dari
-      database; payload JSON, kartu layar, dan ekspor dimensi lain tidak
-      diubah. Health menambah fitur `ekspor-template-export`.
+      `rm_stock_intake_vs_pricing.xlsx`. Ketiga workbook memakai berkas
+      `*_template.xlsx` di folder `Template Export` sebagai dasar saat runtime;
+      worksheet dan chart XML disalin lalu diperbarui agar isi mengikuti data
+      dan periode aktual. Nama sheet, judul, subjudul, periode tanpa tanda
+      kurung, header baris 4, data mulai baris 5, baris TOTAL bulanan, footer,
+      lebar kolom, dan chart Excel native mengikuti template. Nama unduh tidak
+      memuat `_template`. Data tetap dihitung dari database; payload JSON,
+      kartu layar, dan ekspor dimensi lain tidak diubah. Health menambah fitur
+      `ekspor-template-export`.
   penerimaan:
     judul: Penerimaan karet biasa vs EUDR
     cara_dihitung: >
