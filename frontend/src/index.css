@@ -42,17 +42,104 @@ body {
   border-top: 2px solid #ff1313;
 }
 
+/* Skeleton untuk menandai bagian yang datanya sedang diminta. Kilau bergerak
+   lewat transform saja agar tidak memicu layout ulang. */
+.kerangka-shimmer {
+  position: relative;
+  display: block;
+  overflow: hidden;
+  border-radius: 2px;
+  background: #edeff2;
+  isolation: isolate;
+}
+
+.kerangka-shimmer::after {
+  position: absolute;
+  inset: 0;
+  content: "";
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.72), transparent);
+  transform: translateX(-100%);
+  animation: KilauKerangka 1.25s ease-in-out infinite;
+  will-change: transform;
+}
+
+@keyframes KilauKerangka {
+  to { transform: translateX(100%); }
+}
+
+/* Kartu masuk saat halaman berganti supaya urutan panel mudah dipindai. */
+@keyframes MasukKartu {
+  from { transform: translateY(8px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+@keyframes BukaGrupMenu {
+  from { transform: translateY(-4px) scaleY(0.98); opacity: 0; }
+  to { transform: translateY(0) scaleY(1); opacity: 1; }
+}
+
+@keyframes TutupGrupMenu {
+  from { transform: translateY(0) scaleY(1); opacity: 1; }
+  to { transform: translateY(-4px) scaleY(0.98); opacity: 0; }
+}
+
+/* Grup membuka/menutup dengan gerak singkat agar statusnya terbaca tanpa
+   perubahan ukuran animasi. Penanda merah meluncur mengikuti halaman aktif. */
+.penanda-menu-aktif {
+  position: absolute;
+  z-index: 2;
+  top: 0;
+  left: 12px;
+  width: 2px;
+  height: 32px;
+  border-radius: 2px;
+  background: #ff1313;
+  pointer-events: none;
+  transition: transform 200ms ease, opacity 150ms ease;
+}
+
+.menu-grup-buka {
+  transform-origin: top;
+  animation: BukaGrupMenu 180ms ease-out both;
+}
+
+.menu-grup-tutup {
+  transform-origin: top;
+  animation: TutupGrupMenu 180ms ease-in both;
+  pointer-events: none;
+}
+
+.halaman-masuk :is(.kartu-aksen, [data-animasi-kartu]) {
+  animation: MasukKartu 220ms cubic-bezier(0.2, 0, 0, 1) both;
+}
+
+.halaman-masuk :is(.kartu-aksen, [data-animasi-kartu]):nth-of-type(2) { animation-delay: 40ms; }
+.halaman-masuk :is(.kartu-aksen, [data-animasi-kartu]):nth-of-type(3) { animation-delay: 80ms; }
+.halaman-masuk :is(.kartu-aksen, [data-animasi-kartu]):nth-of-type(4) { animation-delay: 120ms; }
+.halaman-masuk :is(.kartu-aksen, [data-animasi-kartu]):nth-of-type(5) { animation-delay: 160ms; }
+.halaman-masuk :is(.kartu-aksen, [data-animasi-kartu]):nth-of-type(n+6) { animation-delay: 200ms; }
+.halaman-masuk [data-animasi-kartu] .kartu-aksen { animation: none; }
+
+/* Satu aturan aksesibilitas global: gerak baru maupun animasi tema login
+   dinonaktifkan bila pengguna meminta gerakan minimum. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
 /* Pola titik merah: aksen dekoratif seperti materi korporat */
 .pola-titik {
   background-image: radial-gradient(rgba(255, 19, 19, 0.55) 1px, transparent 1.2px);
   background-size: 10px 10px;
 }
 
-/* Latar grid data pada panel login: kotak data yang bergerak perlahan */
-@keyframes RinjangData {
-  to { background-position: 0 48px, 0 48px; }
-}
-
+/* Latar grid data statis pada panel login. */
 @keyframes TumbuhData {
   from {
     transform: scaleY(0);
@@ -104,7 +191,6 @@ body {
       linear-gradient(rgba(255, 255, 255, 0.05) 1px, transparent 1px),
       linear-gradient(90deg, rgba(255, 255, 255, 0.05) 1px, transparent 1px);
     background-size: 48px 48px;
-    animation: RinjangData 5s linear infinite;
   }
 
   .login-selimut {

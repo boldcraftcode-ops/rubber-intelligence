@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Kartu, PilihRentangBulan, TombolRefreshKartu, ambilJson, fmtAngka, useQueryKartu } from "../bersama";
+import { Kartu, KerangkaMuatKartu, PilihRentangBulan, TombolRefreshKartu, ambilJson, fmtAngka, useQueryKartu } from "../bersama";
 
 const akhirBulan = (ym: string) => {
   const [tahun, bulan] = ym.split("-").map(Number);
@@ -289,7 +289,7 @@ export default function PetaIntake() {
           </div>
 
           {(geo.isLoading || (mode === "intake" && intake.isLoading) || (mode === "potensi" && potensi.isLoading)) &&
-            <p className="py-8 text-sm text-[#64676C]">Memuat peta dan data…</p>}
+            <KerangkaMuatKartu className="py-8" />}
           {((mode === "intake" && intake.error) || (mode === "potensi" && potensi.error) || geo.error) && (
             <p className="rounded-sm border border-[#FECACA] bg-[#FEF2F2] px-3 py-2 text-sm text-[#B91C1C]">
               {pesanError(mode === "intake" ? intake.error ?? geo.error : potensi.error ?? geo.error)}

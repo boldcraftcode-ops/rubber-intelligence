@@ -47,7 +47,7 @@ function PanelKesegaran({ data, isiStok, isiBeli }: {
 }) {
   const { t } = useBahasa();
   return (
-    <section className="rounded-sm bg-white p-5 shadow-sm border border-[#E4E5E8]">
+    <section data-animasi-kartu className="rounded-sm bg-white p-5 shadow-sm border border-[#E4E5E8]">
       <h2 className="text-lg font-semibold text-[#1D2434]">
         {t("Kesegaran data hari ini")}
       </h2>
@@ -160,7 +160,7 @@ function KartuStok({ pengisi, tanggal, setTanggal, ringkas }: {
   const terakhir = ringkas?.stok_terakhir;
 
   return (
-    <section id="form-stok" className="rounded-sm bg-white p-5 shadow-sm border border-[#E4E5E8]">
+    <section data-animasi-kartu id="form-stok" className="rounded-sm bg-white p-5 shadow-sm border border-[#E4E5E8]">
       <h2 className="text-lg font-semibold text-[#1D2434]">{t("Stok harian")}</h2>
       <p className="mb-4 text-sm text-[#64676C]">
         {t("Satu angka per hari. Dipakai untuk Days of Cover, rasio safety, dan alarm stok — supaya tidak menunggu unggahan Excel.")}
@@ -327,7 +327,7 @@ function KartuPembelian({ pengisi, tanggal, setTanggal, ringkas }: {
   const butuhVendor = tingkat === "vendor" || tingkat === "tiket";
 
   return (
-    <section id="form-beli" className="rounded-sm bg-white p-5 shadow-sm border border-[#E4E5E8]">
+    <section data-animasi-kartu id="form-beli" className="rounded-sm bg-white p-5 shadow-sm border border-[#E4E5E8]">
       <h2 className="text-lg font-semibold text-[#1D2434]">{t("Pembelian harian")}</h2>
       <p className="mb-4 text-sm text-[#64676C]">
         {t("Isi qty kering & amount; harga Rp/kg, harga US¢/kg, dan margin harian dihitung sendiri memakai kurs & SICOM yang berlaku.")}
@@ -497,7 +497,7 @@ function KartuSicom({ pengisi }: { pengisi: string }) {
   });
 
   return (
-    <section className="rounded-sm bg-white p-5 shadow-sm border border-[#E4E5E8]">
+    <section data-animasi-kartu className="rounded-sm bg-white p-5 shadow-sm border border-[#E4E5E8]">
       <h2 className="text-lg font-semibold text-[#1D2434]">{t("SICOM harian (TSR20)")}</h2>
       <p className="mb-4 text-sm text-[#64676C]">
         {t("Dicek tiap hari dari website SICOM. Hari libur otomatis memakai harga terakhir — tidak perlu diisi.")}
@@ -591,7 +591,7 @@ function KartuKurs({ pengisi }: { pengisi: string }) {
   });
 
   return (
-    <section className="rounded-sm bg-white p-5 shadow-sm border border-[#E4E5E8]">
+    <section data-animasi-kartu className="rounded-sm bg-white p-5 shadow-sm border border-[#E4E5E8]">
       <h2 className="text-lg font-semibold text-[#1D2434]">{t("Kurs USD/IDR")}</h2>
       <p className="mb-4 text-sm text-[#64676C]">
         {t("Ditetapkan perusahaan dari data bank. Isi hanya saat kurs berubah — berlaku sejak tanggal yang dipilih (boleh di tengah bulan).")}

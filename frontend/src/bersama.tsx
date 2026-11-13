@@ -172,6 +172,55 @@ export const kelasTombolNav =
   "rounded-sm border border-[#D5D7DB] bg-[#1D2434] px-2.5 py-1 text-xs font-semibold " +
   "text-white hover:bg-[#2A3345] transition-colors";
 
+/** Blok shimmer ringan; alasan: memberi bentuk dan lokasi konten sebelum data
+ *  kartu tersedia tanpa menyamarkan area yang sedang dimuat. */
+export function Kerangka({ className = "" }: { className?: string }) {
+  return <span aria-hidden="true" className={`kerangka-shimmer ${className}`} />;
+}
+
+export function KerangkaMuatKartu({ className = "" }: { className?: string }) {
+  const { t } = useBahasa();
+  return (
+    <div role="status" aria-label={t("Sedang memuat data…")} className={`space-y-3 py-2 ${className}`}>
+      <span className="sr-only">{t("Sedang memuat data…")}</span>
+      <Kerangka className="h-5 w-1/3" />
+      <Kerangka className="h-10 w-2/3" />
+      <div className="grid grid-cols-3 gap-3">
+        <Kerangka className="h-4 w-full" />
+        <Kerangka className="h-4 w-4/5" />
+        <Kerangka className="h-4 w-3/4" />
+      </div>
+    </div>
+  );
+}
+
+/** Placeholder singkat untuk tabel utama; sengaja hanya beberapa baris agar
+ *  tabel intake besar tidak membuat ribuan elemen shimmer. */
+export function KerangkaMuatTabel({ kolom = 10, baris = 4 }: { kolom?: number; baris?: number }) {
+  const { t } = useBahasa();
+  const lebarKolom = `repeat(${Math.max(1, kolom)}, minmax(0, 1fr))`;
+  return (
+    <>
+      <tr>
+        <td colSpan={kolom} className="sr-only">
+          <span role="status" aria-live="polite">{t("Sedang memuat data…")}</span>
+        </td>
+      </tr>
+      {Array.from({ length: baris }, (_, indeks) => (
+        <tr key={indeks} aria-hidden="true" className="border-t border-[#EDEFF2]">
+          <td colSpan={kolom} className="px-3 py-2">
+            <div className="grid gap-2" style={{ gridTemplateColumns: lebarKolom }}>
+              {Array.from({ length: Math.max(1, kolom) }, (_, sel) => (
+                <Kerangka key={sel} className={`h-3 ${sel === 0 ? "w-3/4" : sel % 3 === indeks % 3 ? "w-4/5" : "w-1/2"}`} />
+              ))}
+            </div>
+          </td>
+        </tr>
+      ))}
+    </>
+  );
+}
+
 export function Pesan({ jenis, teks }: { jenis: "sukses" | "error"; teks: string }) {
   return (
     <p className={`mt-3 rounded-sm px-3 py-2 text-sm border ${
@@ -433,7 +482,7 @@ export function KartuMuatSaatDiminta({ judul, anak, siap = true,
   };
 
   return (
-    <div className="space-y-2">
+    <div data-animasi-kartu className="space-y-2">
       <div className="flex flex-wrap items-center justify-between gap-2 rounded-sm border border-[#E4E5E8] bg-white px-3 py-2">
         <div className="min-w-0">
           <p className="text-sm font-semibold text-[#1D2434]">{t(judul)}</p>

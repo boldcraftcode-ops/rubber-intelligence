@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { dehydrate, hydrate, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import Ringkasan from "./pages/Ringkasan";
 import Analisis from "./pages/Analisis";
@@ -127,6 +127,11 @@ export default function App() {
   const qc = useQueryClient();
   const [tab, setTab] = useState<TabId>("ringkasan");
   const [bukaSandi, setBukaSandi] = useState(false);
+  const [grupKeluar, setGrupKeluar] = useState<Record<string, boolean>>({});
+  const [posisiPenanda, setPosisiPenanda] = useState<number | null>(null);
+  const menuNavRef = useRef<HTMLElement | null>(null);
+  const menuItemRef = useRef(new Map<TabId, HTMLButtonElement>());
+  const timerGrupRef = useRef(new Map<string, ReturnType<typeof setTimeout>>());
   /* Grup menu yang sedang terbuka. Bawaannya SEMUA terbuka supaya tidak ada
      menu yang "hilang" pada pemakaian pertama; pilihan pengguna diingat. */
   const [grupTerbuka, setGrupTerbuka] = useState<Record<string, boolean>>(() => {
@@ -148,6 +153,40 @@ export default function App() {
     const g = TAB.find((tb) => tb.id === tab)?.grup;
     if (g) setGrupTerbuka((st) => (st[g] === false ? { ...st, [g]: true } : st));
   }, [tab]);
+
+  const ubahGrup = (id: string, buka: boolean) => {
+    const timerLama = timerGrupRef.current.get(id);
+    if (timerLama) clearTimeout(timerLama);
+    timerGrupRef.current.delete(id);
+    if (buka) {
+      setGrupTerbuka((st) => ({ ...st, [id]: true }));
+      setGrupKeluar((st) => ({ ...st, [id]: false }));
+      return;
+    }
+    setGrupTerbuka((st) => ({ ...st, [id]: false }));
+    setGrupKeluar((st) => ({ ...st, [id]: true }));
+    const timer = setTimeout(() => {
+      setGrupKeluar((st) => ({ ...st, [id]: false }));
+      timerGrupRef.current.delete(id);
+    }, 190);
+    timerGrupRef.current.set(id, timer);
+  };
+
+  useEffect(() => () => {
+    for (const timer of timerGrupRef.current.values()) clearTimeout(timer);
+    timerGrupRef.current.clear();
+  }, []);
+
+  useLayoutEffect(() => {
+    const item = menuItemRef.current.get(tab);
+    const nav = menuNavRef.current;
+    const grupAktif = TAB.find((tb) => tb.id === tab)?.grup;
+    if (!item || !nav || (grupAktif && grupTerbuka[grupAktif] === false)) {
+      setPosisiPenanda(null);
+      return;
+    }
+    setPosisiPenanda(item.getBoundingClientRect().top - nav.getBoundingClientRect().top);
+  }, [tab, grupTerbuka, grupKeluar]);
 
   /* ---- cara login yang berlaku di proses API ini ----
      Dipakai untuk membedakan "belum login" (tampilkan form) dari
@@ -326,7 +365,9 @@ export default function App() {
           </div>
         </div>
 
-        <nav className="flex-1 px-3 pt-1 pb-3 flex flex-col gap-0.5" aria-label={t("Menu utama")}>
+        <nav ref={menuNavRef} className="relative flex-1 px-3 pt-1 pb-3 flex flex-col gap-0.5" aria-label={t("Menu utama")}>
+          <span aria-hidden="true" className="penanda-menu-aktif"
+                style={{ transform: `translateY(${posisiPenanda ?? 0}px)`, opacity: posisiPenanda === null ? 0 : 1 }} />
           {GRUP.filter((g: any) => !g.hanyaAdmin || admin).map((g: any) => {
             const anak = tabTampil.filter((tb: any) => tb.grup === g.id);
             if (!anak.length) return null;
@@ -336,13 +377,13 @@ export default function App() {
               <div key={g.id} className="mt-1 first:mt-0">
                 <button
                   type="button"
-                  className={`w-full flex items-center gap-2 rounded-sm px-2.5 py-1.5 text-left
+                  className={`w-full h-8 flex items-center gap-2 rounded-sm px-2.5 text-left
                               transition-colors ${
                     adaAktif
                       ? "text-[#1D2434]"
                       : "text-[#64676C] hover:text-[#1D2434]"
                   } hover:bg-[#F8F8F8]`}
-                  onClick={() => setGrupTerbuka((st) => ({ ...st, [g.id]: !buka }))}
+                  onClick={() => ubahGrup(g.id, !buka)}
                   aria-expanded={buka}
                   aria-controls={`menu-grup-${g.id}`}
                   title={buka ? t("Tutup grup") : t("Buka grup")}
@@ -356,18 +397,24 @@ export default function App() {
                     ▶
                   </span>
                 </button>
-                {buka && (
-                  <div id={`menu-grup-${g.id}`} className="mt-0.5 flex flex-col gap-0.5">
+                {(buka || grupKeluar[g.id]) && (
+                  <div id={`menu-grup-${g.id}`} aria-hidden={!buka}
+                       className={`mt-0.5 flex flex-col gap-0.5 ${buka ? "menu-grup-buka" : "menu-grup-tutup"}`}>
                     {anak.map((tb: any) => (
                       <button
                         key={tb.id}
+                        ref={(el) => {
+                          if (el) menuItemRef.current.set(tb.id, el);
+                          else menuItemRef.current.delete(tb.id);
+                        }}
                         type="button"
+                        tabIndex={buka ? 0 : -1}
                         aria-current={tab === tb.id ? "page" : undefined}
-                        className={`w-full flex items-center justify-between rounded-sm pl-6 pr-2.5 py-1.5
-                                    text-sm text-left border-l-2 transition-colors ${
+                        className={`w-full h-8 flex items-center justify-between rounded-sm pl-6 pr-2.5
+                                    text-sm text-left border-l-2 border-l-transparent transition-colors ${
                           tab === tb.id
-                            ? "bg-[#F8F8F8] border-l-[#FF1313] text-[#1D2434] font-semibold"
-                            : "border-l-transparent text-[#64676C] hover:bg-[#F8F8F8] hover:text-[#1D2434]"
+                            ? "bg-[#F8F8F8] text-[#1D2434] font-semibold"
+                            : "text-[#64676C] hover:bg-[#F8F8F8] hover:text-[#1D2434]"
                         }`}
                         onClick={() => setTab(tb.id)}
                       >
@@ -460,6 +507,7 @@ export default function App() {
           </header>
 
           <KonteksPenggunaGrafik.Provider value={{ pengguna: saya.data?.username ?? "anonim" }}>
+            <div key={tab} className="halaman-masuk">
             {tab === "ringkasan" && <Ringkasan ke={(x) => setTab(x as TabId)} />}
             {tab === "analisis" && <Analisis />}
             {tab === "stok" && <Stok />}
@@ -486,6 +534,7 @@ export default function App() {
             {tab === "input" && <InputHarian pengisi={saya.data?.nama ?? "?"} />}
             {tab === "database" && admin && <Database />}
             {tab === "pengguna" && admin && <Pengguna saya={saya.data?.username} />}
+            </div>
           </KonteksPenggunaGrafik.Provider>
         </div>
       </main>

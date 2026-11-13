@@ -6,7 +6,8 @@ import {
 } from "recharts";
 import { Kartu, KartuMuatSaatDiminta, KepalaPanel, NAMA_BULAN, Panel5W1H,
   PilihRentangBulan, TombolRefreshKartu, ambilJson, fmtAngka, fmtTanggal,
-  kelasTombolAnalisa, kelasTombolKecil, pesanGalat, urlApi, useQueryKartu } from "../bersama";
+  kelasTombolAnalisa, kelasTombolKecil, pesanGalat, urlApi, useQueryKartu,
+  KerangkaMuatKartu, KerangkaMuatTabel } from "../bersama";
 import { useBahasa } from "../i18n";
 
 import { AlatGrafik } from "../GrafikTools";
@@ -923,7 +924,7 @@ function PanelMarginBridge({ url, tutup, awal, akhir, ubah }: {
           {t("SICOM = harga acuan pasar (di luar kendali), OP Price = harga beli kita (keputusan). SICOM turun menekan margin; OP Price turun justru menolong.")}
         </p>
 
-        {q.isLoading && <p className="mt-4 text-sm text-[#64676C]">{t("Memuat…")}</p>}
+        {q.isLoading && <KerangkaMuatKartu className="mt-4" />}
         {q.error && (
           <p className="mt-4 rounded-sm bg-[#FEF2F2] border border-[#FECACA] px-3 py-2 text-sm text-[#B91C1C]">
             {pesanGalat(q.error)}
@@ -1211,7 +1212,7 @@ function PanelDaysOfCover({ url, tutup, awal, akhir, ubah }: {
           {t("Pemakaian tidak ada di data, jadi dihitung dari neraca stok. DoC lebih adil daripada tonase karena menyesuaikan pemakaian.")}
         </p>
 
-        {q.isLoading && <p className="mt-4 text-sm text-[#64676C]">{t("Memuat…")}</p>}
+        {q.isLoading && <KerangkaMuatKartu className="mt-4" />}
         {q.error && (
           <p className="mt-4 rounded-sm bg-[#FEF2F2] border border-[#FECACA] px-3 py-2 text-sm text-[#B91C1C]">
             {pesanGalat(q.error)}
@@ -1561,6 +1562,9 @@ function PanelPerhatian({ ke }: { ke?: (tab: string) => void }) {
     });
   }
 
+  if (!baris.length && (alarm.isLoading || kualitas.isLoading || rekom.isLoading)) {
+    return <KerangkaMuatKartu />;
+  }
   if (!baris.length) return null;
   const urutan = { merah: 0, kuning: 1, abu: 2 };
   baris.sort((a, b) => urutan[a.nada] - urutan[b.nada]);
@@ -1651,7 +1655,9 @@ export default function Ringkasan({ ke }: { ke?: (tab: string) => void }) {
           ? <p className="rounded-sm border border-[#E4E5E8] bg-[#F8F8F8] p-3 text-sm text-[#64676C]">{pesanGalat(galatOtomatis)}</p>
           : tahunKosongOtomatis
             ? <p className="rounded-sm border border-[#E4E5E8] bg-[#F8F8F8] p-3 text-sm text-[#64676C]">Belum ada data margin untuk ditampilkan.</p>
-            : <StripAngkaKunci thn={thn} data={ringkasOtomatis.data} ke={ke} />}
+            : ringkasOtomatis.isLoading
+              ? <KerangkaMuatKartu />
+              : <StripAngkaKunci thn={thn} data={ringkasOtomatis.data} ke={ke} />}
       />
 
       <KartuMuatSaatDiminta
@@ -1701,7 +1707,9 @@ export default function Ringkasan({ ke }: { ke?: (tab: string) => void }) {
                 </tr>
               </thead>
               <tbody>
-                {label.map(([kunci, nama]) => (
+                {ringkas.isLoading && !ringkas.data
+                  ? <KerangkaMuatTabel kolom={15} baris={7} />
+                  : label.map(([kunci, nama]) => (
                   <tr key={kunci} className="border-b border-[#EDEFF2]">
                     <td className="py-1 pr-2 font-medium text-[#1D2434] whitespace-nowrap">{t(nama)}</td>
                     {ringkas.data?.bulan.map((b: any) => (

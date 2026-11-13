@@ -1,6 +1,6 @@
 import { type ReactNode, Fragment, useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ambilJson, fmtAngka, kelasInput, kelasLabel, kelasTombol, urlApi } from "../bersama";
+import { ambilJson, fmtAngka, kelasInput, kelasLabel, kelasTombol, urlApi, KerangkaMuatKartu } from "../bersama";
 
 type Filter = { year: string; period: string; supplier: string; eudr: string; includeLatex: boolean };
 type Wilayah = {
@@ -210,7 +210,7 @@ function PohonRantaiPasok({ query, aktif }: { query: string; aktif: boolean }) {
 
   if (!aktif) return null;
   if (pohon.isLoading) {
-    return <p className="p-4 text-sm text-[#64676C]">⏳ Memuat data rantai pasok…</p>;
+    return <div className="p-4"><KerangkaMuatKartu /></div>;
   }
   if (pohon.error) {
     return (

@@ -2,7 +2,7 @@ import { type FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   ambilJson, fmtAngka, fmtTanggal, kelasInput, kelasLabel,
-  kelasTombol, kelasTombolKecil, kirimMetode,
+  kelasTombol, kelasTombolKecil, kirimMetode, KerangkaMuatTabel,
 } from "../bersama";
 
 type IntakeBaris = {
@@ -901,7 +901,7 @@ export default function IntakeData() {
 
   return (
     <div className="space-y-4">
-      <section className="rounded-sm border border-[#E4E5E8] border-l-[3px] border-l-[#FF1313] bg-white p-5 shadow-[0_1px_3px_rgba(29,36,52,0.08)]">
+      <section data-animasi-kartu className="rounded-sm border border-[#E4E5E8] border-l-[3px] border-l-[#FF1313] bg-white p-5 shadow-[0_1px_3px_rgba(29,36,52,0.08)]">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <h2 className="text-lg font-semibold text-[#1D2434]">Data Intake Details — Penerimaan Karet</h2>
@@ -1026,7 +1026,7 @@ export default function IntakeData() {
                   Pilih satu atau beberapa filter, lalu tekan <b>Tampilkan Data</b>. Belum ada baris intake yang dimuat.
                 </td></tr>
               ) : daftar.isLoading ? (
-                <tr><td colSpan={11} className="px-3 py-10 text-center text-sm text-[#64676C]">Memuat hasil filter…</td></tr>
+                <KerangkaMuatTabel kolom={11} baris={5} />
               ) : rows.length === 0 ? (
                 <tr><td colSpan={11} className="px-3 py-10 text-center text-sm text-[#64676C]">
                   {cari ? `Tidak ada intake yang cocok dengan “${cari}”.` : "Tidak ada intake yang cocok dengan filter yang dipilih."}
