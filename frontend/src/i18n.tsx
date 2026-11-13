@@ -15,6 +15,9 @@ const KAMUS: Record<string, string> = {
   "Menu utama": "Main menu",
   "Tutup grup": "Collapse group",
   "Buka grup": "Expand group",
+  "Mode pratinjau lokal": "Local preview mode",
+  "Login dilewati hanya untuk pratinjau Vite; data tetap memerlukan API.":
+    "Login is bypassed only for the Vite preview; data still requires the API.",
   // ---- menu samping: halaman (tingkat 2)
   "Margin Performance": "Margin Performance",
   "Tampilkan data": "Load data",

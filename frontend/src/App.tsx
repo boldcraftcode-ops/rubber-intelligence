@@ -125,6 +125,10 @@ function ModalGantiSandi({ tutup }: { tutup: () => void }) {
 export default function App() {
   const { lang, setLang, t } = useBahasa();
   const qc = useQueryClient();
+  // Hanya untuk melihat antarmuka melalui Vite; build produksi tidak dapat
+  // melewati autentikasi dengan parameter ini.
+  const modePratinjau = import.meta.env.DEV &&
+    new URLSearchParams(window.location.search).get("pratinjau") === "1";
   const [tab, setTab] = useState<TabId>("ringkasan");
   const [bukaSandi, setBukaSandi] = useState(false);
   const [grupKeluar, setGrupKeluar] = useState<Record<string, boolean>>({});
@@ -197,6 +201,7 @@ export default function App() {
     queryFn: () => ambilJson("/api/health"),
     retry: false,
     staleTime: 60_000,
+    enabled: !modePratinjau,
   });
 
   const caraLogin = useQuery({
@@ -204,6 +209,7 @@ export default function App() {
     queryFn: () => ambilJson("/api/auth/mode"),
     retry: false,
     staleTime: 5 * 60_000,
+    enabled: !modePratinjau,
   });
 
   /* ---- sesi login ---- */
@@ -212,10 +218,18 @@ export default function App() {
     queryFn: () => ambilJson("/api/auth/saya"),
     retry: false,
     staleTime: 5 * 60_000,
+    enabled: !modePratinjau,
   });
-  const usernameCache = saya.data ? String(saya.data.username ?? "anonim") : null;
+  const dataSesi = modePratinjau
+    ? { username: "preview", nama: "Analis Pratinjau", peran: "admin", mode: "pratinjau" }
+    : saya.data;
+  const usernameCache = dataSesi ? String(dataSesi.username ?? "anonim") : null;
   const [previewUser, setPreviewUser] = useState<string | null>(null);
   useEffect(() => {
+    if (modePratinjau) {
+      setPreviewUser(usernameCache);
+      return;
+    }
     if (!usernameCache) {
       setPreviewUser(null);
       return;
@@ -267,17 +281,17 @@ export default function App() {
       unsubscribe();
       if (timer) clearTimeout(timer);
     };
-  }, [usernameCache, qc]);
-  const admin = saya.data?.peran === "admin";
-  const modeLokal = saya.data?.mode === "lokal";
+  }, [usernameCache, qc, modePratinjau]);
+  const admin = dataSesi?.peran === "admin";
+  const modeLokal = dataSesi?.mode === "lokal";
   /* Login sedang DIMATIKAN (AUTH_DISABLED=true) — dipakai sementara saat
      pemecahan masalah. Penanda di layar supaya tidak lupa dinyalakan lagi. */
-  const tanpaLogin = saya.data?.mode === "nonaktif";
+  const tanpaLogin = dataSesi?.mode === "nonaktif";
 
   // nama pengisi otomatis mengikuti akun login
   useEffect(() => {
-    if (saya.data?.nama) localStorage.setItem("op-margin.pengisi", saya.data.nama);
-  }, [saya.data?.nama]);
+    if (!modePratinjau && dataSesi?.nama) localStorage.setItem("op-margin.pengisi", dataSesi.nama);
+  }, [dataSesi?.nama, modePratinjau]);
 
   const keluar = useMutation({
     mutationFn: () => kirimJson("/api/auth/logout", {}),
@@ -291,19 +305,19 @@ export default function App() {
     queryKey: ["alarm"],
     queryFn: () => ambilJson("/api/alarm"),
     refetchInterval: 60_000,
-    enabled: !!saya.data,
+    enabled: !!dataSesi && !modePratinjau,
   });
   const jumlahAlarm = alarm.data?.alarm.length ?? 0;
 
   /* ---- gerbang: belum login -> form login ---- */
-  if (saya.isLoading) {
+  if (saya.isLoading && !modePratinjau) {
     return (
       <div className="galaxy min-h-screen flex items-center justify-center text-[#64676C]">
         <p className="text-sm animate-pulse tracking-wide">Memuat…</p>
       </div>
     );
   }
-  if (saya.error) {
+  if (saya.error && !modePratinjau) {
     const detail = pesanGalat(saya.error);
     const versiApi: string | undefined = health.data?.versi;
     // API yang menjawab bukan kode di folder ini -> jelaskan, jangan tampilkan
@@ -321,7 +335,7 @@ export default function App() {
     }
     return <Login onSukses={() => qc.invalidateQueries({ queryKey: ["saya"] })} />;
   }
-  if (saya.data && previewUser !== usernameCache) {
+  if (dataSesi && previewUser !== usernameCache) {
     return (
       <div className="galaxy min-h-screen flex items-center justify-center text-[#64676C]">
         <p className="text-sm animate-pulse tracking-wide">Menyiapkan preview kartu…</p>
@@ -456,6 +470,14 @@ export default function App() {
       {/* ===== Isi halaman ===== */}
       <main className="flex-1 min-w-0 px-8 py-7">
         <div className="mx-auto max-w-[1200px]">
+          {modePratinjau && (
+            <div className="mb-5 rounded-sm border border-[#E4E5E8] border-l-2 border-l-[#FF1313] bg-white px-4 py-2.5">
+              <p className="text-sm font-semibold text-[#1D2434]">{t("Mode pratinjau lokal")}</p>
+              <p className="mt-0.5 text-xs leading-snug text-[#64676C]">
+                {t("Login dilewati hanya untuk pratinjau Vite; data tetap memerlukan API.")}
+              </p>
+            </div>
+          )}
           {tanpaLogin && (
             <div className="mb-5 rounded-sm border border-[#FDE68A] bg-[#FFFBEB]
                             border-l-2 border-l-[#FF1313] px-4 py-2.5">
@@ -481,32 +503,32 @@ export default function App() {
                 </h1>
               </div>
               <div className="ml-auto flex min-w-0 items-center gap-3" aria-label="Pengguna yang sedang login">
-                {saya.data?.foto_profil ? (
+                {dataSesi?.foto_profil ? (
                   <img
-                    src={saya.data.foto_profil}
-                    alt={`Foto profil ${saya.data?.nama ?? saya.data?.username ?? "pengguna"}`}
+                    src={dataSesi.foto_profil}
+                    alt={`Foto profil ${dataSesi?.nama ?? dataSesi?.username ?? "pengguna"}`}
                     className="h-11 w-11 shrink-0 rounded-full border border-white object-cover ring-2 ring-[#FF1313]/30"
                   />
                 ) : (
                   <div
-                    aria-label={`Avatar ${saya.data?.nama ?? saya.data?.username ?? "pengguna"}`}
+                    aria-label={`Avatar ${dataSesi?.nama ?? dataSesi?.username ?? "pengguna"}`}
                     className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-white bg-[#1D2434] text-sm font-bold text-white ring-2 ring-[#FF1313]/30">
-                    {inisialNama(saya.data?.nama, saya.data?.username)}
+                    {inisialNama(dataSesi?.nama, dataSesi?.username)}
                   </div>
                 )}
                 <div className="min-w-0 text-right">
                   <p className="max-w-[190px] truncate text-sm font-semibold text-[#1D2434]">
-                    {saya.data?.nama ?? "Memuat pengguna…"}
+                    {dataSesi?.nama ?? "Memuat pengguna…"}
                   </p>
                   <p className="max-w-[190px] truncate text-[11px] text-[#64676C]">
-                    {saya.data?.username}{saya.data?.peran ? ` · ${saya.data.peran}` : ""}
+                    {dataSesi?.username}{dataSesi?.peran ? ` · ${dataSesi.peran}` : ""}
                   </p>
                 </div>
               </div>
             </div>
           </header>
 
-          <KonteksPenggunaGrafik.Provider value={{ pengguna: saya.data?.username ?? "anonim" }}>
+          <KonteksPenggunaGrafik.Provider value={{ pengguna: dataSesi?.username ?? "anonim" }}>
             <div key={tab} className="halaman-masuk">
             {tab === "ringkasan" && <Ringkasan ke={(x) => setTab(x as TabId)} />}
             {tab === "analisis" && <Analisis />}
@@ -531,9 +553,9 @@ export default function App() {
             {tab === "gradeharga" && <GradeHarga />}
             {tab === "unggah" && <UnggahData />}
             {tab === "intakedata" && <IntakeData />}
-            {tab === "input" && <InputHarian pengisi={saya.data?.nama ?? "?"} />}
+            {tab === "input" && <InputHarian pengisi={dataSesi?.nama ?? "?"} />}
             {tab === "database" && admin && <Database />}
-            {tab === "pengguna" && admin && <Pengguna saya={saya.data?.username} />}
+            {tab === "pengguna" && admin && <Pengguna saya={dataSesi?.username} />}
             </div>
           </KonteksPenggunaGrafik.Provider>
         </div>
