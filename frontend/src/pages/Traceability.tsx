@@ -252,10 +252,6 @@ function PohonRantaiPasok({ query, aktif }: { query: string; aktif: boolean }) {
           <button type="button"
             className={`rounded-sm px-2.5 py-1 text-[11px] font-semibold ${arah === "horizontal" ? "bg-[#1D2434] text-white" : "border border-[#E4E5E8] text-[#64676C] hover:bg-[#F8F8F8]"}`}
             onClick={() => setArah("horizontal")}>Horizontal</button>
-          <button type="button" className="rounded-sm border border-[#E4E5E8] px-2.5 py-1 text-[11px] font-semibold text-[#64676C] hover:bg-[#F8F8F8]"
-                  disabled={pohon.isFetching} onClick={() => pohon.refetch()}>
-            {pohon.isFetching ? "⏳ Memuat…" : "↻ Refresh"}
-          </button>
           {t1Terpilih && (
             <button type="button" className="rounded-sm border border-[#E4E5E8] px-2.5 py-1 text-[11px] font-semibold text-[#64676C] hover:bg-[#F8F8F8]"
               onClick={() => setT1Terpilih(null)}>Reset sorotan</button>

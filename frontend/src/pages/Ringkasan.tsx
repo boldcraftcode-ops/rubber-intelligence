@@ -6,6 +6,7 @@ import {
 } from "recharts";
 import { Kartu, KartuMuatSaatDiminta, KepalaPanel, NAMA_BULAN, Panel5W1H,
   PilihRentangBulan, TombolRefreshKartu, ambilJson, fmtAngka, fmtTanggal,
+  awalTahunBerjalan, bulanBerjalan,
   kelasTombolAnalisa, kelasTombolKecil, pesanGalat, urlApi, useQueryKartu,
   KerangkaMuatKartu, KerangkaMuatTabel, PengukurAmbang, useCountUp } from "../bersama";
 import { useBahasa } from "../i18n";
@@ -253,8 +254,8 @@ function SelBerat({ ton, satuan }: { ton: number | null | undefined; satuan: Sat
 /* ---------- elemen OP Margin: RM Stock-Intake vs Pricing (seperti Excel) ---------- */
 function KartuElemen() {
   const { t } = useBahasa();
-  const [dari, setDari] = useState("");
-  const [sampai, setSampai] = useState("");
+  const [dari, setDari] = useState(awalTahunBerjalan);
+  const [sampai, setSampai] = useState(bulanBerjalan);
   const [tampilkanCatatan, setTampilkanCatatan] = useState(false);
   const [panel, setPanel] = useState<null | "5w1h" | "bridge" | "doc" | "rca">(null);
   const [satuan, setSatuan] = useState<SatuanBerat>("mt");
@@ -516,8 +517,8 @@ function KartuGrafikMargin() {
   const [mode, setMode] = useState<"tren" | "banding">("tren");
   const [unit, setUnit] = useState<"usc" | "rp">("usc");
   // Periode yang ditampilkan (YYYY-MM). Kosong = semua periode.
-  const [dari, setDari] = useState("");
-  const [sampai, setSampai] = useState("");
+  const [dari, setDari] = useState(awalTahunBerjalan);
+  const [sampai, setSampai] = useState(bulanBerjalan);
   const params = new URLSearchParams();
   if (dari) params.set("dari", dari);
   if (sampai) params.set("sampai", sampai);
@@ -1634,19 +1635,17 @@ function PanelPerhatian({ ke }: { ke?: (tab: string) => void }) {
 /* ---------- halaman ---------- */
 export default function Ringkasan({ ke }: { ke?: (tab: string) => void }) {
   const { t } = useBahasa();
-  const [ringkasanDiminta, setRingkasanDiminta] = useState(false);
   const tahunQ = useQuery({ queryKey: ["tahun"], queryFn: () => ambilJson("/api/tahun"), staleTime: Infinity });
-  const [tahun, setTahun] = useState<number | null>(null);
+  const [tahun, setTahun] = useState<number | null>(() => new Date().getFullYear());
   const thn = tahun ?? (tahunQ.data ? tahunQ.data[tahunQ.data.length - 1] : null);
 
   const ringkas = useQuery({
     queryKey: ["ringkasan", thn],
     queryFn: () => ambilJson(`/api/ringkasan/${thn}`),
-    enabled: ringkasanDiminta && thn !== null,
+    enabled: thn !== null,
     staleTime: Infinity,
   });
-  // Kartu "Angka kunci" punya query sendiri yang AKTIF sejak halaman dibuka.
-  // Query `ringkas` di bawah tetap dikunci oleh Refresh kartu "OP Margin bulanan".
+  // Kartu angka kunci dan tabel bulanan sama-sama mengambil data otomatis.
   const ringkasOtomatis = useQuery({
     queryKey: ["ringkasan-angka-kunci", thn],
     queryFn: () => ambilJson(`/api/ringkasan/${thn}`),
@@ -1657,7 +1656,7 @@ export default function Ringkasan({ ke }: { ke?: (tab: string) => void }) {
     Array.isArray(tahunQ.data) && tahunQ.data.length === 0;
   const galatOtomatis = ringkasOtomatis.error ?? tahunQ.error;
   const siapOtomatis = !!ringkasOtomatis.data || !!galatOtomatis || tahunKosongOtomatis;
-  const tahunKosong = ringkasanDiminta && !tahunQ.isLoading &&
+  const tahunKosong = !tahunQ.isLoading &&
     Array.isArray(tahunQ.data) && tahunQ.data.length === 0;
   const siapRingkasan = !!ringkas.data || !!ringkas.error || !!tahunQ.error || tahunKosong;
   const galatRingkasan = ringkas.error ?? tahunQ.error;
@@ -1692,12 +1691,10 @@ export default function Ringkasan({ ke }: { ke?: (tab: string) => void }) {
       />
 
       <KartuMuatSaatDiminta
-        letakRefresh="filter"
+        otomatis
         judul="OP Margin bulanan"
-        keterangan="Tabel margin dan harga bulanan. Data baru dimuat setelah Anda meminta."
+        keterangan="Tabel margin dan harga bulanan untuk tahun terpilih, dimuat otomatis."
         siap={siapRingkasan}
-        setelahDiminta={() => setRingkasanDiminta(true)}
-        kunciRefreshTambahan={[["tahun"], ["ringkasan", thn]]}
         anak={galatRingkasan
           ? <><p className="rounded-sm border border-[#E4E5E8] bg-[#F8F8F8] p-3 text-sm text-[#64676C]">{pesanGalat(galatRingkasan)}</p><TombolRefreshKartu className="mt-2" /></>
           : tahunKosong
@@ -1713,7 +1710,7 @@ export default function Ringkasan({ ke }: { ke?: (tab: string) => void }) {
               <button key={th}
                 className={`rounded-sm px-3 py-1 text-sm ${th === thn
                   ? "bg-[#FF1313] text-white" : "bg-[#F1F2F4] text-[#1D2434] hover:bg-[#E8E9EC]"}`}
-                onClick={() => { setTahun(th); setRingkasanDiminta(false); }}>
+                onClick={() => setTahun(th)}>
                 {th}
               </button>
             ))}

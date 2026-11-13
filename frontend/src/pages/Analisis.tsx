@@ -6,6 +6,7 @@ import {
 } from "recharts";
 import {
   Kartu, KartuMuatSaatDiminta, NAMA_BULAN, Panel5W1H, PilihRentangBulan, akhirBulan,
+  awalTahunBerjalan, bulanBerjalan, hariIni,
   KepalaPanel, ambilJson, fmtAngka, fmtTanggal, hitungJumlahBulan, kelasInput,
   kelasTombolAnalisa, kelasTombolKecil, pesanGalat, useQueryKartu,
   TombolRefreshKartu,
@@ -19,7 +20,7 @@ import { AlatGrafik } from "../GrafikTools";
 const WARNA_SERI = ["#1D2434", "#FF1313", "#3B82F6", "#64676C", "#0F766E",
                     "#EAB308", "#F97316", "#7C3AED", "#0891B2", "#BE123C"];
 
-const TAHUN_SEMUA: (number | "")[] = ["", 2020, 2021, 2022, 2023, 2024, 2025, 2026, 2027];
+const TAHUN_SEMUA: (number | "")[] = ["", ...Array.from({ length: new Date().getFullYear() - 2019 }, (_, i) => 2020 + i), new Date().getFullYear() + 1];
 
 /* Tabel bulan x dimensi — angka yang sama dengan grafik.
    Dipakai kartu Tonase & Margin per grade/vendor (kartu Penerimaan punya
@@ -800,8 +801,8 @@ export function AnalisisKomposisi({ dari, sampai, modeEudr, dimensi,
 function KartuPenerimaan() {
   const [dimensi, setDimensi] = useState("vendor");
   const [jejak, setJejak] = useState<{ dim: string; nilai: string }[]>([]);
-  const [dari, setDari] = useState("");      // YYYY-MM
-  const [sampai, setSampai] = useState("");
+  const [dari, setDari] = useState(awalTahunBerjalan); // YYYY-MM, awal tahun berjalan
+  const [sampai, setSampai] = useState(bulanBerjalan);
   const modeEudr = "semua" as const;
   const [vendorFilter, setVendorFilter] = useState("");
   const [provinsiFilter, setProvinsiFilter] = useState("");
@@ -1077,8 +1078,8 @@ function KartuPenerimaan() {
 function KartuTonase() {
   const [dimensi, setDimensi] = useState("provinsi");
   const [jejak, setJejak] = useState<{ dim: string; nilai: string }[]>([]);
-  const [dari, setDari] = useState("");
-  const [sampai, setSampai] = useState("");
+  const [dari, setDari] = useState(awalTahunBerjalan);
+  const [sampai, setSampai] = useState(bulanBerjalan);
   const [topN, setTopN] = useState(8);
 
   const jumlahBulan = hitungJumlahBulan(dari, sampai);
@@ -1229,7 +1230,7 @@ function KartuTonase() {
 /* ---------- konsentrasi vendor ---------- */
 function KartuKonsentrasi() {
   const [top, setTop] = useState(5);
-  const [tahun, setTahun] = useState<number | "">("");
+  const [tahun, setTahun] = useState<number | "">(() => new Date().getFullYear());
   const url = `/api/kartu/konsentrasi-vendor?top=${top}${tahun ? `&tahun=${tahun}` : ""}`;
   const q = useQueryKartu({ queryKey: ["konsentrasi", url], queryFn: () => ambilJson(url) });
 
@@ -1276,7 +1277,7 @@ function KartuKonsentrasi() {
 
 /* ---------- bauran grade & EUDR ---------- */
 function KartuGrade() {
-  const [tahun, setTahun] = useState<number | "">("");
+  const [tahun, setTahun] = useState<number | "">(() => new Date().getFullYear());
   const url = `/api/kartu/bauran-grade${tahun ? `?tahun=${tahun}` : ""}`;
   const q = useQueryKartu({ queryKey: ["grade", url], queryFn: () => ambilJson(url) });
   const grades: any[] = q.data?.baris ?? [];
@@ -1348,8 +1349,8 @@ const selKepala = `${selIntake} whitespace-nowrap bg-[#F8F8F8] text-left text-[1
 
 export function KartuIntakeTerakhir() {
   const [limit, setLimit] = useState(20);
-  const [dari, setDari] = useState("");
-  const [sampai, setSampai] = useState("");
+  const [dari, setDari] = useState(() => `${awalTahunBerjalan()}-01`);
+  const [sampai, setSampai] = useState(hariIni);
   const [vendor, setVendor] = useState("");
 
   const params = new URLSearchParams();
@@ -1515,7 +1516,7 @@ export function KartuIntakeTerakhir() {
           <p className="mb-3 text-sm text-[#64676C]">
             {q.data
               ? "Belum ada tiket intake pada filter ini. Ubah vendor atau rentang tanggal, atau unggah ekspor “Master Data” di menu Unggah Data."
-              : "Tekan Refresh periode ini untuk memuat daftar tiket."}
+              : "Memuat daftar tiket…"}
           </p>
         )}
 
@@ -1567,7 +1568,7 @@ export function KartuIntakeTerakhir() {
               })}
               {!q.data && (
                 <tr><td colSpan={11} className="px-3 py-6 text-center text-[#9AA0A6]">
-                  Memuat daftar tiket… Tekan Refresh periode ini bila belum muncul.
+                  Memuat daftar tiket…
                 </td></tr>
               )}
               {q.data?.baris.length === 0 && (
@@ -1583,7 +1584,7 @@ export function KartuIntakeTerakhir() {
 
 /* ---------- reject% (tabel dibatasi 12 bulan terakhir) ---------- */
 export function KartuReject() {
-  const [tahun, setTahun] = useState<number | "">("");
+  const [tahun, setTahun] = useState<number | "">(() => new Date().getFullYear());
   const [jmlBulan, setJmlBulan] = useState(12);   // 0 = semua bulan
   const params = new URLSearchParams();
   if (tahun) params.set("tahun", String(tahun));
@@ -1662,8 +1663,8 @@ export function KartuReject() {
 
 /* ---------- margin harian ---------- */
 function KartuMarginHarian() {
-  const [tahun, setTahun] = useState<number>(2026);
-  const [bulan, setBulan] = useState<number>(1);
+  const [tahun, setTahun] = useState<number>(() => new Date().getFullYear());
+  const [bulan, setBulan] = useState<number>(() => new Date().getMonth() + 1);
   const url = `/api/kartu/margin-harian?tahun=${tahun}&bulan=${bulan}`;
   const q = useQueryKartu({ queryKey: ["margin-harian", url], queryFn: () => ambilJson(url) });
 
@@ -1674,7 +1675,7 @@ function KartuMarginHarian() {
         <div className="flex gap-2 mb-3">
           <select className={kelasInput + " max-w-32"} value={tahun}
                   onChange={(e) => setTahun(Number(e.target.value))}>
-            {[2020, 2021, 2022, 2023, 2024, 2025, 2026].map((t) => (
+            {Array.from({ length: new Date().getFullYear() - 2019 }, (_, i) => 2020 + i).map((t) => (
               <option key={t} value={t}>{t}</option>))}
           </select>
           <select className={kelasInput + " max-w-36"} value={bulan}
@@ -1715,8 +1716,8 @@ function KartuMarginHarian() {
 /* ---------- margin per grade / vendor ---------- */
 function KartuMarginPer() {
   const [dimensi, setDimensi] = useState<"grade" | "vendor">("grade");
-  const [dari, setDari] = useState("");
-  const [sampai, setSampai] = useState("");
+  const [dari, setDari] = useState(awalTahunBerjalan);
+  const [sampai, setSampai] = useState(bulanBerjalan);
   const [topN, setTopN] = useState(8);
 
   const jumlahBulan = hitungJumlahBulan(dari, sampai);
@@ -1910,8 +1911,8 @@ function PilihRentangTanggal({ dari, sampai, setDari, setSampai, aksi, batasData
 
 /* ---------- kartu baru: konsistensi intake harian/bulanan per vendor ---------- */
 function KartuKonsistensiIntake() {
-  const [dari, setDari] = useState("");
-  const [sampai, setSampai] = useState("");
+  const [dari, setDari] = useState(() => `${awalTahunBerjalan()}-01`);
+  const [sampai, setSampai] = useState(hariIni);
   const [tampilSemuaHari, setTampilSemuaHari] = useState(false);
   const [tampilSemuaRentang, setTampilSemuaRentang] = useState(false);
 
@@ -2328,8 +2329,8 @@ function KartuKonsistensiIntake() {
 
 export default function Analisis() {
   const [bukaAnalisa, setBukaAnalisa] = useState(false);
-  const [dariA, setDariA] = useState("");
-  const [sampaiA, setSampaiA] = useState("");
+  const [dariA, setDariA] = useState(awalTahunBerjalan);
+  const [sampaiA, setSampaiA] = useState(bulanBerjalan);
   const paramsA = new URLSearchParams();
   if (dariA) paramsA.set("dari", dariA);
   if (sampaiA) paramsA.set("sampai", sampaiA);
@@ -2371,7 +2372,7 @@ export default function Analisis() {
       <div className="lg:col-span-2"><KartuMuatSaatDiminta
         letakRefresh="filter"
         judul="Konsistensi intake harian vendor"
-        keterangan="Memuat rekap kedisiplinan intake per vendor hanya setelah Anda meminta. Pilih rentang tanggal, lalu tekan Refresh di sampingnya."
+        keterangan="Memuat rekap kedisiplinan intake per vendor secara otomatis. Pilih rentang tanggal untuk melihat periode lain."
         anak={<KartuKonsistensiIntake />}
       /></div>
       <KartuMuatSaatDiminta letakRefresh="filter" judul="Tonase (drill-down)" keterangan="Memuat rincian tonase hanya setelah Anda meminta." anak={<KartuTonase />} />
@@ -2383,7 +2384,7 @@ export default function Analisis() {
       <div className="lg:col-span-2"><KartuMuatSaatDiminta
         letakRefresh="filter"
         judul="Daftar intake terakhir"
-        keterangan="Memuat daftar tiket terakhir hanya setelah Anda meminta. Pilih vendor dan rentang tanggal, lalu tekan Refresh di sampingnya."
+        keterangan="Memuat daftar tiket terakhir secara otomatis. Pilih vendor dan rentang tanggal untuk melihat data yang sesuai."
         anak={<KartuIntakeTerakhir />}
       /></div>
       <p className="lg:col-span-2 text-xs text-[#64676C]">

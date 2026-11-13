@@ -538,7 +538,7 @@ export function useQueryKartu<TData = any>(opsi: any) {
 
 export function KartuMuatSaatDiminta({ judul, anak, siap = true,
                                       setelahDiminta, kunciRefreshTambahan = [],
-                                      letakRefresh = "header", otomatis = false }: {
+                                      letakRefresh = "header", otomatis = true }: {
   judul: string;
   keterangan?: string;
   anak: ReactNode;
@@ -848,7 +848,7 @@ export function PilihRentangBulan({ dari, sampai, setDari, setSampai,
     const bulan = `${tahun}-${String(sekarang.getMonth() + 1).padStart(2, "0")}`;
     const rentang: Record<string, [string, string]> = {
       semua: ["", ""],
-      tahun: [`${tahun}-01`, `${tahun}-12`],
+      tahun: [`${tahun}-01`, bulan],
       bulan: [bulan, bulan],
       semester1: [`${tahun}-01`, `${tahun}-06`],
       semester2: [`${tahun}-07`, `${tahun}-12`],

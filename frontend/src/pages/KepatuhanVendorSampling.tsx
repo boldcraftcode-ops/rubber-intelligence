@@ -176,11 +176,6 @@ export default function KepatuhanVendorSampling() {
                      placeholder={t("Ketik nama vendor atau catatan")}
                      onChange={(e) => setCari(e.target.value)} />
             </label>
-            <button className={kelasTombolAnalisa}
-                    disabled={laporan.isFetching}
-                    onClick={() => laporan.refetch()}>
-              {laporan.isFetching ? `⏳ ${t("Memuat…")}` : `↻ ${t("Refresh")}`}
-            </button>
             <a className={kelasTombolKecil}
                href={urlApi(`/api/kepatuhan-vendor-sampling?bulan=${bulan || data?.kunci}&format=xlsx`)}>
               ↓ {t("Ekspor Excel")}

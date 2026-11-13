@@ -125,10 +125,9 @@ function ModalGantiSandi({ tutup }: { tutup: () => void }) {
 export default function App() {
   const { lang, setLang, t } = useBahasa();
   const qc = useQueryClient();
-  // Hanya untuk melihat antarmuka melalui Vite; build produksi tidak dapat
-  // melewati autentikasi dengan parameter ini.
-  const modePratinjau = import.meta.env.DEV &&
-    new URLSearchParams(window.location.search).get("pratinjau") === "1";
+  // Mode development Vite langsung membuka antarmuka sebagai pratinjau agar
+  // sandbox dapat diperiksa tanpa API/login. Build produksi tetap memakai auth.
+  const modePratinjau = import.meta.env.DEV;
   const [tab, setTab] = useState<TabId>("ringkasan");
   const [bukaSandi, setBukaSandi] = useState(false);
   const [grupKeluar, setGrupKeluar] = useState<Record<string, boolean>>({});

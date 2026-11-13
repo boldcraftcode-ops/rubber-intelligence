@@ -1,5 +1,5 @@
 import { type CSSProperties, useMemo, useState } from "react";
-import { Kartu, KerangkaMuatKartu, PilihRentangBulan, TombolRefreshKartu, ambilJson, fmtAngka, useQueryKartu } from "../bersama";
+import { Kartu, KerangkaMuatKartu, PilihRentangBulan, TombolRefreshKartu, ambilJson, fmtAngka, useQueryKartu, awalTahunBerjalan, bulanBerjalan } from "../bersama";
 
 const akhirBulan = (ym: string) => {
   const [tahun, bulan] = ym.split("-").map(Number);
@@ -108,8 +108,8 @@ function cincinTerbesar(geometri: Feature["geometry"], project: (p: number[]) =>
 }
 
 export default function PetaIntake() {
-  const [dari, setDari] = useState("");
-  const [sampai, setSampai] = useState("");
+  const [dari, setDari] = useState(awalTahunBerjalan);
+  const [sampai, setSampai] = useState(bulanBerjalan);
   const [mode, setMode] = useState<ModePeta>("intake");
   const [pakaiGrafikBar, setPakaiGrafikBar] = useState(true);
   const params = new URLSearchParams({ dimensi: "provinsi" });
