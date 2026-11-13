@@ -1,6 +1,6 @@
 import {
   Children, cloneElement, createContext, createElement, isValidElement, ReactNode, useContext,
-  useEffect, useMemo, useState,
+  useEffect, useLayoutEffect, useMemo, useRef, useState,
 } from "react";
 import {
   Area, AreaChart, Bar, BarChart, CartesianGrid, Cell, ComposedChart, LabelList,
@@ -112,6 +112,19 @@ function dataGrafik(grafik: any, seri?: Seri): any[] {
   return Array.isArray(grafik?.props?.data) ? grafik.props.data : [];
 }
 
+/* Sidik jari hanya memakai data yang benar-benar digambar. Cache refresh dengan
+   angka sama tidak memicu animasi; filter atau nilai seri yang berubah memicu. */
+function sidikJariGrafik(grafik: any): string {
+  if (!grafik) return "kosong";
+  const seri = kumpulkan(grafik.props.children)
+    .filter((e) => ["Bar", "Line", "Area", "Scatter"].includes(namaKomponen(e.type)))
+    .map((e) => {
+      const p = e.props as any;
+      return [namaKomponen(e.type), p.dataKey, p.name, p.data ?? grafik.props.data ?? null];
+    });
+  return JSON.stringify([namaKomponen(grafik.type), grafik.props.data ?? null, seri]);
+}
+
 function statistik(data: any[], kunci: string) {
   const nilai = data.map((d) => d?.[kunci])
     .filter((v) => v !== null && v !== undefined && v !== "")
@@ -123,8 +136,8 @@ function statistik(data: any[], kunci: string) {
   };
 }
 
-function turunkanNode(node: ReactNode, s: Setelan, grafik: any, seriList: Seri[]): ReactNode {
-  if (Array.isArray(node)) return node.map((n) => turunkanNode(n, s, grafik, seriList));
+function turunkanNode(node: ReactNode, s: Setelan, grafik: any, seriList: Seri[], animasiAktif?: boolean): ReactNode {
+  if (Array.isArray(node)) return node.map((n) => turunkanNode(n, s, grafik, seriList, animasiAktif));
   if (!isValidElement(node)) return node;
   const tipe: any = node.type;
   if (!s.kisi && tipe === CartesianGrid) return null;
@@ -143,6 +156,11 @@ function turunkanNode(node: ReactNode, s: Setelan, grafik: any, seriList: Seri[]
     const index = Math.max(0, seriList.findIndex((x) => x.kunci === kunci));
     const warna = s.warnaSeri[kunci] ?? paletWarna[s.palet]?.[index % (paletWarna[s.palet]?.length || 1)];
     const props: any = { ...p };
+    if (animasiAktif !== undefined) {
+      props.isAnimationActive = animasiAktif;
+      props.animationDuration = 750;
+      props.animationEasing = "ease-out";
+    }
     if (warna) { props.stroke = warna; props.fill = warna; }
     if (tipe === Scatter && s.bentuk.startsWith("titik-")) {
       props.shape = ({ "titik-bulat": "circle", "titik-kotak": "square", "titik-wajik": "diamond", "titik-segitiga": "triangle" } as Record<string, string>)[s.bentuk];
@@ -161,7 +179,7 @@ function turunkanNode(node: ReactNode, s: Setelan, grafik: any, seriList: Seri[]
         if (warna) return cloneElement(c as any, { fill: warna, stroke: warna });
         if (jenisBaru !== Bar) return null;
       }
-      return turunkanNode(c, s, grafik, seriList);
+      return turunkanNode(c, s, grafik, seriList, animasiAktif);
     });
     const memilikiLabel = Children.toArray(p.children).some((c: any) => isValidElement(c) && c.type === LabelList);
     const tambahan = s.label && !memilikiLabel && jenisBaru !== Scatter
@@ -169,7 +187,7 @@ function turunkanNode(node: ReactNode, s: Setelan, grafik: any, seriList: Seri[]
     return createElement(jenisBaru, { ...props, key: (node as any).key }, ...(Children.toArray(anak)), tambahan);
   }
   if (jenisGrafik.includes(tipe)) {
-    const anak = Children.map((node.props as any).children, (c) => turunkanNode(c, s, grafik, seriList));
+    const anak = Children.map((node.props as any).children, (c) => turunkanNode(c, s, grafik, seriList, animasiAktif));
     const garisAnotasi: ReactNode[] = [];
     for (const a of s.anotasi) {
       const seri = seriList.find((x) => x.kunci === a.seri);
@@ -203,11 +221,13 @@ function turunkanNode(node: ReactNode, s: Setelan, grafik: any, seriList: Seri[]
     return createElement(tipeBaru, { ...node.props, key: (node as any).key },
       ...Children.toArray(anak), ...garisAnotasi);
   }
-  const anakBaru = Children.map((node.props as any).children, (c) => turunkanNode(c, s, grafik, seriList));
+  const anakBaru = Children.map((node.props as any).children, (c) => turunkanNode(c, s, grafik, seriList, animasiAktif));
   return cloneElement(node as any, { ...node.props, key: (node as any).key }, anakBaru);
 }
 
-export function AlatGrafik({ id, children }: { id: string; children: ReactNode }) {
+export function AlatGrafik({ id, children, animasiKunci }: {
+  id: string; children: ReactNode; animasiKunci?: string | number;
+}) {
   const { pengguna } = useContext(KonteksPenggunaGrafik);
   const kunci = `rubber-intelligence:chart:${encodeURIComponent(pengguna)}:${id}`;
   const [s, setS] = useState<Setelan>(() => bacaSetelan(kunci));
@@ -217,6 +237,62 @@ export function AlatGrafik({ id, children }: { id: string; children: ReactNode }
   const [periode, setPeriode] = useState("");
   const [teks, setTeks] = useState("");
   const grafik = useMemo(() => cariGrafik(children), [children]);
+  const jejakData = useMemo(() => animasiKunci === undefined ? "" : sidikJariGrafik(grafik),
+    [animasiKunci, grafik]);
+  const tokenAnimasi = animasiKunci === undefined
+    ? null : `${id}|${String(animasiKunci)}|${jejakData}`;
+  const [animasiAktif, setAnimasiAktif] = useState(true);
+  const [gerakDikurangi, setGerakDikurangi] = useState(() =>
+    typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+  const [sedangCetak, setSedangCetak] = useState(false);
+  const timerAnimasi = useRef<number | null>(null);
+
+  useLayoutEffect(() => {
+    if (tokenAnimasi === null) return;
+    if (timerAnimasi.current !== null) window.clearTimeout(timerAnimasi.current);
+    if (gerakDikurangi || sedangCetak) {
+      setAnimasiAktif(false);
+      return;
+    }
+    setAnimasiAktif(true);
+    timerAnimasi.current = window.setTimeout(() => {
+      setAnimasiAktif(false);
+      timerAnimasi.current = null;
+    }, 800);
+    return () => {
+      if (timerAnimasi.current !== null) {
+        window.clearTimeout(timerAnimasi.current);
+        timerAnimasi.current = null;
+      }
+    };
+  }, [tokenAnimasi]);
+
+  useEffect(() => {
+    const pilihanGerak = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const ubahGerak = () => {
+      setGerakDikurangi(pilihanGerak.matches);
+      if (pilihanGerak.matches) {
+        setAnimasiAktif(false);
+        if (timerAnimasi.current !== null) window.clearTimeout(timerAnimasi.current);
+      }
+    };
+    const mulaiCetak = () => {
+      setSedangCetak(true);
+      setAnimasiAktif(false);
+      if (timerAnimasi.current !== null) window.clearTimeout(timerAnimasi.current);
+    };
+    const selesaiCetak = () => setSedangCetak(false);
+    pilihanGerak.addEventListener("change", ubahGerak);
+    window.addEventListener("beforeprint", mulaiCetak);
+    window.addEventListener("afterprint", selesaiCetak);
+    return () => {
+      pilihanGerak.removeEventListener("change", ubahGerak);
+      window.removeEventListener("beforeprint", mulaiCetak);
+      window.removeEventListener("afterprint", selesaiCetak);
+      if (timerAnimasi.current !== null) window.clearTimeout(timerAnimasi.current);
+    };
+  }, []);
+
   const isScatter = grafik?.type === ScatterChart;
   const seri = useMemo(() => daftarSeri(grafik), [grafik]);
   const seriAktif = seri.find((x) => x.kunci === seriTerpilih) ?? seri[0];
@@ -252,7 +328,11 @@ export function AlatGrafik({ id, children }: { id: string; children: ReactNode }
   const labelJenis: Record<JenisAnotasi, string> = {
     target: "Target", "rata-rata": "Rata-rata", minimum: "Minimum", maksimum: "Maksimum", catatan: "Catatan titik/periode",
   };
-  const hasil = turunkanNode(children, s, grafik, seri);
+  // Tanpa animasiKunci, nilai isAnimationActive dari grafik tetap dipertahankan.
+  // Kartu opt-in bergerak hanya saat mount/filter atau seri yang digambar berubah;
+  // setelah 750 ms kembali statis agar refetch identik tidak berkedip.
+  const hasil = turunkanNode(children, s, grafik, seri,
+    tokenAnimasi === null ? undefined : animasiAktif && !gerakDikurangi && !sedangCetak);
 
   return <div className="relative h-full w-full min-w-0" data-grafik={id}>
     <details className="absolute right-1 top-1 z-20 text-left">

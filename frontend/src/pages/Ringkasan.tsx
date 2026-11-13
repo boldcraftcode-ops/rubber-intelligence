@@ -7,7 +7,7 @@ import {
 import { Kartu, KartuMuatSaatDiminta, KepalaPanel, NAMA_BULAN, Panel5W1H,
   PilihRentangBulan, TombolRefreshKartu, ambilJson, fmtAngka, fmtTanggal,
   kelasTombolAnalisa, kelasTombolKecil, pesanGalat, urlApi, useQueryKartu,
-  KerangkaMuatKartu, KerangkaMuatTabel } from "../bersama";
+  KerangkaMuatKartu, KerangkaMuatTabel, PengukurAmbang, useCountUp } from "../bersama";
 import { useBahasa } from "../i18n";
 
 import { AlatGrafik } from "../GrafikTools";
@@ -357,7 +357,7 @@ function KartuElemen() {
                             ubah={ubahPeriode} />
         )}
         <div className="h-96">
-          <AlatGrafik id="ringkasan-01"><ResponsiveContainer>
+          <AlatGrafik id="ringkasan-01" animasiKunci={`${qs}|${satuan}`}><ResponsiveContainer>
             <ComposedChart data={dataGrafik}
                            margin={{ top: 5, right: 10, bottom: 5, left: 0 }}>
               <CartesianGrid strokeDasharray="3 3" />
@@ -669,7 +669,7 @@ function KartuGrafikMargin() {
         {mode === "tren" ? (
           <>
             <div className="h-80">
-              <AlatGrafik id="ringkasan-02"><ResponsiveContainer>
+              <AlatGrafik id="ringkasan-02" animasiKunci={`${qs}|${unit}|${mode}`}><ResponsiveContainer>
                 <ComposedChart data={dataTren}
                                margin={{ top: 22, right: 10, bottom: 5, left: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#EDEFF2" />
@@ -742,7 +742,7 @@ function KartuGrafikMargin() {
                 {t("Selisih terhadap target (ke atas = di atas target, ke bawah = kurang)")}
               </div>
               <div className="h-24">
-                <AlatGrafik id="ringkasan-03"><ResponsiveContainer>
+                <AlatGrafik id="ringkasan-03" animasiKunci={`${qs}|${unit}|${mode}`}><ResponsiveContainer>
                   <BarChart data={dataTren} margin={{ top: 4, right: 10, bottom: 0, left: 0 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,.06)" />
                     <XAxis dataKey="label" hide />
@@ -803,7 +803,7 @@ function KartuGrafikMargin() {
               ))}
             </div>
             <div className="h-80">
-              <AlatGrafik id="ringkasan-04"><ResponsiveContainer>
+              <AlatGrafik id="ringkasan-04" animasiKunci={`${qs}|${tahunDipilih.join(",")}`}><ResponsiveContainer>
                 <LineChart data={dataBanding}
                            margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#EDEFF2" />
@@ -948,7 +948,7 @@ function PanelMarginBridge({ url, tutup, awal, akhir, ubah }: {
             </div>
 
             <div className="h-72 mt-3">
-              <AlatGrafik id="ringkasan-05"><ResponsiveContainer width="100%" height="100%">
+              <AlatGrafik id="ringkasan-05" animasiKunci={url}><ResponsiveContainer width="100%" height="100%">
                 <BarChart data={titik} margin={{ top: 10, right: 10, bottom: 5, left: -10 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#EDEFF2" />
                   <XAxis dataKey="label" tick={{ fill: "#64676C", fontSize: 10 }}
@@ -1256,7 +1256,7 @@ function PanelDaysOfCover({ url, tutup, awal, akhir, ubah }: {
             </div>
 
             <div className="h-64 mt-4">
-              <AlatGrafik id="ringkasan-06"><ResponsiveContainer width="100%" height="100%">
+              <AlatGrafik id="ringkasan-06" animasiKunci={url}><ResponsiveContainer width="100%" height="100%">
                 <ComposedChart data={seri} margin={{ top: 10, right: 10, bottom: 5, left: -15 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#EDEFF2" />
                   <XAxis dataKey="label" tick={{ fill: "#64676C", fontSize: 10 }} minTickGap={12} />
@@ -1350,15 +1350,25 @@ const tandaAngka = (n: number | null | undefined, des = 2) =>
 const potong = (s: string, n = 110) =>
   s.length > n ? `${s.slice(0, n).trimEnd()}…` : s;
 
-function BlokAngka({ label, angka, satuan, bawah, arah, nada }: {
+function BlokAngka({ label, angka, nilai, desimal = 2, satuan, bawah, arah, nada, anakTambahan }: {
   label: string;
-  angka: string;
+  angka?: string;
+  nilai?: number | null;
+  desimal?: number;
   satuan?: string;
   bawah: ReactNode;
   arah?: "naik" | "turun" | null;
   nada?: "baik" | "buruk" | "netral";
+  anakTambahan?: ReactNode;
 }) {
+  const hitung = useCountUp(nilai);
+  const angkaTampil = nilai !== undefined
+    ? hitung.nilai === null ? "–" : fmtAngka(hitung.nilai, desimal)
+    : angka ?? "–";
   const warna = nada === "buruk" ? "text-[#FF1313]" : "text-[#1D2434]";
+  const warnaNilai = hitung.kilat
+    ? hitung.arah === "naik" ? "text-[#15803D]" : "text-[#FF1313]"
+    : warna;
   const warnaKotak = nada === "baik" ? "border-l-[#16A34A] bg-[#F0FDF4]"
     : nada === "buruk" ? "border-l-[#DC2626] bg-[#FEF2F2]" : "border-l-[#EDEFF2] bg-white";
   return (
@@ -1366,9 +1376,14 @@ function BlokAngka({ label, angka, satuan, bawah, arah, nada }: {
       <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[#64676C]">
         {label}
       </p>
-      <p className={`mt-1 flex items-baseline gap-1 font-mono text-2xl font-bold ${warna}`}>
-        {angka}
+      <p className={`mt-1 flex items-baseline gap-1 font-mono text-2xl font-bold tabular-nums ${warnaNilai}`}>
+        {angkaTampil}
         {satuan && <span className="text-xs font-normal text-[#64676C]">{satuan}</span>}
+        {hitung.kilat && hitung.arah && (
+          <span aria-hidden="true" className={`kilat-angka ${hitung.arah === "naik" ? "text-[#15803D]" : "text-[#FF1313]"}`}>
+            {hitung.arah === "naik" ? "▲" : "▼"}
+          </span>
+        )}
       </p>
       <p className={`mt-0.5 flex items-start gap-1 text-[11px] leading-snug ${
         nada === "baik" ? "text-[#15803D]" : nada === "buruk" ? "text-[#DC2626]" : "text-[#64676C]"}`}>
@@ -1380,6 +1395,7 @@ function BlokAngka({ label, angka, satuan, bawah, arah, nada }: {
         )}
         <span>{bawah}</span>
       </p>
+      {anakTambahan}
     </div>
   );
 }
@@ -1436,7 +1452,8 @@ function StripAngkaKunci({ thn, data, ke }: {
         <div className="grid min-w-[1100px] grid-cols-5 gap-0 px-5 py-1">
         <BlokAngka
           label={`${t("OP Margin")} · ${label}`}
-          angka={fmtAngka(kini.op_margin, 2)}
+          nilai={kini.op_margin}
+          desimal={2}
           satuan="US¢/kg"
           arah={statusTarget === "netral" ? null : statusTarget === "baik" ? "naik" : "turun"}
           nada={statusTarget}
@@ -1457,7 +1474,8 @@ function StripAngkaKunci({ thn, data, ke }: {
         />
         <BlokAngka
           label={`${t("SICOM")} · ${label}`}
-          angka={fmtAngka(kini.sicom, 2)}
+          nilai={kini.sicom}
+          desimal={2}
           satuan="US¢/kg"
           arah={statusSicom === "netral" ? null : statusSicom === "baik" ? "naik" : "turun"}
           nada={statusSicom}
@@ -1468,17 +1486,24 @@ function StripAngkaKunci({ thn, data, ke }: {
         />
         <BlokAngka
           label={`Days of Cover · ${docKini?.bulan ?? "–"}`}
-          angka={docKini?.doc_hari != null ? fmtAngka(docKini.doc_hari, 1) : "–"}
+          nilai={docKini?.doc_hari ?? null}
+          desimal={1}
           satuan={t("hari")}
           arah={statusDoc === "netral" ? null : statusDoc === "baik" ? "naik" : "turun"}
           nada={statusDoc}
           bawah={docKini?.safety_hari != null
             ? `${statusDoc === "baik" ? "Kabar baik" : "Kabar buruk"}: cover ${fmtAngka(docKini.doc_hari, 1)} hari; safety ${fmtAngka(docKini.safety_hari, 1)} hari.`
             : "Belum ada safety atau data yang cukup untuk menilai cover."}
+          anakTambahan={docKini?.doc_hari != null && docKini?.safety_hari != null
+            ? <PengukurAmbang label="Rasio terhadap safety" nilai={docKini.doc_hari}
+                ambang={docKini.safety_hari} nilaiTeks={`${fmtAngka(docKini.doc_hari, 1)} hari`}
+                ambangTeks={`${fmtAngka(docKini.safety_hari, 1)} hari`} />
+            : null}
         />
         <BlokAngka
           label={`${t("Intake")} · ${label}`}
-          angka={fmtAngka(kini.ton, 2)}
+          nilai={kini.ton}
+          desimal={2}
           satuan={t("ton kering")}
           arah={statusIntake === "netral" ? null : statusIntake === "baik" ? "naik" : "turun"}
           nada={statusIntake}

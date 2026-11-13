@@ -16,6 +16,84 @@ export const fmtTanggal = (iso: string) => {
   return `${d}/${m}/${y}`;
 };
 
+/** Menginterpolasi angka dari nilai sebelumnya, tanpa mengubah format tampilan
+ *  pemanggil (fmtAngka tetap menentukan desimal dan locale). */
+export function useCountUp(nilai: number | null | undefined, durasi = 240) {
+  const [nilaiTampil, setNilaiTampil] = useState<number | null>(null);
+  const [arah, setArah] = useState<"naik" | "turun" | null>(null);
+  const [kilat, setKilat] = useState(false);
+  const nilaiBerjalan = useRef<number | null>(null);
+  const nilaiSasaran = useRef<number | null>(null);
+  const bingkai = useRef<number | null>(null);
+  const timerKilat = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (bingkai.current !== null) cancelAnimationFrame(bingkai.current);
+    if (timerKilat.current !== null) window.clearTimeout(timerKilat.current);
+    if (nilai === null || nilai === undefined || !Number.isFinite(nilai)) {
+      nilaiBerjalan.current = null;
+      nilaiSasaran.current = null;
+      setNilaiTampil(null);
+      setArah(null);
+      setKilat(false);
+      return;
+    }
+
+    const lama = nilaiSasaran.current;
+    const awal = nilaiBerjalan.current ?? 0;
+    const arahBaru = lama === null || nilai === lama ? null : nilai > lama ? "naik" : "turun";
+    nilaiSasaran.current = nilai;
+    if (arahBaru) {
+      setArah(arahBaru);
+      setKilat(true);
+      timerKilat.current = window.setTimeout(() => {
+        setKilat(false);
+        setArah(null);
+        timerKilat.current = null;
+      }, 260);
+    } else {
+      setArah(null);
+      setKilat(false);
+    }
+
+    const gerakDikurangi = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    if (awal === nilai || gerakDikurangi) {
+      nilaiBerjalan.current = nilai;
+      setNilaiTampil(nilai);
+      return;
+    }
+
+    const mulai = performance.now();
+    const langkah = (kini: number) => {
+      if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) {
+        bingkai.current = null;
+        nilaiBerjalan.current = nilai;
+        setNilaiTampil(nilai);
+        return;
+      }
+      const porsi = Math.min(1, (kini - mulai) / durasi);
+      const halus = 1 - Math.pow(1 - porsi, 3);
+      const nilaiInterpole = awal + (nilai - awal) * halus;
+      nilaiBerjalan.current = nilaiInterpole;
+      setNilaiTampil(nilaiInterpole);
+      if (porsi < 1) bingkai.current = requestAnimationFrame(langkah);
+      else {
+        bingkai.current = null;
+        nilaiBerjalan.current = nilai;
+        setNilaiTampil(nilai);
+      }
+    };
+    bingkai.current = requestAnimationFrame(langkah);
+
+    return () => {
+      if (bingkai.current !== null) cancelAnimationFrame(bingkai.current);
+      if (timerKilat.current !== null) window.clearTimeout(timerKilat.current);
+    };
+  }, [nilai, durasi]);
+
+  return { nilai: nilaiTampil, arah, kilat };
+}
+
 export const NAMA_BULAN = ["", "Jan", "Feb", "Mar", "Apr", "Mei", "Jun",
   "Jul", "Agu", "Sep", "Okt", "Nov", "Des"];
 
@@ -218,6 +296,45 @@ export function KerangkaMuatTabel({ kolom = 10, baris = 4 }: { kolom?: number; b
         </tr>
       ))}
     </>
+  );
+}
+
+export function PengukurAmbang({ label, nilai, ambang, nilaiTeks, ambangTeks }: {
+  label: string;
+  nilai: number | null | undefined;
+  ambang: number | null | undefined;
+  nilaiTeks: string;
+  ambangTeks: string;
+}) {
+  const { t } = useBahasa();
+  const rasio = nilai != null && ambang != null && ambang > 0
+    ? nilai / ambang : null;
+  const [skala, setSkala] = useState(0);
+  useEffect(() => {
+    setSkala(rasio == null ? 0 : Math.max(0, Math.min(1, rasio / 1.5)));
+  }, [rasio]);
+  if (rasio == null || !Number.isFinite(rasio)) return null;
+
+  const aman = rasio >= 1;
+  const status = t(aman ? "Di atas ambang" : "Di bawah ambang");
+  return (
+    <div className="mt-2 space-y-1.5">
+      <div className="flex items-center justify-between gap-1 text-[9px] leading-tight">
+        <span className="text-[#64676C]">{t(label)}</span>
+        <span className={`whitespace-nowrap font-semibold tabular-nums ${aman ? "text-[#15803D]" : "text-[#FF1313]"}`}>
+          {aman ? "▲" : "▼"} {status} · {nilaiTeks}/{ambangTeks}
+        </span>
+      </div>
+      <div role="progressbar" aria-label={t(label)} aria-valuemin={0} aria-valuemax={150}
+           aria-valuenow={Math.max(0, Math.min(150, rasio * 100))}
+           aria-valuetext={`${status}: ${nilaiTeks} / ${ambangTeks}`}
+           className="relative h-2 rounded-full bg-[#EDEFF2]">
+        <span aria-hidden="true"
+              className={`absolute inset-y-0 left-0 w-full origin-left rounded-full ${aman ? "bg-[#15803D]" : "bg-[#FF1313]"} pengukur-isi`}
+              style={{ transform: `scaleX(${skala})` }} />
+        <span aria-hidden="true" className="absolute left-2/3 top-[-2px] h-3 w-[2px] rounded bg-[#1D2434]" />
+      </div>
+    </div>
   );
 }
 

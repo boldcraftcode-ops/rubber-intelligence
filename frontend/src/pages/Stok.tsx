@@ -6,7 +6,7 @@ import {
 } from "recharts";
 import {
   Kartu, PilihRentangBulan, akhirBulan, ambilJson,
-  awalTahunBerjalan, bulanBerjalan, fmtAngka, fmtTanggal, labelRentangBulan,
+  awalTahunBerjalan, bulanBerjalan, fmtAngka, fmtTanggal, labelRentangBulan, PengukurAmbang,
 } from "../bersama";
 
 import { AlatGrafik } from "../GrafikTools";
@@ -82,22 +82,29 @@ export default function Stok() {
              keterangan={`Keadaan stok pada tanggal terakhir dalam ${keteranganPeriode}. Days = stok ÷ kapasitas olah; rasio = stok ÷ safety stock (parameter berversi tanggal berlaku).`}
              anak={
         t ? (
-          <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-            {[
-              ["Tanggal", fmtTanggal(t.tanggal)],
-              ["Stok (ton)", fmtAngka(t.stok_ton, 1)],
-              ["Days", fmtAngka(t.days, 3)],
-              ["Rasio vs safety", t.rasio_stok !== null ? fmtAngka(t.rasio_stok * 100, 2) + "%" : "–"],
-              ["Status", t.status],
-            ].map(([label, nilai]) => (
-              <div key={label as string}
-                   className={`rounded-sm border p-3 ${label === "Status" && t.status === "di bawah safety"
-                     ? "border-[#FECACA] bg-[#FEF2F2]" : "border-[#E4E5E8] bg-[#F8F8F8]"}`}>
-                <p className="text-xs text-[#64676C]">{label}</p>
-                <p className="font-semibold text-[#1D2434]">{nilai}</p>
-              </div>
-            ))}
-          </div>
+          <>
+            <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+              {[
+                ["Tanggal", fmtTanggal(t.tanggal)],
+                ["Stok (ton)", fmtAngka(t.stok_ton, 1)],
+                ["Days", fmtAngka(t.days, 3)],
+                ["Rasio vs safety", t.rasio_stok !== null ? fmtAngka(t.rasio_stok * 100, 2) + "%" : "–"],
+                ["Status", t.status],
+              ].map(([label, nilai]) => (
+                <div key={label as string}
+                     className={`rounded-sm border p-3 ${label === "Status" && t.status === "di bawah safety"
+                       ? "border-[#FECACA] bg-[#FEF2F2]" : "border-[#E4E5E8] bg-[#F8F8F8]"}`}>
+                  <p className="text-xs text-[#64676C]">{label}</p>
+                  <p className="font-semibold tabular-nums text-[#1D2434]">{nilai}</p>
+                </div>
+              ))}
+            </div>
+            {t.safety_ton != null && (
+              <PengukurAmbang label="Stok terhadap safety" nilai={t.stok_ton}
+                ambang={t.safety_ton} nilaiTeks={`${fmtAngka(t.stok_ton, 1)} ton`}
+                ambangTeks={`${fmtAngka(t.safety_ton, 1)} ton`} />
+            )}
+          </>
         ) : (
           <p className="text-sm text-[#64676C]">
             {urutanSalah ? "Periode belum sah." : `Belum ada data stok pada ${keteranganPeriode}.`}
