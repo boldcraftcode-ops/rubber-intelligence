@@ -16,15 +16,27 @@ Yang dijaga di sini:
 - `bulan=12` adalah bawaan, `bulan=0` mengembalikan semua bulan.
 """
 import datetime as dt
+import io
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
+from openpyxl import load_workbook
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import StaticPool
 
+from app.core.traceability import (normalisasi_kabupaten,
+                                   normalisasi_teks_wilayah)
 from app.main import buat_app
-from app.models import Base, TiketBaris, Vendor
+from app.models import (Base, KoreksiWilayahTrace, ReferensiWilayahTrace,
+                        TiketBaris, Vendor)
+
+AKAR = Path(__file__).resolve().parents[2]
+
+
+def _teks(rel: str) -> str:
+    return (AKAR / rel).read_text(encoding="utf-8")
 
 
 def _engine():
@@ -37,13 +49,21 @@ def _engine():
 
 def _tiket(session, no, tanggal, vendor, dry_kg, line_seq=1, grade="SIR20",
            wet_kg=None, reject_kg=0, tiket_nol=False,
-           provinsi="Sumatera Utara", kabupaten="Deli Serdang"):
+           provinsi="Sumatera Utara", kabupaten="Deli Serdang",
+           kecamatan="Kecamatan Contoh", desa="Desa Contoh",
+           nama_vendor_asli=None, kabupaten_norm=None,
+           kecamatan_norm=None, desa_norm=None):
     session.add(TiketBaris(
         ticket_no=no, line_seq=line_seq, ticket_date=tanggal,
-        kode_vendor=vendor, item_code=grade,
+        kode_vendor=vendor, nama_vendor_asli=nama_vendor_asli, item_code=grade,
         wet_kg=wet_kg if wet_kg is not None else dry_kg / 0.62,
         dry_kg=dry_kg, reject_kg=reject_kg,
-        provinsi=provinsi, kabupaten=kabupaten, tiket_nol=tiket_nol))
+        provinsi=provinsi, kabupaten=kabupaten,
+        kecamatan=kecamatan, desa=desa,
+        kabupaten_norm=kabupaten_norm or normalisasi_kabupaten(kabupaten),
+        kecamatan_norm=kecamatan_norm or normalisasi_teks_wilayah(kecamatan),
+        desa_norm=desa_norm or normalisasi_teks_wilayah(desa),
+        tiket_nol=tiket_nol))
 
 
 def _isi_intake(session):
@@ -80,6 +100,46 @@ def klien_intake(monkeypatch):
     eng = _engine()
     with sessionmaker(bind=eng, future=True)() as s:
         _isi_intake(s)
+    return TestClient(buat_app(eng))
+
+
+@pytest.fixture()
+def klien_intake_lengkap(monkeypatch):
+    """Data + referensi SCDF untuk filter records dan breakdown wilayah."""
+    monkeypatch.setenv("APP_ENV", "development")
+    monkeypatch.setenv("AUTH_DISABLED", "true")
+    eng = _engine()
+    with sessionmaker(bind=eng, future=True)() as s:
+        _isi_intake(s)
+        s.add(Vendor(kode="V003", nama_baku="PT Gamma"))
+        # Kode yang hanya ada di tiket belum terdaftar di Master Vendor.
+        _tiket(s, "T004", dt.date(2026, 6, 1), "V999", 4_000,
+               nama_vendor_asli="Toko Delta", provinsi="JAMBI",
+               kabupaten="KABUPATEN BATANGHARI", kecamatan="KECAMATAN C",
+               desa="DESA C")
+        ref_sumatra = ReferensiWilayahTrace(
+            provinsi_norm="SUMATERA UTARA", provinsi="Sumatera Utara",
+            kabupaten_norm="DELI SERDANG",
+            kecamatan_norm="KECAMATAN CONTOH", desa_norm="DESA CONTOH",
+            kabupaten="Deli Serdang", kecamatan="Sinembah Tanjung Muda",
+            desa="Durian Jangak")
+        ref_kampar_lama = ReferensiWilayahTrace(
+            provinsi_norm="RIAU", provinsi="Riau", kabupaten_norm="KAMPAR",
+            kecamatan_norm="KECAMATAN CONTOH", desa_norm="DESA CONTOH",
+            kabupaten="Kampar", kecamatan="Kecamatan Lama", desa="Desa Lama")
+        ref_kampar_baru = ReferensiWilayahTrace(
+            provinsi_norm="RIAU", provinsi="Riau", kabupaten_norm="KAMPAR",
+            kecamatan_norm="KECAMATAN B", desa_norm="DESA B RESMI",
+            kabupaten="Kampar", kecamatan="Kampar Kiri", desa="Desa B Resmi")
+        s.add_all([ref_sumatra, ref_kampar_lama, ref_kampar_baru])
+        s.flush()
+        # Koreksi terkontrol mengalahkan padanan langsung untuk T003.
+        s.add(KoreksiWilayahTrace(
+            source_kabupaten_norm="KAMPAR",
+            source_kecamatan_norm="KECAMATAN CONTOH",
+            source_desa_norm="DESA CONTOH",
+            target_ref_id=ref_kampar_baru.id))
+        s.commit()
     return TestClient(buat_app(eng))
 
 
@@ -235,3 +295,182 @@ def test_reject_filter_tahun_tetap_jalan(klien_reject):
     d = _reject(klien_reject, tahun=2025)
     assert d["jumlah_bulan_total"] == 6
     assert {b["tahun"] for b in d["baris"]} == {2025}
+
+
+# ============================ breakdown wilayah & filter records
+def test_opsi_intake_terakhir_master_plus_kode_tiket(klien_intake_lengkap):
+    r = klien_intake_lengkap.get("/api/kartu/intake-terakhir/opsi")
+    assert r.status_code == 200
+    d = r.json()
+    assert [p["kode"] for p in d["pilihan_vendor"]] == [
+        "V001", "V002", "V003", "V999"]
+    assert {p["kode"]: p["sumber"] for p in d["pilihan_vendor"]} == {
+        "V001": "master", "V002": "master", "V003": "master",
+        "V999": "tiket"}
+    assert d["pilihan_vendor"][-1]["label"] == "V999 — Toko Delta"
+    assert d["batas_data"] == {"tersedia": True, "dari": "2026-01-05",
+                               "sampai": "2026-06-01"}
+
+
+def test_intake_terakhir_empat_kolom_wilayah_dan_ejaan_scdf(
+        klien_intake_lengkap):
+    d = _intake(klien_intake_lengkap)
+    assert d["jumlah_tiket_total"] == 4
+    assert d["filter"] == {"dari": None, "sampai": None, "vendor": None,
+                           "limit": 20}
+    assert "tanpa menebak Provinsi" in d["catatan_wilayah"]
+    assert [p["kode"] for p in d["pilihan_vendor"]] == [
+        "V001", "V002", "V003", "V999"]
+
+    t1 = next(b for b in d["baris"] if b["ticket_no"] == "T001")
+    assert (t1["provinsi"], t1["kabupaten"], t1["kecamatan"],
+            t1["desa"]) == ("Sumatera Utara", "Deli Serdang",
+                            "Sinembah Tanjung Muda", "Durian Jangak")
+    assert t1["sumber_wilayah"] == "SCDF"
+
+    t3 = next(b for b in d["baris"] if b["ticket_no"] == "T003")
+    # Koreksi terkontrol mengalahkan padanan langsung "Kecamatan Lama".
+    assert (t3["provinsi"], t3["kabupaten"], t3["kecamatan"],
+            t3["desa"]) == ("Riau", "Kampar", "Kampar Kiri", "Desa B Resmi")
+    assert t3["sumber_wilayah"] == "SCDF"
+
+    t4 = next(b for b in d["baris"] if b["ticket_no"] == "T004")
+    # Tanpa padanan pasti: nilai tiket apa adanya, Provinsi tidak ditebak.
+    assert (t4["provinsi"], t4["kabupaten"], t4["kecamatan"],
+            t4["desa"]) == ("JAMBI", "KABUPATEN BATANGHARI",
+                            "KECAMATAN C", "DESA C")
+    assert t4["sumber_wilayah"] == "intake"
+    assert d["terakhir"]["ticket_no"] == "T004"
+    assert d["terakhir"]["desa"] == "DESA C"
+    assert d["terakhir"]["sumber_wilayah"] == "intake"
+
+
+def test_intake_terakhir_filter_vendor_dan_periode_mengikat_semua_output(
+        klien_intake_lengkap):
+    d = _intake(klien_intake_lengkap, vendor="v001",
+                dari="2026-03-01", sampai="2026-03-31")
+    assert d["filter"] == {"dari": "2026-03-01", "sampai": "2026-03-31",
+                           "vendor": "V001", "limit": 20}
+    assert [b["ticket_no"] for b in d["baris"]] == ["T002"]
+    assert d["jumlah_tiket_total"] == 1
+    assert d["tanggal_pertama"] == "2026-03-10"
+    assert d["terakhir"]["ticket_no"] == "T002"
+    assert d["terakhir"]["provinsi"] == "Sumatera Utara"
+    # Dropdown tidak ikut menyusut saat periode/vendor berubah.
+    assert [p["kode"] for p in d["pilihan_vendor"]] == [
+        "V001", "V002", "V003", "V999"]
+    assert d["batas_data"]["tersedia"] is True
+
+
+def test_intake_terakhir_filter_vendor_kode_khusus_tiket(
+        klien_intake_lengkap):
+    d = _intake(klien_intake_lengkap, vendor="V999")
+    assert [b["ticket_no"] for b in d["baris"]] == ["T004"]
+    assert d["terakhir"]["label_vendor"] == "Toko Delta"
+
+
+def test_intake_terakhir_filter_periode_saja(klien_intake_lengkap):
+    d = _intake(klien_intake_lengkap, dari="2026-05-01",
+                sampai="2026-05-31")
+    assert [b["ticket_no"] for b in d["baris"]] == ["T003"]
+    assert d["terakhir"]["ticket_no"] == "T003"
+
+
+def test_intake_terakhir_xlsx_empat_kolom_mengikuti_filter(
+        klien_intake_lengkap):
+    r = klien_intake_lengkap.get(
+        "/api/kartu/intake-terakhir",
+        params={"format": "xlsx", "vendor": "V001",
+                "dari": "2026-03-01", "sampai": "2026-03-31"})
+    assert r.status_code == 200
+    assert "intake_terakhir.xlsx" in r.headers["content-disposition"]
+    ws = load_workbook(io.BytesIO(r.content)).active
+    assert ws.max_column == 12
+    assert [c.value for c in ws[1]][-4:] == [
+        "Provinsi", "Kabupaten/Kota", "Kecamatan", "Desa"]
+    assert ws.max_row == 2
+    assert ws.cell(row=2, column=2).value == "T002"
+    assert ws.cell(row=2, column=9).value == "Sumatera Utara"
+    assert ws.cell(row=2, column=10).value == "Deli Serdang"
+
+
+def test_intake_terakhir_filter_tidak_sah_422(klien_intake_lengkap):
+    k = klien_intake_lengkap
+    assert k.get("/api/kartu/intake-terakhir",
+                 params={"vendor": "NOPE"}).status_code == 422
+    assert k.get("/api/kartu/intake-terakhir",
+                 params={"dari": "2026-05-20",
+                         "sampai": "2026-01-01"}).status_code == 422
+    assert k.get("/api/kartu/intake-terakhir",
+                 params={"dari": "2026/01/01"}).status_code == 422
+    assert k.get("/api/kartu/intake-terakhir",
+                 params={"dari": "1900-01-01",
+                         "sampai": "2026-11-01"}).status_code == 422
+
+
+def test_intake_terakhir_opsi_saat_database_kosong(monkeypatch):
+    monkeypatch.setenv("APP_ENV", "development")
+    monkeypatch.setenv("AUTH_DISABLED", "true")
+    klien = TestClient(buat_app(_engine()))
+    d = klien.get("/api/kartu/intake-terakhir/opsi").json()
+    assert d["pilihan_vendor"] == []
+    assert d["batas_data"] == {"tersedia": False, "dari": None,
+                               "sampai": None}
+
+
+def test_sumber_ui_intake_terakhir_breakdown_dan_filter():
+    s = _teks("frontend/src/pages/Analisis.tsx")
+    blok = s[s.index("export function KartuIntakeTerakhir()"):
+             s.index("/* ---------- reject%")]
+    assert 'idMetrik="daftar_intake_terakhir"' in blok
+    assert 'data-uji="filter-intake-terakhir"' in blok
+    assert 'data-uji="tabel-intake-terakhir"' in blok
+    for label in ("Provinsi", "Kabupaten/Kota", "Kecamatan", "Desa"):
+        assert f">{label}<" in blok
+    assert "const wilayah = [b.kabupaten" not in blok
+    assert ">Wilayah</th>" not in blok
+    assert "params.set(\"limit\", String(limit))" in blok
+    assert "params.set(\"dari\", dari)" in blok
+    assert "params.set(\"sampai\", sampai)" in blok
+    assert "params.set(\"vendor\", vendor)" in blok
+    assert 'queryKey: ["intake-terakhir-opsi"]' in blok
+    assert "/api/kartu/intake-terakhir/opsi" in blok
+    assert "Semua vendor" in blok
+    assert "Periode records" in blok
+    assert "PilihRentangTanggal" in blok
+    assert "TombolRefreshKartu" in blok
+    assert "colSpan={11}" in blok
+    assert "b.sumber_wilayah" in blok
+    assert "b.provinsi" in blok and "b.kabupaten" in blok
+    assert "b.kecamatan" in blok and "b.desa" in blok
+    assert "urlEkspor={url}" in blok
+    assert "qsJelaskan={qsJelaskan}" in blok
+    assert "keterangan=\"Laporan tiga tabel" not in blok
+
+
+def test_sumber_backend_dan_dokumentasi_intake_terakhir():
+    api = _teks("backend/app/api_analisis.py")
+    assert '@router.get("/kartu/intake-terakhir/opsi")' in api
+    assert "def _opsi_intake_terakhir(" in api
+    assert "def _peta_wilayah_scdf(" in api
+    assert "CATATAN_WILAYAH_INTAKE_TERAKHIR" in api
+    assert '"Kabupaten/Kota", "Kecamatan", "Desa"' in api
+    assert "func.upper(func.trim(" in api
+
+    health = _teks("backend/app/main.py")
+    assert '"kartu-intake-terakhir-wilayah-vendor-periode"' in health
+
+    metrik = _teks("backend/semantic/metrics.yaml")
+    assert "daftar_intake_terakhir:" in metrik
+    assert "Provinsi, Kabupaten/Kota, Kecamatan, dan Desa" in metrik
+
+    cara = _teks("docs/CARA_MENJALANKAN.md")
+    assert "## 3p. Daftar intake terakhir" in cara
+    assert "GET /api/kartu/intake-terakhir/opsi" in cara
+    serah = _teks("docs/SERAH_TERIMA.md")
+    assert "Breakdown wilayah mengikuti SCDF" in serah
+    assert "Periode records" in serah
+
+    kamus = _teks("frontend/src/i18n.tsx")
+    assert '"Kabupaten/Kota": "Regency/City"' in kamus
+    assert '"Periode records": "Record period"' in kamus

@@ -26,6 +26,7 @@ def data_intake(monkeypatch):
     eng = _engine()
     with sessionmaker(bind=eng, future=True)() as session:
         session.add(ReferensiWilayahTrace(
+            provinsi_norm="SUMATERA UTARA", provinsi="SUMATERA UTARA",
             kabupaten_norm="MANDAILING NATAL", kecamatan_norm="SIPIROK",
             desa_norm="HUTA RAJA BARU", kabupaten="Mandailing Natal",
             kecamatan="Sipirok", desa="Huta Raja Baru", code=None))
@@ -111,18 +112,25 @@ def test_opsi_dropdown_provinsi_dan_supplier_berasal_dari_database(data_intake):
 def test_dropdown_wilayah_edit_hanya_menggunakan_referensi_scdf(data_intake):
     client, _ = data_intake
     provinsi = client.get("/api/intake/options/scdf/provinsi").json()
-    # Fixture SCDF tidak menyediakan Provinsi: jangan membuat opsi dari intake.
-    assert provinsi["options"] == []
-    assert provinsi["available"] is False
-    assert "belum menyediakan Provinsi" in provinsi["catatan"]
+    # Opsi berasal dari crosswalk resmi pada SCDF, bukan nilai intake.
+    assert provinsi["options"] == [
+        {"value": "SUMATERA UTARA", "label": "SUMATERA UTARA"}]
+    assert provinsi["available"] is True
+    assert provinsi["catatan"] is None
 
     kabupaten = client.get("/api/intake/options/scdf/kabupaten").json()
     assert kabupaten["options"] == [{"value": "Mandailing Natal", "label": "Mandailing Natal"}]
+    assert kabupaten["province_linked"] is True
+    # Hierarki tetap terikat: Provinsi lain tidak menawarkan kabupaten ini.
+    assert client.get("/api/intake/options/scdf/kabupaten", params={
+        "provinsi": "RIAU"}).json()["options"] == []
     kecamatan = client.get("/api/intake/options/scdf/kecamatan", params={
-        "kabupaten": "Kabupaten Mandailing Natal"}).json()["options"]
+        "kabupaten": "Kabupaten Mandailing Natal",
+        "provinsi": "SUMATERA UTARA"}).json()["options"]
     assert kecamatan == [{"value": "Sipirok", "label": "Sipirok"}]
     desa = client.get("/api/intake/options/scdf/desa", params={
-        "kabupaten": "MANDAILING NATAL", "kecamatan": "SIPIROK"}).json()["options"]
+        "kabupaten": "MANDAILING NATAL", "kecamatan": "SIPIROK",
+        "provinsi": "SUMATERA UTARA"}).json()["options"]
     assert desa == [{"value": "Huta Raja Baru", "label": "Huta Raja Baru"}]
 
 
