@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Pesan, ambilJson, fmtAngka, fmtTanggal, hariIni,
@@ -12,9 +12,46 @@ const pengisiSekarang = () => localStorage.getItem("op-margin.pengisi") || "?";
 const bacaAngka = (teks: string) =>
   Number(teks.replace(/\./g, "").replace(",", "."));
 
-const ke = (id: string) =>
+const ke = (id: string) => {
+  const gerakDikurangi = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
   (document.getElementById(id) as HTMLElement | null)
-    ?.scrollIntoView({ behavior: "smooth", block: "start" });
+    ?.scrollIntoView({ behavior: gerakDikurangi ? "auto" : "smooth", block: "start" });
+};
+
+function useSorotBaris() {
+  const [baris, setBaris] = useState<{ kunci: string; giliran: number } | null>(null);
+  const giliran = useRef(0);
+  useEffect(() => {
+    if (!baris) return;
+    const timer = window.setTimeout(() => setBaris(null), 1500);
+    return () => window.clearTimeout(timer);
+  }, [baris]);
+  return {
+    tandai: (kunci: string) => setBaris({ kunci, giliran: ++giliran.current }),
+    kelas: (kunci: string) => baris?.kunci === kunci ? "baris-tersimpan" : "",
+  };
+}
+
+function NotifikasiSimpan({ jenis, teks }: { jenis: "sukses" | "error"; teks: string }) {
+  const [tampil, setTampil] = useState(true);
+  useEffect(() => {
+    if (jenis !== "sukses") return;
+    const timer = window.setTimeout(() => setTampil(false), 3600);
+    return () => window.clearTimeout(timer);
+  }, [jenis]);
+  if (!tampil) return null;
+  if (jenis === "error") return <Pesan jenis="error" teks={teks} />;
+  return <p role="status" className="toast-sisi-masuk mt-3 rounded-sm border border-[#BBF7D0] bg-[#F0FDF4] px-3 py-2 text-sm text-[#15803D]">✓ {teks}</p>;
+}
+
+function TombolSimpan({ sedang, selesai, label }: { sedang: boolean; selesai: boolean; label: string }) {
+  const { t } = useBahasa();
+  return (
+    <button type="submit" className={`${kelasTombol} min-w-[170px]`} disabled={sedang} aria-live="polite">
+      {sedang ? t("Menyimpan…") : selesai ? <><span aria-hidden="true">✓</span> {t("Tersimpan")}</> : label}
+    </button>
+  );
+}
 
 /* ============================================================
    Panel kesegaran: 5 sumber + tanggal yang belum terisi
@@ -130,6 +167,7 @@ function KartuStok({ pengisi, tanggal, setTanggal, ringkas }: {
   const [satuan, setSatuan] = useState<"ton" | "kg">("ton");
   const [catatan, setCatatan] = useState("");
   const [info, setInfo] = useState<{ jenis: "sukses" | "error"; teks: string } | null>(null);
+  const sorotBaris = useSorotBaris();
   const [hasil, setHasil] = useState<any>(null);
 
   const grade = useQuery({
@@ -146,6 +184,7 @@ function KartuStok({ pengisi, tanggal, setTanggal, ringkas }: {
     }),
     onSuccess: (d) => {
       setInfo({ jenis: "sukses", teks: d.pesan });
+      sorotBaris.tandai(`${tanggal}|${jenis || "ALL"}`);
       setHasil(d.ringkasan);
       setNilai("");
       setCatatan("");
@@ -229,12 +268,10 @@ function KartuStok({ pengisi, tanggal, setTanggal, ringkas }: {
                  onChange={(e) => setCatatan(e.target.value)} />
         </div>
         <div className="sm:col-span-4">
-          <button className={kelasTombol} disabled={simpan.isPending}>
-            {simpan.isPending ? t("Menyimpan…") : t("Simpan stok")}
-          </button>
+          <TombolSimpan sedang={simpan.isPending} selesai={simpan.isSuccess} label={t("Simpan stok")} />
         </div>
       </form>
-      {info && <Pesan jenis={info.jenis} teks={info.teks} />}
+      {info && <NotifikasiSimpan key={`${info.jenis}-${info.teks}`} jenis={info.jenis} teks={info.teks} />}
 
       {hasil && (
         <p className="mt-2 rounded-sm border border-[#E4E5E8] bg-[#F8F8F8] px-3 py-2 text-xs text-[#64676C]">
@@ -259,7 +296,7 @@ function KartuStok({ pengisi, tanggal, setTanggal, ringkas }: {
         </thead>
         <tbody>
           {(ringkas?.riwayat_stok ?? []).map((r) => (
-            <tr key={`${r.tanggal}-${r.item_code}`} className="border-b border-[#EDEFF2]">
+            <tr key={`${r.tanggal}-${r.item_code}`} className={`border-b border-[#EDEFF2] ${sorotBaris.kelas(`${r.tanggal}|${r.item_code || "ALL"}`)}`}>
               <td className="py-1">{fmtTanggal(r.tanggal)}</td>
               <td className="py-1 text-[#64676C]">{r.item_code || t("Total")}</td>
               <td className="py-1 text-right font-mono">{fmtAngka(r.stok_kg, 0)}</td>
@@ -290,6 +327,7 @@ function KartuPembelian({ pengisi, tanggal, setTanggal, ringkas }: {
   const [qty, setQty] = useState("");
   const [amount, setAmount] = useState("");
   const [info, setInfo] = useState<{ jenis: "sukses" | "error"; teks: string } | null>(null);
+  const sorotBaris = useSorotBaris();
   const [hasil, setHasil] = useState<any>(null);
 
   const grade = useQuery({
@@ -313,6 +351,10 @@ function KartuPembelian({ pengisi, tanggal, setTanggal, ringkas }: {
     }),
     onSuccess: (d) => {
       setInfo({ jenis: "sukses", teks: d.pesan });
+      const item = tingkat === "total" ? "ALL" : kodeGrade;
+      const vendorBaru = tingkat === "vendor" || tingkat === "tiket" ? kodeVendor : "";
+      const tiketBaru = tingkat === "tiket" ? noTiket : "";
+      sorotBaris.tandai([tanggal, item, vendorBaru, tiketBaru].join("|"));
       setHasil(d);
       setQty(""); setAmount("");
       qc.invalidateQueries({ queryKey: ["input-harian"] });
@@ -406,16 +448,14 @@ function KartuPembelian({ pengisi, tanggal, setTanggal, ringkas }: {
                  onChange={(e) => setAmount(e.target.value)} />
         </div>
         <div className="flex items-end">
-          <button className={kelasTombol} disabled={simpan.isPending}>
-            {simpan.isPending ? t("Menyimpan…") : t("Simpan pembelian")}
-          </button>
+          <TombolSimpan sedang={simpan.isPending} selesai={simpan.isSuccess} label={t("Simpan pembelian")} />
         </div>
       </form>
 
       <p className="mt-2 text-xs text-[#64676C]">
         {t("Jangan campur baris “Total hari” dengan baris per grade/vendor/tiket pada tanggal yang sama — pilih satu cara saja supaya tidak terhitung dua kali.")}
       </p>
-      {info && <Pesan jenis={info.jenis} teks={info.teks} />}
+      {info && <NotifikasiSimpan key={`${info.jenis}-${info.teks}`} jenis={info.jenis} teks={info.teks} />}
 
       {hasil && (
         <p className="mt-2 rounded-sm border border-[#E4E5E8] bg-[#F8F8F8] px-3 py-2 text-xs text-[#64676C]">
@@ -445,7 +485,7 @@ function KartuPembelian({ pengisi, tanggal, setTanggal, ringkas }: {
         </thead>
         <tbody>
           {(ringkas?.riwayat_pembelian ?? []).map((r, i) => (
-            <tr key={`${r.tanggal}-${i}`} className="border-b border-[#EDEFF2]">
+            <tr key={`${r.tanggal}-${i}`} className={`border-b border-[#EDEFF2] ${sorotBaris.kelas([r.tanggal, r.item_code, r.kode_vendor, r.ticket_no].join("|"))}`}>
               <td className="py-1">{fmtTanggal(r.tanggal)}</td>
               <td className="py-1 text-[#64676C]">
                 {r.item_code === "ALL" ? t("Total hari")
@@ -476,6 +516,7 @@ function KartuSicom({ pengisi }: { pengisi: string }) {
   const [harga, setHarga] = useState("");
   const [kontrak, setKontrak] = useState("");
   const [info, setInfo] = useState<{ jenis: "sukses" | "error"; teks: string } | null>(null);
+  const sorotBaris = useSorotBaris();
 
   const riwayat = useQuery({
     queryKey: ["sicom"], queryFn: () => ambilJson("/api/sicom?limit=10"),
@@ -488,6 +529,7 @@ function KartuSicom({ pengisi }: { pengisi: string }) {
     }),
     onSuccess: (d) => {
       setInfo({ jenis: "sukses", teks: d.pesan });
+      sorotBaris.tandai(tanggal);
       setHarga("");
       qc.invalidateQueries({ queryKey: ["sicom"] });
       qc.invalidateQueries({ queryKey: ["input-harian"] });
@@ -529,12 +571,10 @@ function KartuSicom({ pengisi }: { pengisi: string }) {
                  value={kontrak} onChange={(e) => setKontrak(e.target.value)} />
         </div>
         <div className="sm:col-span-3">
-          <button className={kelasTombol} disabled={simpan.isPending}>
-            {simpan.isPending ? t("Menyimpan…") : t("Simpan SICOM")}
-          </button>
+          <TombolSimpan sedang={simpan.isPending} selesai={simpan.isSuccess} label={t("Simpan SICOM")} />
         </div>
       </form>
-      {info && <Pesan jenis={info.jenis} teks={info.teks} />}
+      {info && <NotifikasiSimpan key={`${info.jenis}-${info.teks}`} jenis={info.jenis} teks={info.teks} />}
 
       <h3 className="mt-5 mb-2 text-sm font-semibold text-[#1D2434]">
         {t("10 hari terakhir")}
@@ -549,7 +589,7 @@ function KartuSicom({ pengisi }: { pengisi: string }) {
         </thead>
         <tbody>
           {riwayat.data?.map((b: any) => (
-            <tr key={b.tanggal} className="border-b border-[#EDEFF2]">
+            <tr key={b.tanggal} className={`border-b border-[#EDEFF2] ${sorotBaris.kelas(b.tanggal)}`}>
               <td className="py-1">{fmtTanggal(b.tanggal)}</td>
               <td className="py-1 text-right font-mono">{fmtAngka(b.usc_per_kg, 2)}</td>
               <td className="py-1 pl-4 text-[#64676C]">{b.sumber ?? "-"}</td>
@@ -570,6 +610,7 @@ function KartuKurs({ pengisi }: { pengisi: string }) {
   const [berlakuDari, setBerlakuDari] = useState(hariIni());
   const [nilai, setNilai] = useState("");
   const [info, setInfo] = useState<{ jenis: "sukses" | "error"; teks: string } | null>(null);
+  const sorotBaris = useSorotBaris();
 
   const riwayat = useQuery({
     queryKey: ["kurs"], queryFn: () => ambilJson("/api/kurs?limit=10"),
@@ -582,6 +623,7 @@ function KartuKurs({ pengisi }: { pengisi: string }) {
     }),
     onSuccess: (d) => {
       setInfo({ jenis: "sukses", teks: d.pesan });
+      sorotBaris.tandai(berlakuDari);
       setNilai("");
       qc.invalidateQueries({ queryKey: ["kurs"] });
       qc.invalidateQueries({ queryKey: ["input-harian"] });
@@ -618,12 +660,10 @@ function KartuKurs({ pengisi }: { pengisi: string }) {
                  onChange={(e) => setNilai(e.target.value)} />
         </div>
         <div className="flex items-end">
-          <button className={kelasTombol} disabled={simpan.isPending}>
-            {simpan.isPending ? t("Menyimpan…") : t("Simpan kurs")}
-          </button>
+          <TombolSimpan sedang={simpan.isPending} selesai={simpan.isSuccess} label={t("Simpan kurs")} />
         </div>
       </form>
-      {info && <Pesan jenis={info.jenis} teks={info.teks} />}
+      {info && <NotifikasiSimpan key={`${info.jenis}-${info.teks}`} jenis={info.jenis} teks={info.teks} />}
 
       <h3 className="mt-5 mb-2 text-sm font-semibold text-[#1D2434]">
         {t("10 perubahan terakhir")}
@@ -638,7 +678,7 @@ function KartuKurs({ pengisi }: { pengisi: string }) {
         </thead>
         <tbody>
           {riwayat.data?.map((b: any) => (
-            <tr key={b.berlaku_dari} className="border-b border-[#EDEFF2]">
+            <tr key={b.berlaku_dari} className={`border-b border-[#EDEFF2] ${sorotBaris.kelas(b.berlaku_dari)}`}>
               <td className="py-1">{fmtTanggal(b.berlaku_dari)}</td>
               <td className="py-1 text-right font-mono">{fmtAngka(b.idr_per_usd, 0)}</td>
               <td className="py-1 pl-4 text-[#64676C]">{b.sumber ?? "-"}</td>

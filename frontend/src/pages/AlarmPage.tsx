@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Kartu, Pesan, ambilJson, fmtTanggal, kelasInput, kelasTombol,
@@ -37,6 +37,7 @@ type Tindakan = {
   langkah: string[];
 };
 
+/* GET /api/alarm dan model Alarm tidak menyediakan severity/prioritas; jangan memberi label kritis berdasarkan dugaan. */
 type AlarmItem = {
   kode: string;
   pesan: string;
@@ -45,9 +46,15 @@ type AlarmItem = {
 };
 
 function BarisPengaturan({ p, sesudah }: { p: any; sesudah: () => void }) {
+  const { t } = useBahasa();
   const [aktif, setAktif] = useState(p.aktif);
+  const [tersimpan, setTersimpan] = useState(false);
+  const penghapusSorot = useRef<number | null>(null);
   const [ambang, setAmbang] = useState(p.ambang !== null ? String(p.ambang) : "");
   const [galat, setGalat] = useState<string | null>(null);
+  useEffect(() => () => {
+    if (penghapusSorot.current !== null) window.clearTimeout(penghapusSorot.current);
+  }, []);
 
   const simpan = useMutation({
     mutationFn: () => kirimJson("/api/alarm/pengaturan", {
@@ -55,13 +62,22 @@ function BarisPengaturan({ p, sesudah }: { p: any; sesudah: () => void }) {
       ambang: ambang.trim() === "" ? null : Number(ambang.replace(",", ".")),
       pengisi: pengisi(),
     }),
-    onSuccess: () => { setGalat(null); sesudah(); },
+    onSuccess: () => {
+      setGalat(null);
+      setTersimpan(true);
+      if (penghapusSorot.current !== null) window.clearTimeout(penghapusSorot.current);
+      penghapusSorot.current = window.setTimeout(() => {
+        setTersimpan(false);
+        penghapusSorot.current = null;
+      }, 1500);
+      sesudah();
+    },
     onError: (e: Error) => setGalat(e.message),
   });
 
   return (
     <>
-      <tr className="border-b border-[#EDEFF2]">
+      <tr className={`border-b border-[#EDEFF2] ${tersimpan ? "baris-tersimpan" : ""}`}>
         <td className="py-1.5 font-medium">{NAMA_ALARM[p.kode] ?? p.kode}</td>
         <td className="text-center">
           <input type="checkbox" className="accent-[#FF1313]" checked={aktif}
@@ -74,8 +90,10 @@ function BarisPengaturan({ p, sesudah }: { p: any; sesudah: () => void }) {
         <td className="text-[#64676C]">{p.satuan ?? "-"}</td>
         <td className="text-xs text-[#64676C]">{p.keterangan}</td>
         <td>
-          <button className={kelasTombolKecil} disabled={simpan.isPending}
-                  onClick={() => simpan.mutate()}>simpan</button>
+          <button className={`${kelasTombolKecil} min-w-[72px]`} disabled={simpan.isPending}
+                  onClick={() => simpan.mutate()} aria-live="polite">
+            {simpan.isPending ? t("Menyimpan…") : simpan.isSuccess ? `✓ ${t("Tersimpan")}` : t("simpan")}
+          </button>
         </td>
       </tr>
       {galat && <tr><td colSpan={6}><Pesan jenis="error" teks={galat} /></td></tr>}
@@ -84,7 +102,9 @@ function BarisPengaturan({ p, sesudah }: { p: any; sesudah: () => void }) {
 }
 
 /* ---------- satu kartu alarm + jalan keluarnya ---------- */
-function KartuAlarm({ a, ke }: { a: AlarmItem; ke?: (id: string) => void }) {
+function KartuAlarm({ a, ke, baru, selesaiBaru }: {
+  a: AlarmItem; ke?: (id: string) => void; baru?: boolean; selesaiBaru?: () => void;
+}) {
   const { t } = useBahasa();
   const tindakan = a.tindakan;
   return (
@@ -93,6 +113,7 @@ function KartuAlarm({ a, ke }: { a: AlarmItem; ke?: (id: string) => void }) {
         <div className="min-w-0">
           <p className="text-sm font-semibold text-[#B91C1C]">
             {t(NAMA_ALARM[a.kode] ?? a.kode)}
+            {baru && <span className="penanda-alarm-baru ml-2 rounded-sm border border-[#FDE68A] bg-[#FFFBEB] px-1.5 py-0.5 align-middle text-[10px] font-semibold text-[#92400E]" aria-label={t("Alarm baru")} onAnimationEnd={selesaiBaru}>{t("Baru")}</span>}
             {a.tanggal_data && (
               <span className="ml-2 font-normal text-[#DC2626]">
                 ({t("data per")} {fmtTanggal(a.tanggal_data)})
@@ -127,10 +148,31 @@ function KartuAlarm({ a, ke }: { a: AlarmItem; ke?: (id: string) => void }) {
   );
 }
 
+const kunciAlarm = (a: AlarmItem) => JSON.stringify([a.kode, a.tanggal_data, a.pesan]);
+
 export default function AlarmPage({ ke }: { ke?: (id: string) => void }) {
   const { t } = useBahasa();
   const qc = useQueryClient();
   const q = useQuery({ queryKey: ["alarm"], queryFn: () => ambilJson("/api/alarm") });
+  const alarmPernahDilihat = useRef<Set<string> | null>(null);
+  const [alarmBaru, setAlarmBaru] = useState<Set<string>>(() => new Set());
+  const [toastPengaturan, setToastPengaturan] = useState(false);
+  const timerToastPengaturan = useRef<number | null>(null);
+  useEffect(() => () => {
+    if (timerToastPengaturan.current !== null) window.clearTimeout(timerToastPengaturan.current);
+  }, []);
+  useEffect(() => {
+    const daftar = q.data?.alarm as AlarmItem[] | undefined;
+    if (!daftar) return;
+    const adaSekarang = new Set(daftar.map(kunciAlarm));
+    if (alarmPernahDilihat.current === null) {
+      alarmPernahDilihat.current = adaSekarang;
+      return;
+    }
+    const baru = [...adaSekarang].filter((kunci) => !alarmPernahDilihat.current!.has(kunci));
+    if (baru.length) setAlarmBaru((sebelumnya) => new Set([...sebelumnya, ...baru]));
+    alarmPernahDilihat.current = new Set([...alarmPernahDilihat.current, ...adaSekarang]);
+  }, [q.data?.alarm]);
 
   const evaluasi = useMutation({
     mutationFn: () => kirimJson("/api/alarm/evaluasi", {}),
@@ -140,6 +182,12 @@ export default function AlarmPage({ ke }: { ke?: (id: string) => void }) {
   const segarkan = () => {
     qc.invalidateQueries({ queryKey: ["alarm"] });
     qc.invalidateQueries({ queryKey: ["audit-aturan"] });
+    setToastPengaturan(true);
+    if (timerToastPengaturan.current !== null) window.clearTimeout(timerToastPengaturan.current);
+    timerToastPengaturan.current = window.setTimeout(() => {
+      setToastPengaturan(false);
+      timerToastPengaturan.current = null;
+    }, 3600);
   };
 
   return (
@@ -178,9 +226,16 @@ export default function AlarmPage({ ke }: { ke?: (id: string) => void }) {
                         </span>
                       </h3>
                       <div className="grid gap-2">
-                        {isi.map((a, i) => (
-                          <KartuAlarm key={`${a.kode}-${i}`} a={a} ke={ke} />
-                        ))}
+                        {isi.map((a) => {
+                          const kunci = kunciAlarm(a);
+                          return (
+                            <KartuAlarm key={kunci} a={a} ke={ke} baru={alarmBaru.has(kunci)} selesaiBaru={() => setAlarmBaru((sebelumnya) => {
+                              const berikutnya = new Set(sebelumnya);
+                              berikutnya.delete(kunci);
+                              return berikutnya;
+                            })} />
+                          );
+                        })}
                       </div>
                     </section>
                   );
@@ -194,6 +249,7 @@ export default function AlarmPage({ ke }: { ke?: (id: string) => void }) {
       <Kartu idMetrik="alarm" judul="Pengaturan alarm (admin)"
              keterangan="Ambang adalah data yang bisa diubah — tidak ada angka yang ditanam di kode. Perubahan tercatat di audit log."
              anak={
+        <>
         <table className="w-full text-sm">
           <thead>
             <tr className="text-left text-[#64676C] border-b text-xs">
@@ -207,6 +263,8 @@ export default function AlarmPage({ ke }: { ke?: (id: string) => void }) {
             ))}
           </tbody>
         </table>
+        {toastPengaturan && <p key={String(toastPengaturan)} role="status" className="toast-sisi-masuk mt-3 rounded-sm border border-[#BBF7D0] bg-[#F0FDF4] px-3 py-2 text-sm text-[#15803D]">✓ {t("Pengaturan alarm berhasil disimpan.")}</p>}
+        </>
       } />
     </div>
   );

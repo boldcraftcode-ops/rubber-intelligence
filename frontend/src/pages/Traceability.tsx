@@ -1,4 +1,4 @@
-import { type ReactNode, Fragment, useEffect, useMemo, useState } from "react";
+import { type ReactNode, Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ambilJson, fmtAngka, kelasInput, kelasLabel, kelasTombol, urlApi, KerangkaMuatKartu } from "../bersama";
 
@@ -281,7 +281,7 @@ function PohonRantaiPasok({ query, aktif }: { query: string; aktif: boolean }) {
              style={{ height: arah === "vertikal" ? 520 : Math.min(900, tinggi),
                       minWidth: arah === "vertikal" ? Math.min(1800, lebar) : undefined }}
              role="img" aria-label="Pohon rantai pasok karet dari data asli">
-          {data.edges.map((e) => {
+          {data.edges.map((e, index) => {
             const a = pos[e.dari], b = pos[e.ke];
             if (!a || !b) return null;
             const kunci = `${e.dari}>${e.ke}`;
@@ -294,7 +294,11 @@ function PohonRantaiPasok({ query, aktif }: { query: string; aktif: boolean }) {
                 stroke={redup ? "#E4E5E8" : t1Terpilih ? "#175CD3" : "#CBD5E1"}
                 strokeWidth={lebarGaris(e.volume_kg, minVolume, maksVolume)}
                 strokeLinecap="round"
-                opacity={redup ? 0.35 : 1}>
+                opacity={redup ? 0.35 : 1}
+                pathLength={index < 24 ? 1 : undefined}
+                strokeDasharray={index < 24 ? "1" : undefined}
+                strokeDashoffset={index < 24 ? 1 : undefined}
+                className={index < 24 ? "aliran-garis-masuk" : undefined}>
                 <title>{`${e.dari} → ${e.ke}: ${fmtAngka(e.volume_kg, 0)} kg`}</title>
               </path>
             );
@@ -365,6 +369,9 @@ export default function Traceability() {
   const [filters, setFilters] = useState<Filter>({ year: "", period: "ALL", supplier: "", eudr: "all", includeLatex: false });
   const [tab, setTab] = useState<"regions" | "actors" | "pohon">("regions");
   const [open, setOpen] = useState<Set<string>>(() => new Set());
+  const [opening, setOpening] = useState<Set<string>>(() => new Set());
+  const [closing, setClosing] = useState<Set<string>>(() => new Set());
+  const timerTutupNode = useRef<Map<string, number>>(new Map());
   const [selectedActor, setSelectedActor] = useState<string | null>(null);
   const [gapLevel, setGapLevel] = useState<TingkatGap | null>(null);
   const [gapTerpilih, setGapTerpilih] = useState<BarisGap | null>(null);
@@ -611,6 +618,10 @@ export default function Traceability() {
   useEffect(() => {
     if (!filters.year && q.data?.year) setFilters((f) => ({ ...f, year: String(q.data.year) }));
   }, [filters.year, q.data?.year]);
+  useEffect(() => () => {
+    timerTutupNode.current.forEach((timer) => window.clearTimeout(timer));
+    timerTutupNode.current.clear();
+  }, []);
 
   const opsiDistrict: any[] = districtOptions.data?.options ?? [];
   const districtAda = !targetDistrict || opsiDistrict.some((o) => o.value === targetDistrict);
@@ -622,23 +633,74 @@ export default function Traceability() {
   const subdistrictGapAda = !gapSubdistrict || opsiSubdistrictGap.some((o) => o.value === gapSubdistrict);
   const exportQuery = useMemo(() => `${query}${query ? "&" : ""}format=xlsx`, [query]);
   const unmappedQuery = query;
-  const toggle = (key: string) => setOpen((previous) => {
-    const next = new Set(previous);
-    if (next.has(key)) next.delete(key); else next.add(key);
-    return next;
-  });
+  const toggle = (key: string, jumlahAnak: number) => {
+    const animasikan = jumlahAnak <= 40;
+    const tutupSedangBerjalan = closing.has(key);
+    if (open.has(key) && !tutupSedangBerjalan) {
+      setOpening((previous) => {
+        const next = new Set(previous);
+        next.delete(key);
+        for (const cabang of next) if (cabang.startsWith(`${key}/`)) next.delete(cabang);
+        return next;
+      });
+      if (!animasikan) {
+        setOpen((previous) => {
+          const next = new Set(previous);
+          next.delete(key);
+          return next;
+        });
+        return;
+      }
+      setClosing((previous) => new Set(previous).add(key));
+      const timerLama = timerTutupNode.current.get(key);
+      if (timerLama !== undefined) window.clearTimeout(timerLama);
+      const timer = window.setTimeout(() => {
+        setOpen((previous) => {
+          const next = new Set(previous);
+          next.delete(key);
+          return next;
+        });
+        setClosing((previous) => {
+          const next = new Set(previous);
+          next.delete(key);
+          return next;
+        });
+        timerTutupNode.current.delete(key);
+      }, 180);
+      timerTutupNode.current.set(key, timer);
+      return;
+    }
+    const timer = timerTutupNode.current.get(key);
+    if (timer !== undefined) window.clearTimeout(timer);
+    timerTutupNode.current.delete(key);
+    setClosing((previous) => {
+      const next = new Set(previous);
+      next.delete(key);
+      return next;
+    });
+    setOpen((previous) => new Set(previous).add(key));
+    setOpening((previous) => {
+      const next = new Set(previous);
+      if (animasikan) next.add(key);
+      else next.delete(key);
+      return next;
+    });
+  };
 
   const renderNodes = (nodes: Wilayah[], depth = 0, prefix = ""): ReactNode[] => nodes.flatMap((node) => {
     const key = `${prefix}/${node.name}`;
     const hasChildren = node.children?.length > 0;
     const expanded = open.has(key);
+    const animasiCabang = nodes.length <= 40
+      ? closing.has(prefix) ? "node-pohon-tutup" : opening.has(prefix) ? "node-pohon-buka" : ""
+      : "";
     const row = (
-      <tr key={key} className="border-b border-[#EDEFF2] hover:bg-[#FAFAFA]">
+      <tr key={key} className={`border-b border-[#EDEFF2] hover:bg-[#FAFAFA] ${animasiCabang}`}>
         <td className="py-2 pr-2">
           <div className="flex items-center gap-1.5" style={{ paddingLeft: `${depth * 18}px` }}>
             {hasChildren ? (
               <button aria-label={expanded ? "Tutup wilayah" : "Buka wilayah"}
-                      className="w-5 h-5 text-[#64676C]" onClick={() => toggle(key)}>
+                      className="w-5 h-5 text-[#64676C]" onClick={() => toggle(key, node.children.length)}>
                 {expanded ? "▾" : "▸"}
               </button>
             ) : <span className="w-5" />}

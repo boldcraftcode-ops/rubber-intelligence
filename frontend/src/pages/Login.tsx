@@ -1,5 +1,6 @@
 import { FormEvent, useState } from "react";
 import { kelasInput, kelasLabel, kelasTombol, kirimJson, simpanToken } from "../bersama";
+import { VERSI_UI } from "../versi";
 
 /* ---------------------------------------------------------------------------
    Layar bila API menjawab tetapi login sedang tidak aktif (mis. mode
@@ -67,7 +68,7 @@ export default function Login({ onSukses }: { onSukses: () => void }) {
               Rubber Raw Material
             </p>
             <h1 className="mt-1 text-2xl font-bold leading-tight">
-              Rubber<br />Intelligence
+              Rubber<br />Intelligence <span className="whitespace-nowrap text-sm font-semibold text-white/70">V.{VERSI_UI}</span>
             </h1>
             <img src="/rubber-intelligence-logo.svg" alt="Rubber Intelligence"
                  className="mt-6 h-16 w-16 bg-white rounded-sm p-1.5" />
@@ -98,9 +99,6 @@ export default function Login({ onSukses }: { onSukses: () => void }) {
           <h2 className="mt-1 text-xl font-bold text-[#1D2434]">
             Silakan masuk ke akun Anda
           </h2>
-          <p className="mt-1 text-sm text-[#64676C]">
-            Gunakan username dan sandi kantor Anda.
-          </p>
 
           <div className="mt-6">
             <label className={kelasLabel}>Username</label>
@@ -128,6 +126,9 @@ export default function Login({ onSukses }: { onSukses: () => void }) {
 
           <p className="mt-4 text-[11px] text-[#9AA0A6]">
             Lupa sandi? Hubungi admin aplikasi untuk reset.
+          </p>
+          <p className="mt-2 text-[11px] text-[#9AA0A6]">
+            Created and designed by AR
           </p>
         </form>
       </div>

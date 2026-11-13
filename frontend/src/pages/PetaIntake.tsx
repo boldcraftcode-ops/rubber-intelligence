@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { type CSSProperties, useMemo, useState } from "react";
 import { Kartu, KerangkaMuatKartu, PilihRentangBulan, TombolRefreshKartu, ambilJson, fmtAngka, useQueryKartu } from "../bersama";
 
 const akhirBulan = (ym: string) => {
@@ -220,6 +220,8 @@ export default function PetaIntake() {
     });
   }, [nilai.mapped, proyeksi, skalaBar]);
 
+  const maksimumIntake = nilai.positive[nilai.positive.length - 1] ?? 1;
+
   const colorOf = (kg: number | null) => {
     if (kg === null) return WARNA_KOSONG;
     if (kg <= 0 || !nilai.positive.length) return WARNA_BERURUT[0];
@@ -341,7 +343,20 @@ export default function PetaIntake() {
                               stroke="#FFFFFF"
                               strokeWidth={1.2}
                             />
-                            <circle cx={bar.x} cy={bar.dasar} r={2.2} fill="#FFFFFF" stroke={WARNA_BAR} strokeWidth={1} />
+                            {(() => {
+                              const level = Math.max(0, Math.min(1, Math.log10(bar.kg + 1) / Math.log10(maksimumIntake + 1)));
+                              return (
+                                <circle
+                                  cx={bar.x} cy={bar.dasar} r={2.2} fill="#FFFFFF"
+                                  stroke={WARNA_BAR} strokeWidth={1}
+                                  className={barRows.length <= 40 ? "penanda-intake-berdenyut" : undefined}
+                                  style={barRows.length <= 40 ? ({
+                                    animationDuration: `${(3.4 - level * 1.1).toFixed(2)}s`,
+                                    ["--denyut-maks" as any]: (1.06 + level * 0.18).toFixed(2),
+                                  } as CSSProperties) : undefined}
+                                />
+                              );
+                            })()}
                             <title>{`${bar.label}: ${fmtAngka(bar.kg, 0)} kg Dry`}</title>
                           </g>
                         ))}

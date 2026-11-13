@@ -140,6 +140,94 @@ body {
   transition: transform 220ms ease-out;
 }
 
+/* Umpan balik simpan masuk dari sisi agar konfirmasi terlihat tanpa loncatan tata letak. */
+.toast-sisi-masuk {
+  animation: ToastSisiMasuk 220ms cubic-bezier(0.2, 0, 0, 1) both;
+}
+
+@keyframes ToastSisiMasuk {
+  from { transform: translateX(12px); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
+
+/* Sorotan singkat membantu menemukan baris tersimpan tanpa menggeser lebar teks atau angka. */
+.baris-tersimpan > td {
+  position: relative;
+  isolation: isolate;
+}
+
+.baris-tersimpan > td::after {
+  position: absolute;
+  z-index: -1;
+  inset: 0;
+  content: "";
+  background: #dcfce7;
+  pointer-events: none;
+  animation: SorotBarisTersimpan 1500ms ease-out both;
+}
+
+@keyframes SorotBarisTersimpan {
+  from { opacity: 0.72; }
+  to { opacity: 0; }
+}
+
+/* Penanda satu kali membantu mengenali alarm baru tanpa mengulang gangguan saat refetch identik. */
+.penanda-alarm-baru {
+  display: inline-block;
+  animation: TandaAlarmBaru 1500ms ease-out both;
+}
+
+@keyframes TandaAlarmBaru {
+  0% { transform: scale(0.82); opacity: 0; }
+  12% { transform: scale(1); opacity: 1; }
+  72% { transform: scale(1); opacity: 1; }
+  100% { transform: scale(0.96); opacity: 0; }
+}
+
+/* Gerak cabang pendek menjaga orientasi hierarki tanpa menganimasikan ukuran baris. */
+.node-pohon-buka {
+  animation: NodePohonBuka 180ms ease-out both;
+}
+
+.node-pohon-tutup {
+  animation: NodePohonTutup 180ms ease-in both;
+  pointer-events: none;
+}
+
+@keyframes NodePohonBuka {
+  from { transform: translateY(4px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+@keyframes NodePohonTutup {
+  from { transform: translateY(0); opacity: 1; }
+  to { transform: translateY(-4px); opacity: 0; }
+}
+
+/* Garis awal membantu menelusuri arah rantai; batas 24 lintasan menjaga biaya render tetap kecil. */
+.aliran-garis-masuk {
+  animation: AliranGarisMasuk 700ms ease-out both;
+}
+
+@keyframes AliranGarisMasuk {
+  from { stroke-dashoffset: 1; }
+  to { stroke-dashoffset: 0; }
+}
+
+/* Denyut membedakan besaran intake secara visual, dibatasi 40 titik agar peta tetap ringan. */
+.penanda-intake-berdenyut {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation-name: DenyutPenandaPeta;
+  animation-timing-function: ease-in-out;
+  animation-iteration-count: infinite;
+}
+
+@keyframes DenyutPenandaPeta {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(var(--denyut-maks, 1.12)); opacity: 0.62; }
+}
+
 /* Satu aturan aksesibilitas global: gerak baru maupun animasi tema login
    dinonaktifkan bila pengguna meminta gerakan minimum. */
 @media (prefers-reduced-motion: reduce) {
