@@ -8,17 +8,39 @@ import calendar
 import datetime as dt
 import io
 import pathlib
+import posixpath
+import re
+import xml.etree.ElementTree as ET
+import zipfile
+from copy import deepcopy
 from collections import defaultdict
 from decimal import Decimal
+from typing import Iterable, Literal
 
 import openpyxl
 import yaml
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
+from openpyxl.cell import WriteOnlyCell
+from openpyxl.chart import BarChart, LineChart, Reference
+from openpyxl.drawing.spreadsheet_drawing import AnchorMarker, TwoCellAnchor
+from openpyxl.formatting.rule import ColorScaleRule
+from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+from openpyxl.styles.colors import Color
+from openpyxl.utils import column_index_from_string, get_column_letter
+from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from .auth_lokal import info_pengguna, wajib_admin
 from .core import rumus
+from .core.alarm import catat_audit, evaluasi_alarm
+from .core.ringkasan_vendor import (
+    MAKS_BULAN, MAKS_HARI, hitung_ringkasan_vendor,
+    label_bulan_pendek, ringkas_untuk_layar,
+)
+from .core.traceability import (normalisasi_kabupaten,
+                                normalisasi_teks_wilayah)
 from .core.kualitas import (
     data_terlambat,
     hari_pembelian_tanpa_sicom,
@@ -29,18 +51,24 @@ from .core.kualitas import (
 from .core.lookup import PencariBerlaku
 from .core.rekonsiliasi import (
     CATATAN_DIKETAHUI,
+    PILIHAN_SUMBER,
     SELISIH_DIKETAHUI,
+    keputusan_intake_diketahui,
     rekonsiliasi_harian,
+    sah_kunci,
     selisih_diketahui,
 )
 from .models import (
     Grade,
+    KoreksiRekonsiliasi,
     Kurs,
     MartBulanan,
     MartHarian,
     ParameterPabrik,
     Pembelian,
     RawUnggahan,
+    ReferensiWilayahTrace,
+    KoreksiWilayahTrace,
     Sicom,
     TiketBaris,
     Vendor,
@@ -56,6 +84,113 @@ KOREKSI = {
 NAMA_BULAN_SINGKAT = ("", "Jan", "Feb", "Mar", "Apr", "Mei", "Jun",
                       "Jul", "Agu", "Sep", "Okt", "Nov", "Des")
 
+#: Satu sheet Excel maksimal 1.048.576 baris. Dipakai hanya sebagai pengaman
+#: untuk rentang ekstrem; sheet ringkasan tetap memuat seluruh rentang.
+MAKS_BARIS_XLSX = 1_000_000
+#: Di atas jumlah baris ini workbook ditulis mengalir (write_only).
+AMBANG_XLSX_STREAM = 200_000
+#: Pengaman ekspor Excel Penerimaan Karet: 1.200 bulan = 100 tahun.
+#: Excel sendiri maksimal 16.384 kolom, tapi rincian bulanan juga menyimpan
+#: satu sel per dimensi per bulan; batas ini mencegah workbook raksasa.
+MAKS_BULAN_XLSX = 1_200
+
+# ---------------------------------------------------------------------------
+# Format baku ekspor kartu Konsistensi intake harian vendor, mengikuti
+# `Intake-2025_Ringkasan-Vendor.xlsx`. Berkas contoh HANYA referensi; style
+# ditanam di kode agar ekspor tetap jalan tanpa file tersebut.
+# ---------------------------------------------------------------------------
+FONT_RINGKASAN_VENDOR = "Courier New"
+WARNA_HEADER_RINGKASAN_VENDOR = "FF1F4E78"
+WARNA_ABU_RINGKASAN_VENDOR = "FF595959"
+WARNA_ABU_MUDA_RINGKASAN_VENDOR = "FF7F7F7F"
+WARNA_LUAR_DATA_RINGKASAN_VENDOR = "FFF2F2F2"
+FORMAT_TRIP_RINGKASAN_VENDOR = "#,##0"
+FORMAT_PORSEN_RINGKASAN_VENDOR = "0.0%"
+FORMAT_RATA_RINGKASAN_VENDOR = "0.0"
+FORMAT_TANGGAL_RINGKASAN_VENDOR = "yyyy-mm-dd"
+FORMAT_AWAL_BULAN_RINGKASAN_VENDOR = "dd\\-mmm"
+LEBAR_RINGKASAN_VENDOR = (9.0, 40.0, 12.0, 9.0, 11.0, 18.0, 14.0, 15.0, 8.71)
+
+# ---------------------------------------------------------------------------
+# Format baku ekspor kartu Penerimaan Karet, mengikuti contoh
+# `Format_penerimaan_per_desa.xlsx`. File contoh HANYA referensi; style
+# ditanam di kode agar ekspor tetap jalan tanpa file tersebut.
+# ---------------------------------------------------------------------------
+FONT_PENERIMAAN = "Courier New"
+WARNA_JUDUL_PENERIMAAN = "FF1D2434"
+TINT_HEADER_PENERIMAAN = 0.39997558519241921  # theme dk2 (1F497D) → 558ED5
+FORMAT_KG_PENERIMAAN = (
+    '_(* #,##0_);_(* \\(#,##0\\);_(* "-"??_);_(@_)')
+FORMAT_PORSEN_PENERIMAAN = "0%"
+LEBAR_PENERIMAAN = (26.5703125, 19.5703125, 14.28515625, 19.5703125,
+                    9.28515625, 19.28515625, 9.140625)
+NAMA_BULAN_INGGRIS = ("", "January", "February", "March", "April", "May",
+                      "June", "July", "August", "September", "October",
+                      "November", "December")
+
+# ---------------------------------------------------------------------------
+# Basis ekspor 3 laporan sesuai folder `Template Export` yang diunggah pemilik.
+# Nama file hasil unduh = nama berkas template TANPA akhiran `_template`.
+# Workbook template dibuka sebagai dasar agar tinggi/lebar, gaya, dan chart
+# ikut aslinya; sel data/chart diisi dari database secara dinamis.
+# ---------------------------------------------------------------------------
+TEMPLATE_EKSPOR = {
+    "penerimaan_vendor": "penerimaan_per_vendor_template.xlsx",
+    "penerimaan_vendor_bulanan":
+        "penerimaan_per_vendor_per_bulan_template.xlsx",
+    "rm_stock": "rm_stock_intake_vs_pricing_template.xlsx",
+}
+#: `Desember` sengaja mengikuti ejaan pada baris periode template.
+NAMA_BULAN_TEMPLATE = ("", "January", "February", "March", "April", "May",
+                       "June", "July", "August", "September", "October",
+                       "November", "Desember")
+
+
+class RekonsiliasiKeputusanMasuk(BaseModel):
+    """Pilihan sumber benar untuk satu baris selisih Rekonsiliasi."""
+    jenis: Literal["harian", "diketahui"]
+    kunci: str = Field(min_length=7, max_length=10)
+    sumber_benar: Literal["tiket", "pembelian", "excel"]
+    alasan: str | None = Field(default=None, max_length=300)
+
+
+def _boleh_revisi(request: Request) -> bool:
+    """Admin (atau mode development tanpa login) boleh menyimpan keputusan."""
+    try:
+        wajib_admin(request)
+        return True
+    except HTTPException:
+        return False
+
+
+def _baris_rekonsiliasi(jenis: str, kunci: str, session: Session) -> dict | None:
+    if jenis == "harian":
+        return next((h for h in rekonsiliasi_harian(session)
+                     if h["kunci"] == kunci), None)
+    return next((d for d in selisih_diketahui(session)
+                 if d["kunci"] == kunci), None)
+
+
+def _validasi_keputusan(data: RekonsiliasiKeputusanMasuk,
+                        session: Session) -> dict:
+    kunci = data.kunci.strip()
+    if not sah_kunci(data.jenis, kunci):
+        raise HTTPException(422, "Kunci baris Rekonsiliasi tidak dikenal. "
+                                "Gunakan YYYY-MM-DD untuk harian atau "
+                                "YYYY-MM untuk selisih yang sudah diketahui.")
+    if data.sumber_benar not in PILIHAN_SUMBER[data.jenis]:
+        sah = ", ".join(PILIHAN_SUMBER[data.jenis])
+        raise HTTPException(422, f"Sumber '{data.sumber_benar}' tidak sah "
+                                f"untuk {data.jenis}. Pilih salah satu: {sah}.")
+    baris = _baris_rekonsiliasi(data.jenis, kunci, session)
+    if baris is None:
+        raise HTTPException(422, f"Baris {data.jenis} '{kunci}' tidak ditemukan "
+                                "pada data Rekonsiliasi.")
+    if data.jenis == "harian" and baris["cocok_asli"] and not baris["direvisi"]:
+        raise HTTPException(422, "Baris harian ini sudah cocok; tidak perlu "
+                                "keputusan revisi.")
+    return {**baris, "kunci": kunci}
+
 DIMENSI_TONASE = ("vendor", "grade", "provinsi", "kabupaten", "kecamatan", "desa")
 URUTAN_WILAYAH = ("provinsi", "kabupaten", "kecamatan", "desa")
 
@@ -69,6 +204,1008 @@ def respon_xlsx(nama_file: str, judul: list[str], baris: list[list]) -> Streamin
     ws.append(judul)
     for b in baris:
         ws.append(b)
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return StreamingResponse(
+        buf,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{nama_file}"'})
+
+
+def respon_xlsx_penerimaan(nama_file: str, judul: str, periode: str,
+                           header: list[str], baris: list[list],
+                           tipe_kolom: list[str],
+                           kolom_tengah: int | None = None,
+                           mode_bulan: bool = False) -> StreamingResponse:
+    """Ekspor kartu Penerimaan Karet mengikuti `Format_penerimaan_per_desa.xlsx`.
+
+    Susunan: baris 1 kosong, A2 judul, A3 periode, baris 4 kosong, header di
+    baris 5, data mulai baris 6. Font Courier New 11 (judul 14), header putih
+    di atas fill theme dk2+tint 40%, border tipis di header & data, format kg
+    accounting, `Porsi` 0%, `Jumlah tiket` rata tengah. Tanpa freeze/merge.
+    """
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Sheet"
+
+    font_judul = Font(name=FONT_PENERIMAAN, sz=14,
+                      color=WARNA_JUDUL_PENERIMAAN)
+    font_isi = Font(name=FONT_PENERIMAAN, sz=11, color=Color(theme=1))
+    font_header = Font(name=FONT_PENERIMAAN, sz=11, color=Color(theme=0))
+    fill_header = PatternFill(
+        fill_type="solid",
+        fgColor=Color(theme=3, tint=TINT_HEADER_PENERIMAAN))
+    sisi = Side(style="thin", color=Color(auto=True))
+    border = Border(left=sisi, right=sisi, top=sisi, bottom=sisi)
+
+    c = ws.cell(row=2, column=1, value=judul)
+    c.font = font_judul
+    c.alignment = Alignment(vertical="center")
+    ws.row_dimensions[2].height = 18.75
+    c = ws.cell(row=3, column=1, value=f"Periode :  [{periode}]")
+    c.font = font_isi
+
+    for i, teks in enumerate(header, start=1):
+        c = ws.cell(row=5, column=i, value=teks)
+        c.font = font_header
+        c.fill = fill_header
+        c.border = border
+        tipe = tipe_kolom[i - 1] if i - 1 < len(tipe_kolom) else "teks"
+        if tipe == "kg":
+            c.number_format = FORMAT_KG_PENERIMAAN
+        elif tipe == "persen":
+            c.number_format = FORMAT_PORSEN_PENERIMAAN
+        if kolom_tengah is not None and i - 1 == kolom_tengah:
+            c.alignment = Alignment(horizontal="center")
+
+    for indeks_baris, nilai_baris in enumerate(baris, start=6):
+        for i, nilai in enumerate(nilai_baris, start=1):
+            c = ws.cell(row=indeks_baris, column=i, value=nilai)
+            c.font = font_isi
+            c.border = border
+            tipe = tipe_kolom[i - 1] if i - 1 < len(tipe_kolom) else "teks"
+            if tipe == "kg":
+                c.number_format = FORMAT_KG_PENERIMAAN
+            elif tipe == "persen":
+                c.number_format = FORMAT_PORSEN_PENERIMAAN
+            if kolom_tengah is not None and i - 1 == kolom_tengah:
+                c.alignment = Alignment(horizontal="center")
+
+    if mode_bulan:
+        # Kolom A, N kolom bulan, Total kg, Porsi.
+        lebar = ([LEBAR_PENERIMAAN[0]]
+                 + [LEBAR_PENERIMAAN[2]] * (len(header) - 3)
+                 + [LEBAR_PENERIMAAN[3], LEBAR_PENERIMAAN[4]])
+    else:
+        lebar = list(LEBAR_PENERIMAAN[:len(header)])
+        # Sampel juga menyimpan lebar kolom G meski tidak berisi data.
+        ws.column_dimensions["G"].width = LEBAR_PENERIMAAN[6]
+    for i, nilai in enumerate(lebar, start=1):
+        ws.column_dimensions[get_column_letter(i)].width = nilai
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return StreamingResponse(
+        buf,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{nama_file}"'})
+
+
+TEMPLATE_SHEET_NS = "http://schemas.openxmlformats.org/spreadsheetml/2006/main"
+TEMPLATE_X14AC_NS = (
+    "http://schemas.microsoft.com/office/spreadsheetml/2009/9/ac")
+TEMPLATE_MC_NS = "http://schemas.openxmlformats.org/markup-compatibility/2006"
+TEMPLATE_REL_NS = (
+    "http://schemas.openxmlformats.org/officeDocument/2006/relationships")
+TEMPLATE_CHART_NS = (
+    "http://schemas.openxmlformats.org/drawingml/2006/chart")
+TEMPLATE_DRAW_NS = "http://schemas.openxmlformats.org/drawingml/2006/main"
+TEMPLATE_NS = {
+    "m": TEMPLATE_SHEET_NS,
+    "r": TEMPLATE_REL_NS,
+    "c": TEMPLATE_CHART_NS,
+    "a": TEMPLATE_DRAW_NS,
+    "mc": TEMPLATE_MC_NS,
+}
+
+
+def _daftarkan_namespace_xlsx() -> None:
+    """Daftarkan prefix umum agar serialisasi XML tetap memakai prefix asli."""
+    ET.register_namespace("", TEMPLATE_SHEET_NS)
+    ET.register_namespace("r", TEMPLATE_REL_NS)
+    ET.register_namespace("mc", TEMPLATE_MC_NS)
+    ET.register_namespace("x14ac", TEMPLATE_X14AC_NS)
+    ET.register_namespace("xr",
+                          "http://schemas.microsoft.com/office/spreadsheetml/2014/revision")
+    ET.register_namespace("xr2",
+                          "http://schemas.microsoft.com/office/spreadsheetml/2015/revision2")
+    ET.register_namespace("xr3",
+                          "http://schemas.microsoft.com/office/spreadsheetml/2016/revision3")
+    ET.register_namespace("c", TEMPLATE_CHART_NS)
+    ET.register_namespace("a", TEMPLATE_DRAW_NS)
+    for prefix, uri in {
+        "c14": "http://schemas.microsoft.com/office/drawing/2007/8/2/chart",
+        "c15": "http://schemas.microsoft.com/office/drawing/2012/chart",
+        "c16": "http://schemas.microsoft.com/office/drawing/2014/chart",
+        "c16r2": "http://schemas.microsoft.com/office/drawing/2015/06/chart",
+        "c16r3": "http://schemas.microsoft.com/office/drawing/2017/03/chart",
+    }.items():
+        ET.register_namespace(prefix, uri)
+
+
+_AKAR_REPO = pathlib.Path(__file__).resolve().parents[2]
+
+
+def _nama_pengguna_export(request: Request) -> str:
+    """Login username untuk footer ekspor, atau ``dev`` tanpa autentikasi."""
+    klaim = info_pengguna(request) or {}
+    nama = klaim.get("sub") or "dev"
+    return str(nama).strip() or "dev"
+
+
+def _template_path(kunci_template: str) -> pathlib.Path:
+    path = _AKAR_REPO / "Template Export" / TEMPLATE_EKSPOR[kunci_template]
+    if not path.is_file():
+        raise HTTPException(
+            500,
+            "Berkas Template Export tidak ditemukan di server: "
+            f"{path.as_posix()}. Folder `Template Export` wajib ikut saat "
+            "instalasi/deployment.")
+    return path
+
+
+def _ns(ns: str, tag: str) -> str:
+    return f"{{{ns}}}{tag}"
+
+
+def _angka_xml(nilai) -> str:
+    if nilai is None:
+        return "0"
+    angka = float(nilai)
+    if angka.is_integer() and abs(angka) < 1e16:
+        return str(int(angka))
+    return repr(angka)
+
+
+def _ref_sheet(sheet_name: str) -> str:
+    aman = sheet_name.replace("'", "''")
+    if any(ch in aman for ch in (" ", "-")):
+        return f"'{aman}'"
+    return aman
+
+
+def _sel_xml(row, kolom: int, nilai, gaya: int,
+             formula: str | None = None,
+             nilai_formula=None) -> None:
+    koordinat = f"{get_column_letter(kolom)}{row.attrib['r']}"
+    atribut = {"r": koordinat, "s": str(gaya)}
+    sel = ET.SubElement(row, _ns(TEMPLATE_SHEET_NS, "c"), atribut)
+    if formula is None and nilai is None:
+        return
+    if formula is not None:
+        f = ET.SubElement(sel, _ns(TEMPLATE_SHEET_NS, "f"))
+        f.text = formula
+        v = ET.SubElement(sel, _ns(TEMPLATE_SHEET_NS, "v"))
+        v.text = _angka_xml(nilai_formula)
+        return
+    if isinstance(nilai, str):
+        sel.set("t", "inlineStr")
+        is_el = ET.SubElement(sel, _ns(TEMPLATE_SHEET_NS, "is"))
+        t_el = ET.SubElement(is_el, _ns(TEMPLATE_SHEET_NS, "t"))
+        if nilai[:1].isspace() or nilai[-1:].isspace():
+            t_el.set(_ns("http://www.w3.org/XML/1998/namespace", "space"),
+                     "preserve")
+        t_el.text = nilai
+        return
+    v = ET.SubElement(sel, _ns(TEMPLATE_SHEET_NS, "v"))
+    v.text = _angka_xml(nilai)
+
+
+def _gaya_sel(root, referensi: str, bawaan: int = 0) -> int:
+    sel = root.find(f".//m:c[@r='{referensi}']", TEMPLATE_NS)
+    if sel is None:
+        return int(bawaan)
+    try:
+        return int(sel.attrib.get("s", bawaan))
+    except (TypeError, ValueError):
+        return int(bawaan)
+
+
+def _baris_maksimum_sheet(root) -> int:
+    terakhir = 0
+    for row in root.findall(".//m:row", TEMPLATE_NS):
+        try:
+            terakhir = max(terakhir, int(row.attrib.get("r", "0")))
+        except ValueError:
+            pass
+    return terakhir
+
+
+def _gaya_kosong_awal(root) -> dict[tuple[int, int], int]:
+    """Simpan sel kosong bergaya pada baris 1-4 agar layout tidak bergeser."""
+    hasil: dict[tuple[int, int], int] = {}
+    for row in root.findall(".//m:row", TEMPLATE_NS):
+        try:
+            nomor_baris = int(row.attrib.get("r", "0"))
+        except ValueError:
+            continue
+        if nomor_baris > 4:
+            continue
+        for sel in row.findall("m:c", TEMPLATE_NS):
+            if len(sel) == 0 and not sel.attrib.get("t"):
+                koordinat = sel.attrib.get("r", "")
+                huruf = "".join(ch for ch in koordinat if ch.isalpha())
+                angka = "".join(ch for ch in koordinat if ch.isdigit())
+                if not huruf or not angka:
+                    continue
+                kolom = 0
+                for ch in huruf.upper():
+                    kolom = kolom * 26 + (ord(ch) - 64)
+                hasil[(nomor_baris, kolom)] = _gaya_sel(root, koordinat)
+    return hasil
+
+
+def _buat_baris(sheet_data, nomor: int, jumlah_kolom: int,
+                tinggi: float | None = None, kustom: bool = False,
+                tebal_bawah: bool = False, gaya_baris: int | None = None,
+                dy: str = "0.25", span_footer: bool = False):
+    atribut = {"r": str(nomor),
+               "spans": "1:1" if span_footer else f"1:{jumlah_kolom}"}
+    if gaya_baris is not None:
+        atribut["s"] = str(gaya_baris)
+        atribut["customFormat"] = "1"
+    if tinggi is not None:
+        atribut["ht"] = str(tinggi)
+        if kustom:
+            atribut["customHeight"] = "1"
+    if tebal_bawah:
+        atribut["thickBot"] = "1"
+    baris = ET.SubElement(sheet_data, _ns(TEMPLATE_SHEET_NS, "row"), atribut)
+    baris.set(_ns(TEMPLATE_X14AC_NS, "dyDescent"), dy)
+    return baris
+
+
+def _jadikan_kolom_bulanan(root, jumlah_bulan: int) -> None:
+    """Susun `<cols>` bila jumlah bulan tidak sebelas seperti template 12 bulan."""
+    if jumlah_bulan == 12:
+        return
+    kolom_total = get_column_letter(2 + jumlah_bulan)
+    kolom_persen = get_column_letter(3 + jumlah_bulan)
+    cols = root.find("m:cols", TEMPLATE_NS)
+    if cols is not None:
+        root.remove(cols)
+    cols = ET.Element(_ns(TEMPLATE_SHEET_NS, "cols"))
+    format_col = [
+        (1, 1, "49.5703125"),
+        (2, 1 + jumlah_bulan, "14.140625"),
+        (2 + jumlah_bulan, 2 + jumlah_bulan, "19.5703125"),
+        (3 + jumlah_bulan, 3 + jumlah_bulan, "9.28515625"),
+    ]
+    # Tempatkan cols sebelum sheetData.
+    sheet_data = root.find("m:sheetData", TEMPLATE_NS)
+    index = list(root).index(sheet_data)
+    root.insert(index, cols)
+    for minimum, maksimum, lebar in format_col:
+        if minimum > maksimum:
+            continue
+        ET.SubElement(cols, _ns(TEMPLATE_SHEET_NS, "col"), {
+            "min": str(minimum), "max": str(maksimum),
+            "width": lebar, "customWidth": "1",
+        })
+
+
+def _hapus_selection(root) -> None:
+    for view in root.findall(".//m:sheetView", TEMPLATE_NS):
+        for selection in list(view.findall("m:selection", TEMPLATE_NS)):
+            view.remove(selection)
+
+
+def _pulihkan_namespace_ignorable(xml_bytes: bytes,
+                                  template_bytes: bytes) -> bytes:
+    """ElementTree omits xmlns prefixes used only in mc:Ignorable values.
+
+    Excel expects every listed prefix to remain declared even if the matching
+    extension namespace is otherwise unused in the rewritten worksheet.
+    Preserve those declarations from the source template.
+    """
+    root_pattern = rb"<worksheet\b[^>]*>"
+    source_match = re.search(root_pattern, template_bytes)
+    output_match = re.search(root_pattern, xml_bytes)
+    if source_match is None or output_match is None:
+        return xml_bytes
+
+    source_root = source_match.group(0)
+    output_root = output_match.group(0)
+    ignored = re.search(rb'\bmc:Ignorable="([^"]*)"', output_root)
+    if ignored is None:
+        return xml_bytes
+
+    namespace_map = {
+        prefix.decode("ascii"): uri
+        for prefix, uri in re.findall(
+            rb'\bxmlns:([A-Za-z_][\w.-]*)="([^"]*)"', source_root)
+    }
+    additions = []
+    for prefix_bytes in ignored.group(1).split():
+        prefix = prefix_bytes.decode("ascii")
+        if re.search(rb'\bxmlns:' + re.escape(prefix_bytes) + rb'=',
+                     output_root):
+            continue
+        uri = namespace_map.get(prefix)
+        if uri is not None:
+            additions.append(b' xmlns:' + prefix_bytes + b'="' + uri + b'"')
+    if not additions:
+        return xml_bytes
+    fixed_root = output_root[:-1] + b"".join(additions) + b">"
+    return xml_bytes[:output_match.start()] + fixed_root + xml_bytes[output_match.end():]
+
+
+def _buat_worksheet_xml(template_bytes: bytes, kunci_template: str,
+                        periode: str, header: list, baris: list,
+                        baris_total: list | None,
+                        jumlah_bulan: int,
+                        nama_pengguna: str = "dev") -> tuple[bytes, str]:
+    root = ET.fromstring(template_bytes)
+    sheet_data = root.find("m:sheetData", TEMPLATE_NS)
+    if sheet_data is None:
+        raise HTTPException(500, "Berkas template tidak memiliki sheetData.")
+
+    peta_gaya_kosong = _gaya_kosong_awal(root)
+    footer_awal = _baris_maksimum_sheet(root)
+    gaya = {
+        "judul": _gaya_sel(root, "A1", 1),
+        "subjudul": _gaya_sel(root, "A2", 1),
+        "periode": _gaya_sel(root, "A3", 1),
+        "header_a": _gaya_sel(root, "A4", 1),
+        "header_b": _gaya_sel(root, "B4", 1),
+        "header_total": _gaya_sel(root, "N4", _gaya_sel(root, "B4", 1)),
+        "header_persen": _gaya_sel(root, "O4", _gaya_sel(root, "E4", 1)),
+        "header_e": _gaya_sel(root, "E4", _gaya_sel(root, "B4", 1)),
+        "header_f": _gaya_sel(root, "F4", _gaya_sel(root, "A4", 1)),
+        "header_rm_akhir": _gaya_sel(root, "G4",
+                                      _gaya_sel(root, "F4", 1)),
+        "data_a": _gaya_sel(root, "A5", 1),
+        "data_b": _gaya_sel(root, "B5", 1),
+        "data_e": _gaya_sel(root, "E5", _gaya_sel(root, "B5", 1)),
+        "data_f": _gaya_sel(root, "F5", _gaya_sel(root, "B5", 1)),
+        "data_rm_akhir": _gaya_sel(root, "G5", _gaya_sel(root, "B5", 1)),
+        "data_persen": _gaya_sel(root, "O5", _gaya_sel(root, "E5", 1)),
+        "data_rm_akhir_a": _gaya_sel(root, f"A{footer_awal - 1}",
+                                      _gaya_sel(root, "A5", 1)),
+        "data_rm_akhir_b": _gaya_sel(root, f"B{footer_awal - 1}",
+                                      _gaya_sel(root, "B5", 1)),
+        "data_rm_akhir_g": _gaya_sel(root, f"G{footer_awal - 1}",
+                                      _gaya_sel(root, "G5", 1)),
+        "total_a": _gaya_sel(root, f"A{footer_awal - 1}",
+                             _gaya_sel(root, "A5", 1)),
+        "total_b": _gaya_sel(root, f"B{footer_awal - 1}",
+                             _gaya_sel(root, "B5", 1)),
+        "total_persen": _gaya_sel(root, f"O{footer_awal - 1}",
+                                  _gaya_sel(root, "O5", 1)),
+        "footer": _gaya_sel(root, f"A{footer_awal}", 1),
+    }
+
+    for row in list(sheet_data):
+        sheet_data.remove(row)
+
+    jumlah_kolom = len(header)
+    sheet_title = next((s for s in {TEMPLATE_EKSPOR[kunci_template]}), "")
+    # Nama sheet sheet tetap dari template; sheet title terbaca dari workbook.
+    # Untuk namespace sheet tidak perlu dikirim balik.
+    if kunci_template == "rm_stock":
+        sheet_title = "Sheet"
+    elif kunci_template == "penerimaan_vendor_bulanan":
+        sheet_title = "Data Sheet"
+    else:
+        sheet_title = "Sheet"
+
+    if kunci_template == "penerimaan_vendor_bulanan" and jumlah_kolom != 15:
+        jumlah_bulan = max(0, len(header) - 3)
+
+    def _judul_dan_kosong(nomor: int, referensi: str, nilai, gaya: int) -> None:
+        tinggi = {1: (15.75 if kunci_template != "penerimaan_vendor_bulanan"
+                    else 16.5),
+                  2: (15.75 if kunci_template == "penerimaan_vendor" else
+                      (16.5 if kunci_template == "penerimaan_vendor_bulanan"
+                       else None)),
+                  3: (16.5 if kunci_template == "penerimaan_vendor_bulanan"
+                      else None),
+                  4: (38.25 if kunci_template == "penerimaan_vendor_bulanan"
+                      else (42 if kunci_template == "rm_stock" else 43.5))}[nomor]
+        kustom = tinggi is not None
+        if kunci_template == "rm_stock" and nomor == 3:
+            tinggi, kustom, tebal = 15.75, True, True
+            dy = "0.3"
+        elif nomor == 1:
+            tebal, dy = False, "0.3"
+        elif kunci_template == "rm_stock" and nomor == 4:
+            tebal, dy = False, "0.25"
+        elif nomor == 3:
+            tebal, dy = False, "0.25"
+        else:
+            tebal, dy = False, "0.25"
+        kwargs = {}
+        if kunci_template == "rm_stock" and nomor == 4:
+            kwargs["gaya_baris"] = 2
+        row_el = _buat_baris(sheet_data, nomor, jumlah_kolom, tinggi,
+                             kustom=kustom, tebal_bawah=tebal,
+                             dy=dy, **kwargs)
+        _sel_xml(row_el, 1, nilai, gaya)
+        terpakai = {1}
+        for (rb, kol), gaya_kosong in peta_gaya_kosong.items():
+            if rb == nomor and kol <= jumlah_kolom and kol not in terpakai:
+                ET.SubElement(
+                    row_el, _ns(TEMPLATE_SHEET_NS, "c"),
+                    {"r": f"{get_column_letter(kol)}{nomor}",
+                     "s": str(gaya_kosong)})
+
+    _judul_dan_kosong(1, "A1", {"penerimaan_vendor":
+        "Rubber Intake - Total Periods - All Vendors",
+        "penerimaan_vendor_bulanan":
+        "Rubber Intake - Monthly Details",
+        "rm_stock": "RM Stock – Intake vs Pricing"}[kunci_template],
+        gaya["judul"])
+    _judul_dan_kosong(2, "A2", "Purchasing - Raw Material Section",
+                      gaya["subjudul"])
+    _judul_dan_kosong(3, "A3", f"Periode : {periode}", gaya["periode"])
+
+    if kunci_template == "rm_stock":
+        row_el = _buat_baris(sheet_data, 4, jumlah_kolom, 42,
+                             kustom=True, dy="0.25", gaya_baris=2)
+    elif kunci_template == "penerimaan_vendor_bulanan":
+        row_el = _buat_baris(sheet_data, 4, jumlah_kolom, 38.25,
+                             kustom=True, dy="0.25")
+    else:
+        row_el = _buat_baris(sheet_data, 4, jumlah_kolom, 43.5,
+                             kustom=True, dy="0.25")
+
+    if kunci_template == "penerimaan_vendor":
+        gaya_header = [gaya["header_a"], gaya["header_b"], gaya["header_b"],
+                       gaya["header_b"], gaya["header_e"], gaya["header_f"]]
+        for i, teks in enumerate(header, start=1):
+            _sel_xml(row_el, i, teks, gaya_header[i - 1])
+    elif kunci_template == "penerimaan_vendor_bulanan":
+        for i, teks in enumerate(header, start=1):
+            if i == 1:
+                gaya_sel = gaya["header_a"]
+            elif i == len(header):
+                gaya_sel = gaya["header_persen"]
+            elif i == len(header) - 1:
+                gaya_sel = gaya["header_total"]
+            else:
+                gaya_sel = gaya["header_b"]
+            _sel_xml(row_el, i, teks, gaya_sel)
+    else:
+        for i, teks in enumerate(header, start=1):
+            gaya_sel = gaya["header_a"] if i == 1 else (
+                gaya["header_rm_akhir"] if i == len(header)
+                else gaya["header_b"])
+            _sel_xml(row_el, i, teks, gaya_sel)
+
+    for indeks, nilai_baris in enumerate(baris, start=5):
+        if kunci_template == "rm_stock":
+            terakhir = indeks == 4 + len(baris)
+            tinggi = 15.75 if terakhir else None
+            row_el = _buat_baris(sheet_data, indeks, jumlah_kolom, tinggi,
+                                 kustom=False, tebal_bawah=terakhir,
+                                 dy="0.3" if terakhir else "0.25")
+            for i, nilai in enumerate(nilai_baris, start=1):
+                if terakhir:
+                    gaya_sel = (gaya["data_rm_akhir_a"] if i == 1 else
+                                gaya["data_rm_akhir_g"] if i == len(header)
+                                else gaya["data_rm_akhir_b"])
+                else:
+                    gaya_sel = (gaya["data_a"] if i == 1 else
+                                (gaya["data_rm_akhir"] if i == len(header)
+                                 else gaya["data_b"]))
+                _sel_xml(row_el, i, nilai, gaya_sel)
+        elif kunci_template == "penerimaan_vendor_bulanan":
+            row_el = _buat_baris(sheet_data, indeks, jumlah_kolom,
+                                 dy="0.25")
+            for i, nilai in enumerate(nilai_baris, start=1):
+                if i == 1:
+                    gaya_sel = gaya["data_a"]
+                elif i == len(header):
+                    gaya_sel = gaya["data_persen"]
+                else:
+                    gaya_sel = gaya["data_b"]
+                _sel_xml(row_el, i, nilai, gaya_sel)
+        else:
+            row_el = _buat_baris(sheet_data, indeks, jumlah_kolom,
+                                 dy="0.25")
+            for i, nilai in enumerate(nilai_baris, start=1):
+                if i == 1:
+                    gaya_sel = gaya["data_a"]
+                elif i in (2, 3, 4):
+                    gaya_sel = gaya["data_b"]
+                elif i == 5:
+                    gaya_sel = gaya["data_e"]
+                else:
+                    gaya_sel = gaya["data_f"]
+                _sel_xml(row_el, i, nilai, gaya_sel)
+
+    baris_terakhir = 4 + len(baris)
+    if kunci_template == "penerimaan_vendor_bulanan":
+        baris_terakhir += 1
+        row_el = _buat_baris(sheet_data, baris_terakhir, jumlah_kolom,
+                             dy="0.25")
+        total_nilai = baris_total or (["TOTAL"] + [0] * (jumlah_kolom - 2)
+                                      + [None])
+        for i, nilai in enumerate(total_nilai, start=1):
+            if i == 1:
+                _sel_xml(row_el, i, nilai, gaya["total_a"])
+            elif i == jumlah_kolom:
+                rumus = (f"SUM({get_column_letter(i)}5:"
+                         f"{get_column_letter(i)}{baris_terakhir - 1})"
+                         if baris_terakhir > 5 else None)
+                cache_persen = sum(
+                    (row[-1] or 0) for row in baris) if baris else 0
+                _sel_xml(row_el, i, None if rumus else 0,
+                         gaya["total_persen"], formula=rumus,
+                         nilai_formula=cache_persen)
+            else:
+                _sel_xml(row_el, i, nilai, gaya["total_b"])
+
+    footer_row = baris_terakhir + 1
+    row_el = _buat_baris(sheet_data, footer_row, jumlah_kolom,
+                         dy="0.25",
+                         span_footer=kunci_template == "rm_stock")
+    _sel_xml(row_el, 1,
+             f"Created by {nama_pengguna} Raw Material Big Data",
+             gaya["footer"])
+
+    if kunci_template == "penerimaan_vendor_bulanan":
+        _jadikan_kolom_bulanan(root, max(0, len(header) - 3))
+
+    dimensi = root.find("m:dimension", TEMPLATE_NS)
+    if dimensi is not None:
+        dimensi.set("ref", f"A1:{get_column_letter(jumlah_kolom)}{footer_row}")
+    _hapus_selection(root)
+
+    xml_bytes = _pulihkan_namespace_ignorable(ET.tostring(root),
+                                               template_bytes)
+    return (b'<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n' +
+            xml_bytes, sheet_title)
+
+
+def _xml_bytes(root) -> bytes:
+    return (b'<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n' +
+            ET.tostring(root))
+
+
+def _q(ns: str, tag: str) -> str:
+    return f"{{{ns}}}{tag}"
+
+
+def _hapus_extlst_series(root) -> None:
+    for ser in root.findall(".//c:ser", TEMPLATE_NS):
+        for ext in list(ser.findall("c:extLst", TEMPLATE_NS)):
+            ser.remove(ext)
+
+
+def _baris_dari_ref(ref: str) -> int:
+    if not ref:
+        return 1
+    match = re.search(r"(\d+)", str(ref).split("$")[-1])
+    return int(match.group(1)) if match else 1
+
+
+def _baris_footer_worksheet(xml_bytes: bytes) -> int:
+    _daftarkan_namespace_xlsx()
+    root = ET.fromstring(xml_bytes)
+    data = root.find("m:sheetData", TEMPLATE_NS)
+    if data is None:
+        return 0
+    baris = [_baris_dari_ref(row.attrib.get("r", ""))
+             for row in data.findall("m:row", TEMPLATE_NS)]
+    return max(baris) if baris else 0
+
+
+def _geser_anchor_drawing(drawing_xml: bytes, delta: int) -> bytes:
+    if delta == 0:
+        return drawing_xml
+    ns_xdr = "http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing"
+    ns_a = "http://schemas.openxmlformats.org/drawingml/2006/main"
+    ET.register_namespace("xdr", ns_xdr)
+    ET.register_namespace("a", ns_a)
+    root = ET.fromstring(drawing_xml)
+    _daftarkan_namespace_xlsx()
+    for jangkar in list(root):
+        if jangkar.tag not in (f"{{{ns_xdr}}}twoCellAnchor",
+                               f"{{{ns_xdr}}}oneCellAnchor"):
+            continue
+        for nama in ("from", "to"):
+            sisi = jangkar.find(f"{{{ns_xdr}}}{nama}")
+            if sisi is None:
+                continue
+            row = sisi.find(f"{{{ns_xdr}}}row")
+            if row is not None and row.text:
+                row.text = str(max(0, int(row.text) + delta))
+    return _xml_bytes(root)
+
+
+def _isi_cache_str(cache, nilai: list) -> None:
+    for anak in list(cache):
+        if anak.tag in (_q(TEMPLATE_CHART_NS, "ptCount"),
+                        _q(TEMPLATE_CHART_NS, "pt")):
+            cache.remove(anak)
+    ET.SubElement(cache, _q(TEMPLATE_CHART_NS, "ptCount"),
+                  {"val": str(len(nilai))})
+    for indeks, teks in enumerate(nilai):
+        if teks is None:
+            continue
+        teks = str(teks)
+        pt = ET.SubElement(cache, _q(TEMPLATE_CHART_NS, "pt"),
+                           {"idx": str(indeks)})
+        v = ET.SubElement(pt, _q(TEMPLATE_CHART_NS, "v"))
+        if teks[:1].isspace() or teks[-1:].isspace():
+            v.set(_q("http://www.w3.org/XML/1998/namespace", "space"),
+                  "preserve")
+        v.text = teks
+
+
+def _isi_cache_num(cache, nilai: list) -> None:
+    for anak in list(cache):
+        if anak.tag in (_q(TEMPLATE_CHART_NS, "ptCount"),
+                        _q(TEMPLATE_CHART_NS, "pt")):
+            cache.remove(anak)
+    ET.SubElement(cache, _q(TEMPLATE_CHART_NS, "ptCount"),
+                  {"val": str(len(nilai))})
+    for indeks, angka in enumerate(nilai):
+        if angka is None:
+            continue
+        pt = ET.SubElement(cache, _q(TEMPLATE_CHART_NS, "pt"),
+                           {"idx": str(indeks)})
+        v = ET.SubElement(pt, _q(TEMPLATE_CHART_NS, "v"))
+        v.text = _angka_xml(angka)
+
+
+def _ref_kolom(sheet_ref: str, kolom: str, baris: int) -> str:
+    return f"{sheet_ref}!${kolom}${baris}"
+
+
+def _ref_rentang(sheet_ref: str, kolom_awal: str, baris_awal: int,
+                 kolom_akhir: str, baris_akhir: int) -> str:
+    return f"{sheet_ref}!${kolom_awal}${baris_awal}:${kolom_akhir}${baris_akhir}"
+
+
+def _set_str_ref(ser, jenis: str, formula: str, nilai: list) -> None:
+    ref = ser.find(f"c:{jenis}/c:strRef", TEMPLATE_NS)
+    if ref is None:
+        return
+    f = ref.find("c:f", TEMPLATE_NS)
+    if f is not None:
+        f.text = formula
+    cache = ref.find("c:strCache", TEMPLATE_NS)
+    if cache is not None:
+        _isi_cache_str(cache, nilai)
+
+
+def _set_num_ref(ser, formula: str, nilai: list) -> None:
+    ref = ser.find("c:val/c:numRef", TEMPLATE_NS)
+    if ref is None:
+        return
+    f = ref.find("c:f", TEMPLATE_NS)
+    if f is not None:
+        f.text = formula
+    cache = ref.find("c:numCache", TEMPLATE_NS)
+    if cache is not None:
+        _isi_cache_num(cache, nilai)
+
+
+def _set_idx_order(ser, indeks: int) -> None:
+    idx = ser.find("c:idx", TEMPLATE_NS)
+    order = ser.find("c:order", TEMPLATE_NS)
+    if idx is not None:
+        idx.set("val", str(indeks))
+    if order is not None:
+        order.set("val", str(indeks))
+
+
+def _hapus_extlst_chart_bar(root) -> None:
+    for bar in root.findall(".//c:barChart", TEMPLATE_NS):
+        for ext in list(bar.findall("c:extLst", TEMPLATE_NS)):
+            bar.remove(ext)
+
+
+def _ubah_series_vendor_total(root, header, baris) -> None:
+    _hapus_extlst_chart_bar(root)
+    bar = root.find(".//c:barChart", TEMPLATE_NS)
+    if bar is None:
+        return
+    sers = bar.findall("c:ser", TEMPLATE_NS)
+    if not sers:
+        return
+    keep = sers[0]
+    for ser in sers[1:]:
+        bar.remove(ser)
+    _set_idx_order(keep, 0)
+    sheet_ref = _ref_sheet("Sheet")
+    akhir = max(5, 4 + len(baris))
+    labels = [row[0] for row in baris]
+    nilai = [row[3] for row in baris]
+    _set_str_ref(keep, "tx", _ref_kolom(sheet_ref, "D", 4), [header[3]])
+    _set_str_ref(keep, "cat",
+                 _ref_rentang(sheet_ref, "A", 5, "A", akhir), labels)
+    _set_num_ref(keep,
+                 _ref_rentang(sheet_ref, "D", 5, "D", akhir), nilai)
+
+
+def _ubah_series_rm_stock(root, header, baris) -> None:
+    sheet_ref = _ref_sheet("Sheet")
+    akhir = max(5, 4 + len(baris))
+    labels = [row[0] for row in baris]
+    for ser in root.findall(".//c:ser", TEMPLATE_NS):
+        tx = ser.find("c:tx/c:strRef/c:f", TEMPLATE_NS)
+        if tx is None:
+            continue
+        match = re.search(r"\$([A-Z]+)\$4$", tx.text or "")
+        if not match:
+            continue
+        kolom = match.group(1)
+        try:
+            indeks = column_index_from_string(kolom)
+        except ValueError:
+            continue
+        if indeks > len(header):
+            continue
+        _set_str_ref(ser, "tx", _ref_kolom(sheet_ref, kolom, 4),
+                     [header[indeks - 1]])
+        _set_str_ref(ser, "cat",
+                     _ref_rentang(sheet_ref, "A", 5, "A", akhir), labels)
+        _set_num_ref(ser,
+                     _ref_rentang(sheet_ref, kolom, 5, kolom, akhir),
+                     [row[indeks - 1] for row in baris])
+
+
+def _ubah_series_vendor_bulanan(root, header, baris) -> None:
+    bar = root.find(".//c:barChart", TEMPLATE_NS)
+    if bar is None:
+        return
+    bulan = max(0, len(header) - 3)
+    kolom_terakhir = get_column_letter(1 + bulan)
+    sheet_ref = _ref_sheet("Data Sheet")
+    n = len(baris)
+    sers = bar.findall("c:ser", TEMPLATE_NS)
+    if len(sers) > n:
+        for ser in sers[n:]:
+            bar.remove(ser)
+        sers = bar.findall("c:ser", TEMPLATE_NS)
+    if len(sers) < n and sers:
+        prototype = deepcopy(sers[-1])
+        d_lbls = bar.find("c:dLbls", TEMPLATE_NS)
+        posisi = list(bar).index(d_lbls) if d_lbls is not None else len(bar)
+        for nomor in range(len(sers), n):
+            baru = deepcopy(prototype)
+            bar.insert(posisi, baru)
+            posisi += 1
+        sers = bar.findall("c:ser", TEMPLATE_NS)
+    kategori = header[1:1 + bulan]
+    for indeks, ser in enumerate(sers[:n]):
+        nomor_baris = 5 + indeks
+        _set_idx_order(ser, indeks)
+        sp_pr = ser.find("c:spPr", TEMPLATE_NS)
+        if sp_pr is not None:
+            warna = sp_pr.find(".//a:schemeClr", TEMPLATE_NS)
+            if warna is not None:
+                warna.set("val", f"accent{indeks % 6 + 1}")
+        _set_str_ref(ser, "tx",
+                     _ref_kolom(sheet_ref, "A", nomor_baris),
+                     [baris[indeks][0]])
+        _set_str_ref(ser, "cat",
+                     _ref_rentang(sheet_ref, "B", 4,
+                                  kolom_terakhir, 4), kategori)
+        _set_num_ref(ser,
+                     _ref_rentang(sheet_ref, "B", nomor_baris,
+                                  kolom_terakhir, nomor_baris),
+                     baris[indeks][1:1 + bulan])
+
+
+def _ubah_chart_xml(chart_bytes: bytes, kunci_template: str,
+                    header, baris) -> bytes:
+    _daftarkan_namespace_xlsx()
+    root = ET.fromstring(chart_bytes)
+    _hapus_extlst_series(root)
+    if kunci_template == "penerimaan_vendor":
+        _ubah_series_vendor_total(root, header, baris)
+    elif kunci_template == "penerimaan_vendor_bulanan":
+        _ubah_series_vendor_bulanan(root, header, baris)
+    else:
+        _ubah_series_rm_stock(root, header, baris)
+    return _xml_bytes(root)
+
+
+def _lokasi_sheet_chart(isi: dict[str, bytes]) -> tuple[str, str]:
+    pkg_ns = "http://schemas.openxmlformats.org/package/2006/relationships"
+    wb = ET.fromstring(isi["xl/workbook.xml"])
+    rel = ET.fromstring(isi["xl/_rels/workbook.xml.rels"])
+    sheet_el = wb.find("m:sheets/m:sheet", TEMPLATE_NS)
+    sheet_id = sheet_el.attrib.get(_q(TEMPLATE_REL_NS, "id"))
+    target = None
+    for anak in rel.findall(_q(pkg_ns, "Relationship")):
+        if anak.attrib.get("Id") == sheet_id:
+            target = anak.attrib.get("Target")
+            break
+    if not target:
+        raise HTTPException(500, "Worksheet dalam template tidak ditemukan.")
+    if target.startswith("/"):
+        sheet_path = target.lstrip("/")
+    else:
+        sheet_path = posixpath.normpath(
+            posixpath.join("xl", target))
+
+    sheet_rel_path = posixpath.join(
+        posixpath.dirname(sheet_path), "_rels",
+        posixpath.basename(sheet_path) + ".rels")
+    drawing_target = None
+    if sheet_rel_path in isi:
+        sheet_rel = ET.fromstring(isi[sheet_rel_path])
+        for anak in sheet_rel.findall(_q(pkg_ns, "Relationship")):
+            if (anak.attrib.get("Type") or "").endswith("/drawing"):
+                drawing_target = anak.attrib.get("Target")
+                break
+    if not drawing_target:
+        raise HTTPException(500, "Drawing chart dalam template tidak ditemukan.")
+    drawing_path = posixpath.normpath(posixpath.join(
+        posixpath.dirname(sheet_path), drawing_target))
+
+    drawing_rel_path = posixpath.join(
+        posixpath.dirname(drawing_path), "_rels",
+        posixpath.basename(drawing_path) + ".rels")
+    chart_target = None
+    if drawing_rel_path in isi:
+        drawing_rel = ET.fromstring(isi[drawing_rel_path])
+        for anak in drawing_rel.findall(_q(pkg_ns, "Relationship")):
+            if (anak.attrib.get("Type") or "").endswith("/chart"):
+                chart_target = anak.attrib.get("Target")
+                break
+    if not chart_target:
+        raise HTTPException(500, "Chart dalam template tidak ditemukan.")
+    chart_path = posixpath.normpath(posixpath.join(
+        posixpath.dirname(drawing_path), chart_target))
+    return sheet_path, chart_path
+
+
+def _lokasi_drawing_sheet(isi: dict[str, bytes], sheet_path: str) -> str:
+    pkg_ns = "http://schemas.openxmlformats.org/package/2006/relationships"
+    sheet_rel_path = posixpath.join(
+        posixpath.dirname(sheet_path), "_rels",
+        posixpath.basename(sheet_path) + ".rels")
+    sheet_rel = ET.fromstring(isi[sheet_rel_path])
+    target = None
+    for anak in sheet_rel.findall(_q(pkg_ns, "Relationship")):
+        if (anak.attrib.get("Type") or "").endswith("/drawing"):
+            target = anak.attrib.get("Target")
+            break
+    if not target:
+        raise HTTPException(500, "Drawing chart dalam template tidak ditemukan.")
+    return posixpath.normpath(posixpath.join(posixpath.dirname(sheet_path), target))
+
+
+def _bersihkan_referensi_opsional(isi: dict[str, bytes]) -> None:
+    content_type = isi.get("[Content_Types].xml", b"").decode("utf-8")
+    content_type = re.sub(r"<Override[^>]+PartName=\"/xl/sharedStrings\.xml\"[^>]*/>", "", content_type)
+    content_type = re.sub(r"<Override[^>]+PartName=\"/xl/calcChain\.xml\"[^>]*/>", "", content_type)
+    isi["[Content_Types].xml"] = content_type.encode("utf-8")
+
+    rels_name = "xl/_rels/workbook.xml.rels"
+    rels = isi.get(rels_name, b"").decode("utf-8")
+    rels = re.sub(r"<Relationship[^>]*sharedStrings[^>]*/>", "", rels)
+    rels = re.sub(r"<Relationship[^>]*calcChain[^>]*/>", "", rels)
+    isi[rels_name] = rels.encode("utf-8")
+
+
+def _paket_xlsx_template(kunci_template: str, periode: str,
+                         header, baris, baris_total,
+                         jumlah_bulan: int,
+                         nama_pengguna: str = "dev") -> tuple[bytes, str]:
+    _daftarkan_namespace_xlsx()
+    path = _template_path(kunci_template)
+    with zipfile.ZipFile(path, "r") as zin:
+        isi = {nama: zin.read(nama) for nama in zin.namelist()}
+
+    sheet_path, chart_path = _lokasi_sheet_chart(isi)
+    footer_lama = _baris_footer_worksheet(isi[sheet_path])
+    sheet_xml, _sheet_title = _buat_worksheet_xml(
+        isi[sheet_path], kunci_template, periode, header, baris,
+        baris_total, jumlah_bulan, nama_pengguna)
+    footer_baru = _baris_footer_worksheet(sheet_xml)
+    isi[sheet_path] = sheet_xml
+    isi[chart_path] = _ubah_chart_xml(isi[chart_path],
+                                      kunci_template, header, baris)
+    drawing_path = _lokasi_drawing_sheet(isi, sheet_path)
+    isi[drawing_path] = _geser_anchor_drawing(isi[drawing_path],
+                                              footer_baru - footer_lama)
+
+    for opsional in ("xl/sharedStrings.xml", "xl/calcChain.xml"):
+        isi.pop(opsional, None)
+    _bersihkan_referensi_opsional(isi)
+
+    keluar = io.BytesIO()
+    with zipfile.ZipFile(keluar, "w", compression=zipfile.ZIP_DEFLATED) as zout:
+        for nama, data in isi.items():
+            zout.writestr(nama, data)
+    return keluar.getvalue(), _nama_ekspor_template(kunci_template)
+
+
+def respon_xlsx_template(kunci_template: str, periode: str,
+                         header: list[str], baris: list[list],
+                         tipe_kolom: list[str], mode_chart: str,
+                         baris_total: list | None = None,
+                         jumlah_bulan: int = 0,
+                         kolom_tengah: int | None = None,
+                         nama_pengguna: str = "dev") -> StreamingResponse:
+    """Ekspor 3 laporan memakai workbook `Template Export` sebagai dasar.
+
+    Permintaan pemilik: format unduhan harus mengikuti berkas template yang
+    diunggah, termasuk ukuran kolom/baris, gaya sel, layout chart, dan warna
+    seri. Data tetap dinamis dari database; jumlah baris/seri menyesuaikan
+    hasil query, sedangkan nama unduh tidak memakai akhiran `_template`.
+    """
+    del tipe_kolom, mode_chart, kolom_tengah  # gaya ditentukan template.
+    isi, nama_file = _paket_xlsx_template(
+        kunci_template, periode, header, baris, baris_total,
+        jumlah_bulan or max(0, len(header) - 3), nama_pengguna)
+    return StreamingResponse(
+        io.BytesIO(isi),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{nama_file}"'})
+
+
+def respon_xlsx_banyak(nama_file: str,
+                       sheets: list[tuple[str, list[str], Iterable[list]]],
+                       tulis_langsung: bool = False) -> StreamingResponse:
+    """Ekspor beberapa sheet: dipakai kartu konsistensi intake vendor.
+
+    Mode biasa menyimpan dimensi sheet sehingga pembaca `read_only` langsung
+    tahu jumlah baris. Untuk rincian per tanggal yang sangat panjang,
+    `tulis_langsung=True` memakai workbook `write_only` agar baris ditulis
+    mengalir dan tidak ditampung semua di memori. Header tetap tebal + biru
+    muda, baris pertama dibekukan, lebar kolom mengikuti 200 baris pertama.
+    """
+    tebal = Font(bold=True)
+    biru = PatternFill("solid", fgColor="D7E7FF")
+    wb = openpyxl.Workbook(write_only=tulis_langsung)
+    if not tulis_langsung:
+        wb.remove(wb.active)
+    for nama, judul, baris in sheets:
+        ws = wb.create_sheet(nama[:31])
+        if tulis_langsung:
+            # Pada write-only, freeze harus dipasang SEBELUM baris ditulis.
+            ws.freeze_panes = "A2"
+            sel_judul = []
+            for teks in judul:
+                sel = WriteOnlyCell(ws, value=teks)
+                sel.font, sel.fill = tebal, biru
+                sel_judul.append(sel)
+            ws.append(sel_judul)
+            terpanjang = [len(str(x or "")) for x in judul]
+            for indeks, b in enumerate(baris):
+                if indeks < 200:
+                    for i, nilai in enumerate(b[:len(judul)]):
+                        terpanjang[i] = max(terpanjang[i],
+                                            len(str(nilai or "")))
+                ws.append(b)
+            for i, lebar in enumerate(terpanjang, start=1):
+                ws.column_dimensions[get_column_letter(i)].width = \
+                    min(48, lebar + 2)
+        else:
+            baris = list(baris)
+            ws.append(judul)
+            for sel in ws[1]:
+                sel.font, sel.fill = tebal, biru
+            for b in baris:
+                ws.append(b)
+            ws.freeze_panes = "A2"
+            for i, _ in enumerate(judul, start=1):
+                lebar = len(str(judul[i - 1] or ""))
+                for b in baris[:200]:
+                    if i - 1 < len(b):
+                        lebar = max(lebar, len(str(b[i - 1] or "")))
+                ws.column_dimensions[get_column_letter(i)].width = \
+                    min(48, lebar + 2)
     buf = io.BytesIO()
     wb.save(buf)
     buf.seek(0)
@@ -176,15 +1313,18 @@ def _filter_tiket(q, tahun=None, bulan=None, vendor=None, grade=None, eudr=None,
     return q
 
 
-def _bulan_berurutan(awal: tuple[int, int], akhir: tuple[int, int]) -> list[tuple[int, int]]:
+def _bulan_berurutan(awal: tuple[int, int], akhir: tuple[int, int],
+                     maks: int = 120) -> list[tuple[int, int]]:
     """Daftar (tahun, bulan) dari awal sampai akhir, termasuk bulan kosong.
 
     Bulan tanpa tiket tetap ditampilkan (nilai 0) supaya grafik tidak
     "melompat" dan pembaca melihat bulan yang memang tidak ada penerimaan.
+    `maks` dipakai sebagai pengaman; ekspor Excel menaikkannya agar seluruh
+    periode terpilih tetap menjadi kolom.
     """
     hasil: list[tuple[int, int]] = []
     th, bl = awal
-    while (th, bl) <= akhir and len(hasil) < 120:
+    while (th, bl) <= akhir and len(hasil) < maks:
         hasil.append((th, bl))
         bl += 1
         if bl > 12:
@@ -214,19 +1354,137 @@ def _label_bulan_singkat(th: int, bl: int) -> str:
     return f"{NAMA_BULAN_SINGKAT[bl]}-{str(th)[2:]}"
 
 
+def _fmt_periode_penerimaan(awal: tuple[int, int] | None,
+                            akhir: tuple[int, int] | None) -> str:
+    """`((2026,1),(2026,12))` → `"January ~ December 2026"`."""
+    if not awal or not akhir:
+        return "Tidak ada data"
+    if awal > akhir:
+        awal, akhir = akhir, awal
+    th1, bl1 = awal
+    th2, bl2 = akhir
+    if awal == akhir:
+        return f"{NAMA_BULAN_INGGRIS[bl1]} {th1}"
+    if th1 == th2:
+        return (f"{NAMA_BULAN_INGGRIS[bl1]} ~ "
+                f"{NAMA_BULAN_INGGRIS[bl2]} {th2}")
+    return (f"{NAMA_BULAN_INGGRIS[bl1]} {th1} ~ "
+            f"{NAMA_BULAN_INGGRIS[bl2]} {th2}")
+
+
+def _bulan_xlsx_penuh(dari: dt.date | None, sampai: dt.date | None,
+                      berdata: list[tuple[int, int]]) -> list[tuple[int, int]]:
+    """Sumbu bulan untuk EKSPOR EXCEL: seluruh periode terpilih, tanpa potong.
+
+    Beda dengan sumbu grafik/JSON: di sini bulan kosong tetap menjadi kolom
+    dan sisa dimensi tidak digabung. Bila hanya satu batas tanggal diisi,
+    batas lainnya memakai ujung bulan berdata. `MAKS_BULAN_XLSX` mencegah
+    rentang ekstrem membuat workbook berjuta-juta sel.
+    """
+    awal: tuple[int, int] | None = None
+    akhir: tuple[int, int] | None = None
+    if dari and sampai and (dari.year, dari.month) <= (sampai.year, sampai.month):
+        awal, akhir = (dari.year, dari.month), (sampai.year, sampai.month)
+    elif dari and berdata:
+        awal, akhir = (dari.year, dari.month), berdata[-1]
+    elif sampai and berdata:
+        awal, akhir = berdata[0], (sampai.year, sampai.month)
+    elif berdata:
+        awal, akhir = berdata[0], berdata[-1]
+    if not awal or not akhir or awal > akhir:
+        return []
+    bulan = _bulan_berurutan(awal, akhir, maks=MAKS_BULAN_XLSX + 1)
+    if len(bulan) > MAKS_BULAN_XLSX:
+        jumlah_label = f"{len(bulan):,}".replace(",", ".")
+        maks_label = f"{MAKS_BULAN_XLSX:,}".replace(",", ".")
+        raise HTTPException(
+            422,
+            f"Periode {jumlah_label} bulan terlalu panjang untuk ekspor Excel; "
+            f"maksimal {maks_label} bulan (100 tahun). Persempit "
+            f"'Dari/Sampai' agar setiap bulan tetap menjadi kolom.")
+    return bulan
+
+
+def _rentang_periode_ekspor(dari: dt.date | None, sampai: dt.date | None,
+                            potongan: list[tuple]) -> tuple[tuple[int, int] | None,
+                                                            tuple[int, int] | None]:
+    """Rentang (tahun, bulan) untuk baris periode ekspor."""
+    berdata = sorted({b for _k, b, *_ in potongan if b})
+    awal = (dari.year, dari.month) if dari else None
+    akhir = (sampai.year, sampai.month) if sampai else None
+    if awal and akhir:
+        pass
+    elif awal:
+        akhir = berdata[-1] if berdata else awal
+    elif akhir:
+        awal = berdata[0] if berdata else akhir
+    elif berdata:
+        awal, akhir = berdata[0], berdata[-1]
+    return awal, akhir
+
+
+def _fmt_periode_template(awal: tuple[int, int] | None,
+                          akhir: tuple[int, int] | None) -> str:
+    """`((2025,1),(2025,12))` → `January 2025 - Desember 2025`."""
+    if not awal or not akhir:
+        return "Tidak ada data"
+    if awal > akhir:
+        awal, akhir = akhir, awal
+    th1, bl1 = awal
+    th2, bl2 = akhir
+    if awal == akhir:
+        return f"{NAMA_BULAN_TEMPLATE[bl1]} {th1}"
+    return (f"{NAMA_BULAN_TEMPLATE[bl1]} {th1} - "
+            f"{NAMA_BULAN_TEMPLATE[bl2]} {th2}")
+
+
+def _nama_ekspor_template(kunci: str) -> str:
+    """Nama berkas unduh mengikuti template, tanpa akhiran `_template`."""
+    return TEMPLATE_EKSPOR[kunci].replace("_template.xlsx", ".xlsx")
+
+
+def _info_ekspor_penerimaan(dari: dt.date | None, sampai: dt.date | None,
+                            vendor: str | None, provinsi: str | None,
+                            kabupaten: str | None, kecamatan: str | None,
+                            desa: str | None, potongan: list[tuple],
+                            session: Session) -> tuple[str, str]:
+    """Judul & periode untuk Excel Penerimaan Karet, mengikuti file contoh."""
+    peta_vendor = {
+        " ".join((v.kode or "").split()).upper(): v.nama_baku
+        for v in session.scalars(select(Vendor))}
+    bagian: list[str] = []
+    if vendor:
+        kode = " ".join(vendor.split()).upper()
+        nama = peta_vendor.get(kode)
+        bagian.append(f"{kode} {nama}" if nama else kode)
+    for label, nilai in (("Provinsi", provinsi), ("Kabupaten", kabupaten),
+                         ("Kecamatan", kecamatan), ("Desa", desa)):
+        if nilai:
+            bagian.append(f"{label}: {' '.join(nilai.split()).upper()}")
+    isi_filter = " | ".join(bagian) if bagian else "Semua vendor"
+    judul = f"Penerimaan Karet dari - [{isi_filter}] "
+    awal, akhir = _rentang_periode_ekspor(dari, sampai, potongan)
+    return judul, _fmt_periode_penerimaan(awal, akhir)
+
+
 def _penerimaan_per_bulan(potongan: list[tuple], dimensi: str,
                           dari: dt.date | None, sampai: dt.date | None,
                           top: int, format: str | None,
                           session: Session,
-                          label_peta: dict[str, str] | None = None) -> dict:
+                          label_peta: dict[str, str] | None = None,
+                          info_ekspor: tuple[str, str] | None = None,
+                          nama_pengguna: str = "dev") -> dict:
     """Bentuk jawaban `per=bulan`: bulan x dimensi.
 
     Dipakai saat filter periode mencakup lebih dari satu bulan, supaya
     pembaca melihat pergerakan tiap vendor/wilayah dari bulan ke bulan —
     bukan hanya total sepanjang periode.
 
-    Semua angka kg kering. `top` dimensi terbesar dipertahankan; sisanya
-    digabung menjadi satu baris "Lainnya" agar grafik tetap terbaca.
+    Semua angka kg kering. Untuk JSON/grafik, `top` dimensi terbesar
+    dipertahankan; sisanya digabung menjadi satu baris "Lainnya" agar grafik
+    tetap terbaca. Khusus `format=xlsx`, ekspor TIDAK memakai `top`: semua
+    dimensi ditulis sebagai baris detail tersendiri dan semua bulan terpilih
+    menjadi kolom, tanpa baris "Lainnya".
     """
     # ---- daftar bulan
     # Sumbu bulan MENGIKUTI periode filter (bukan data), supaya mengganti filter
@@ -244,23 +1502,30 @@ def _penerimaan_per_bulan(potongan: list[tuple], dimensi: str,
         bulan = _bulan_berurutan(berdata[0], berdata[-1])
     else:
         bulan = []
-    indeks = {b: i for i, b in enumerate(bulan)}
     label_bulan = [_label_bulan_singkat(th, bl) for th, bl in bulan]
 
-    # ---- agregasi per (dimensi, bulan), dipisah biasa/EUDR
-    isi: dict[str, dict] = defaultdict(
-        lambda: {"biasa": [0.0] * len(bulan), "eudr": [0.0] * len(bulan),
-                 "tiket": set()})
-    for kunci, bln, kg, e, no_tiket in potongan:
-        i = indeks.get(bln)
-        if i is None:
-            continue
-        isi[kunci]["eudr" if e else "biasa"][i] += kg
-        isi[kunci]["tiket"].add(no_tiket)
+    def agregasi(daftar_bulan: list[tuple[int, int]]) -> dict[str, dict]:
+        """Agregasi per (dimensi, bulan), dipisah biasa/EUDR.
+
+        Dipakai dua kali: sumbu ringkas untuk grafik/JSON, dan sumbu penuh
+        untuk ekspor Excel. Keduanya memakai potongan tiket yang sama.
+        """
+        indeks = {b: i for i, b in enumerate(daftar_bulan)}
+        isi: dict[str, dict] = defaultdict(
+            lambda: {"biasa": [0.0] * len(daftar_bulan),
+                     "eudr": [0.0] * len(daftar_bulan), "tiket": set()})
+        for kunci, bln, kg, e, no_tiket in potongan:
+            i = indeks.get(bln)
+            if i is None:
+                continue
+            isi[kunci]["eudr" if e else "biasa"][i] += kg
+            isi[kunci]["tiket"].add(no_tiket)
+        return isi
 
     def total(baris: dict) -> float:
         return sum(baris["biasa"]) + sum(baris["eudr"])
 
+    isi = agregasi(bulan)
     total_kg = sum(total(a) for a in isi.values())
     urut = sorted(isi.items(), key=lambda kv: -total(kv[1]))
 
@@ -336,15 +1601,58 @@ def _penerimaan_per_bulan(potongan: list[tuple], dimensi: str,
                   "EUDR / kode TTSR",
     }
     if format == "xlsx":
-        judul = [dimensi] + label_bulan + ["Total kg", "Porsi"]
-        isi_xlsx = []
-        for b in baris_keluar:
-            isi_xlsx.append([b["label"]] + b["kg_per_bulan"] + [b["kg_total"],
-                                                                b["porsi"]])
-        isi_xlsx.append(["TOTAL"] + total_per_bulan
-                        + [round(sum(total_per_bulan), 1), None])
-        return respon_xlsx(f"penerimaan_per_{dimensi}_per_bulan.xlsx",
-                           judul, isi_xlsx)
+        # EKSPOR: seluruh bulan terpilih + SELURUH baris detail. Tidak memakai
+        # `top` dan tidak ada baris "Lainnya (N dimensi)" seperti di grafik.
+        bulan_xlsx = _bulan_xlsx_penuh(dari, sampai, berdata)
+        label_bulan_xlsx = [_label_bulan_singkat(th, bl)
+                            for th, bl in bulan_xlsx]
+        agregat_xlsx = agregasi(bulan_xlsx)
+        total_kg_xlsx = sum(total(a) for a in agregat_xlsx.values())
+        urut_xlsx = sorted(agregat_xlsx.items(),
+                           key=lambda kv: -total(kv[1]))
+        baris_xlsx = [{
+            "label": label_dari(kunci),
+            "kg_per_bulan": kg_bulan(a),
+            "kg_total": round(total(a), 1),
+            "porsi": round(total(a) / total_kg_xlsx, 4)
+                     if total_kg_xlsx else None,
+        } for kunci, a in urut_xlsx]
+        total_per_bulan_xlsx = [
+            round(sum(b["kg_per_bulan"][i] for b in baris_xlsx), 1)
+            for i in range(len(bulan_xlsx))]
+
+        judul = ([dimensi.capitalize()] + label_bulan_xlsx
+                 + ["Total kg", "%tage" if dimensi == "vendor" else "Porsi"])
+        isi_xlsx = [[b["label"]] + b["kg_per_bulan"]
+                    + [b["kg_total"], b["porsi"]] for b in baris_xlsx]
+        baris_total_xlsx = (["TOTAL"] + total_per_bulan_xlsx
+                            + [round(sum(total_per_bulan_xlsx), 1), None])
+        if dimensi == "vendor":
+            awal_tpl = bulan_xlsx[0] if bulan_xlsx else None
+            akhir_tpl = bulan_xlsx[-1] if bulan_xlsx else None
+            return respon_xlsx_template(
+                "penerimaan_vendor_bulanan",
+                _fmt_periode_template(awal_tpl, akhir_tpl),
+                judul, isi_xlsx,
+                ["teks"] + ["kg"] * len(label_bulan_xlsx)
+                + ["kg", "persen"],
+                mode_chart="vendor_bulanan",
+                baris_total=baris_total_xlsx,
+                jumlah_bulan=len(label_bulan_xlsx),
+                nama_pengguna=nama_pengguna)
+        isi_xlsx.append(baris_total_xlsx)
+        if info_ekspor is None:
+            awal = (dari.year, dari.month) if dari else (
+                berdata[0] if berdata else None)
+            akhir = (sampai.year, sampai.month) if sampai else (
+                berdata[-1] if berdata else None)
+            info_ekspor = ("Penerimaan Karet",
+                           _fmt_periode_penerimaan(awal, akhir))
+        return respon_xlsx_penerimaan(
+            f"penerimaan_per_{dimensi}_per_bulan.xlsx",
+            info_ekspor[0], info_ekspor[1], judul, isi_xlsx,
+            ["teks"] + ["kg"] * (len(judul) - 2) + ["persen"],
+            mode_bulan=True)
     return hasil
 
 
@@ -811,6 +2119,513 @@ def _tanggal_teks(teks: str | None, nama: str, akhir_bulan: bool = False):
     except Exception:
         raise HTTPException(422, f"Parameter '{nama}' harus format YYYY-MM atau "
                                  f"YYYY-MM-DD, bukan '{teks}'.")
+
+
+def _tanggal_iso(teks: str | None, nama: str) -> dt.date | None:
+    """Parse 'YYYY-MM-DD' (filter tanggal persis kartu konsistensi vendor)."""
+    if not teks:
+        return None
+    try:
+        return dt.date.fromisoformat(teks)
+    except Exception:
+        raise HTTPException(422, f"Parameter '{nama}' harus format YYYY-MM-DD "
+                                 f"(contoh: 2026-01-05), bukan '{teks}'.")
+
+
+def _ke_tanggal_db(nilai) -> dt.date | None:
+    """Normalisasi MIN/MAX tanggal SQL (bisa date, datetime, atau teks)."""
+    if nilai is None:
+        return None
+    if isinstance(nilai, dt.datetime):
+        return nilai.date()
+    if isinstance(nilai, dt.date):
+        return nilai
+    try:
+        return dt.date.fromisoformat(str(nilai)[:10])
+    except Exception:
+        return None
+
+
+# Wilayah kartu "Daftar intake terakhir" mengikuti hierarki SCDF tanpa
+# mengubah data tiket: ejaan resmi hanya dipakai bila kunci normalized cocok.
+CATATAN_WILAYAH_INTAKE_TERAKHIR = (
+    "Wilayah dipecah menjadi Provinsi, Kabupaten/Kota, Kecamatan, dan Desa. "
+    "Ejaan resmi SCDF dipakai bila kombinasi kabupaten/kecamatan/desa cocok "
+    "dengan traceability_wilayah atau koreksi terkontrol; bila tidak ada "
+    "padanan, nilai pada tiket ditampilkan apa adanya tanpa menebak Provinsi."
+)
+
+
+def _nama_vendor_baku(session: Session) -> dict[str, str]:
+    """Kode vendor UPPER/TRIM -> nama baku dari Master Vendor."""
+    hasil: dict[str, str] = {}
+    for v in session.scalars(select(Vendor)):
+        kode = (v.kode or "").strip().upper()
+        if kode:
+            hasil[kode] = (v.nama_baku or "").strip() or kode
+    return hasil
+
+
+def _opsi_intake_terakhir(session: Session) -> dict:
+    """Opsi filter vendor + batas tanggal untuk kartu intake terakhir.
+
+    Dropdown memuat **semua** Master Vendor (termasuk yang belum punya tiket)
+    ditambah kode yang ternyata hanya ada di `tiket_baris`. Daftar ini sengaja
+    tidak mengikuti filter periode supaya pilihan vendor tidak berubah-ubah
+    saat pengguna mengganti rentang tanggal.
+    """
+    nama_master = _nama_vendor_baku(session)
+    nama_tiket: dict[str, str | None] = {}
+    for kode, nama in session.execute(
+            select(TiketBaris.kode_vendor,
+                   func.min(TiketBaris.nama_vendor_asli)).where(
+                TiketBaris.tiket_nol == False,  # noqa: E712
+                TiketBaris.kode_vendor.is_not(None)).group_by(
+                TiketBaris.kode_vendor)):
+        k = (kode or "").strip().upper()
+        if not k:
+            continue
+        n = (nama or "").strip() or None
+        if k not in nama_tiket or (nama_tiket[k] is None and n):
+            nama_tiket[k] = n
+
+    pilihan = []
+    for kode in sorted(set(nama_master) | set(nama_tiket)):
+        if not kode:
+            continue
+        sumber = "master" if kode in nama_master else "tiket"
+        nama = nama_master.get(kode) or nama_tiket.get(kode) or kode
+        pilihan.append({
+            "kode": kode,
+            "label": f"{kode} — {nama}" if nama != kode else kode,
+            "sumber": sumber,
+        })
+
+    batas = session.execute(
+        select(func.min(TiketBaris.ticket_date),
+               func.max(TiketBaris.ticket_date)).where(
+            TiketBaris.tiket_nol == False,  # noqa: E712
+            TiketBaris.ticket_date.is_not(None))).one()
+    min_d, max_d = _ke_tanggal_db(batas[0]), _ke_tanggal_db(batas[1])
+    return {
+        "pilihan_vendor": pilihan,
+        "batas_data": {
+            "tersedia": bool(min_d and max_d),
+            "dari": min_d.isoformat() if min_d else None,
+            "sampai": max_d.isoformat() if max_d else None,
+        },
+    }
+
+
+def _kunci_wilayah_intake(baris: dict) -> tuple[str, str, str]:
+    """Kunci normalized kabupaten/kecamatan/desa untuk pencocokan SCDF."""
+    return (
+        baris["kabupaten_norm"] or normalisasi_kabupaten(baris["kabupaten"]),
+        baris["kecamatan_norm"] or normalisasi_teks_wilayah(baris["kecamatan"]),
+        baris["desa_norm"] or normalisasi_teks_wilayah(baris["desa"]),
+    )
+
+
+def _peta_wilayah_scdf(session: Session,
+                       kunci_diminta: set[tuple[str, str, str]]):
+    """Ambil padanan SCDF + koreksi terkontrol untuk kunci yang diperlukan.
+
+    Mengembalikan `(peta_langsung, peta_koreksi)`. Tidak ada penebakan
+    Provinsi: hanya baris referensi yang kuncinya benar-benar cocok dipakai.
+    """
+    if not kunci_diminta:
+        return {}, {}
+    kab_diminta = {k[0] for k in kunci_diminta}
+    ref_by_id: dict[int, ReferensiWilayahTrace] = {}
+    peta_koreksi: dict[tuple[str, str, str], int] = {}
+    for c in session.scalars(select(KoreksiWilayahTrace).where(
+            KoreksiWilayahTrace.source_kabupaten_norm.in_(kab_diminta))):
+        kunci = (c.source_kabupaten_norm or "",
+                 c.source_kecamatan_norm or "",
+                 c.source_desa_norm or "")
+        if kunci in kunci_diminta:
+            peta_koreksi[kunci] = c.target_ref_id
+    if peta_koreksi:
+        for ref in session.scalars(select(ReferensiWilayahTrace).where(
+                ReferensiWilayahTrace.id.in_(set(peta_koreksi.values())))):
+            ref_by_id[ref.id] = ref
+
+    peta_langsung: dict[tuple[str, str, str], ReferensiWilayahTrace] = {}
+    for ref in session.scalars(select(ReferensiWilayahTrace).where(
+            ReferensiWilayahTrace.kabupaten_norm.in_(kab_diminta))):
+        ref_by_id.setdefault(ref.id, ref)
+        kunci = (ref.kabupaten_norm, ref.kecamatan_norm, ref.desa_norm)
+        if kunci in kunci_diminta:
+            peta_langsung.setdefault(kunci, ref)
+    koreksi = {k: ref_by_id.get(id_ref)
+               for k, id_ref in peta_koreksi.items()}
+    return peta_langsung, koreksi
+
+
+def _wilayah_intake_tampil(baris: dict, peta_langsung, peta_koreksi) -> dict:
+    """Empat kolom wilayah; ejaan SCDF bila ada padanan pasti."""
+    kunci = (baris["kabupaten_norm"], baris["kecamatan_norm"],
+             baris["desa_norm"])
+    ref = peta_koreksi.get(kunci) or peta_langsung.get(kunci)
+    if ref is None:
+        return {
+            "provinsi": baris["provinsi"],
+            "kabupaten": baris["kabupaten"],
+            "kecamatan": baris["kecamatan"],
+            "desa": baris["desa"],
+            "sumber_wilayah": "intake",
+        }
+    return {
+        "provinsi": ref.provinsi or baris["provinsi"],
+        "kabupaten": ref.kabupaten or baris["kabupaten"],
+        "kecamatan": ref.kecamatan or baris["kecamatan"],
+        "desa": ref.desa or baris["desa"],
+        "sumber_wilayah": "SCDF",
+    }
+
+
+def _xlsx_ringkasan_vendor(hasil: dict) -> StreamingResponse:
+    """Ekspor 3 sheet + 3 chart native mengikuti
+    `Intake-2025_Ringkasan-Vendor.xlsx`.
+
+    Perbedaan sadar dari contoh (keputusan pemilik):
+    - tanpa sheet `Master Data` / raw tiket, jadi seluruh angka sudah dihitung
+      backend dan ditulis sebagai nilai (bukan SUMIFS ke sheet mentah);
+    - **setiap vendor** menjadi baris detail, tidak ada baris `Lainnya`;
+    - judul, kolom bulan, dan `Rata² Trip/Bulan` mengikuti `Dari/Sampai`;
+    - sheet `Vendor Harian` memuat **semua hari kalender** pada rentang, hari
+      tanpa intake bernilai 0 Trip, dan tanggal di luar rentang tiket ditandai
+      abu-abu dengan keterangan `Di luar data`.
+
+    Workbook sengaja `write_only`: rentang 1.766 hari (bahkan ±100 tahun)
+    tetap bisa ditulis mengalir. `WriteOnlyCell`, freeze, lebar kolom,
+    colorScale, dan chart native tetap didukung openpyxl pada mode ini.
+    """
+    p, r, m = hasil["periode"], hasil["ringkasan"], hasil["catatan_metode"]
+    baris = hasil["baris"]
+    vendor_bulan = hasil["vendor_per_bulan"]
+    vendor_harian = hasil["vendor_harian"]
+    bulan = hasil["bulan"]
+    hari = hasil["hari"]
+    n_vendor, n_bulan, n_hari = len(baris), len(bulan), len(hari)
+    if 5 + n_vendor > 16_384:
+        raise HTTPException(
+            422, "Jumlah vendor melebihi batas 16.384 kolom Excel.")
+
+    satu_tahun = len({b["tahun"] for b in bulan}) <= 1
+    label_bulan = [
+        (b.get("label") or label_bulan_pendek(b["tahun"], b["bulan"]))
+        if satu_tahun else b["label_ym"] for b in bulan]
+    awal_bulan = [dt.date(b["tahun"], b["bulan"], 1) for b in bulan]
+    judul_tahun = p["label_judul"]
+
+    font_judul = Font(name=FONT_RINGKASAN_VENDOR, sz=14, bold=True)
+    font_isi = Font(name=FONT_RINGKASAN_VENDOR, sz=11, color=Color(theme=1))
+    font_tebal = Font(name=FONT_RINGKASAN_VENDOR, sz=11, bold=True)
+    font_header = Font(name=FONT_RINGKASAN_VENDOR, sz=11, bold=True,
+                       color=Color(rgb="FFFFFFFF"))
+    font_abu = Font(name=FONT_RINGKASAN_VENDOR, sz=11,
+                    color=Color(rgb=WARNA_ABU_RINGKASAN_VENDOR))
+    font_kecil = Font(name=FONT_RINGKASAN_VENDOR, sz=8,
+                      color=Color(rgb=WARNA_ABU_MUDA_RINGKASAN_VENDOR))
+    fill_header = PatternFill("solid",
+                              fgColor=WARNA_HEADER_RINGKASAN_VENDOR)
+    fill_luar = PatternFill("solid",
+                            fgColor=WARNA_LUAR_DATA_RINGKASAN_VENDOR)
+    sisi = Side(style="thin", color=Color(auto=True))
+    border = Border(left=sisi, right=sisi, top=sisi, bottom=sisi)
+    tengah = Alignment(horizontal="center", vertical="center")
+
+    def sel(ws, nilai, *, font=None, fill=None, fmt=None, tepi=None,
+            align=None):
+        c = WriteOnlyCell(ws, value=nilai)
+        if font is not None:
+            c.font = font
+        if fill is not None:
+            c.fill = fill
+        if fmt is not None:
+            c.number_format = fmt
+        if tepi is not None:
+            c.border = tepi
+        if align is not None:
+            c.alignment = align
+        return c
+
+    def skala(ws, rentang: str) -> None:
+        ws.conditional_formatting.add(
+            rentang,
+            ColorScaleRule(start_type="min", start_color="FFFFFFFF",
+                           end_type="max", end_color="FF5B9BD5"))
+
+    wb = openpyxl.Workbook(write_only=True)
+
+    # ===================================================== 1. Ringkasan Vendor
+    ws1 = wb.create_sheet("Ringkasan Vendor")
+    ws1.freeze_panes = "A5"
+    ws1.row_dimensions[1].height = 19.5
+    ws1.row_dimensions[2].height = 15.75
+    ws1.row_dimensions[4].height = 31.5
+    baris_total1 = 4 + n_vendor + 1
+    ws1.row_dimensions[baris_total1].height = 15.75
+    for i, lebar in enumerate(LEBAR_RINGKASAN_VENDOR, start=1):
+        ws1.column_dimensions[get_column_letter(i)].width = lebar
+    ws1.column_dimensions["J"].width = 18
+    ws1.column_dimensions["K"].width = 10
+    ws1.column_dimensions["L"].width = 14
+    ws1.column_dimensions["M"].width = 10
+
+    ws1.append([sel(ws1, f"Peringkat Vendor berdasarkan Frekuensi Intake "
+                          f"[{judul_tahun}]", font=font_judul)])
+    ws1.append([sel(ws1, f"Periode {p['label_inggris']} · Semua vendor "
+                          f"ditulis sebagai baris detail", font=font_abu)])
+    ws1.append([None])
+    header1 = ["Rank", "Vendor", "Total Trip", "% Trip", "Hari Aktif",
+               "Rata² Trip/Hari Operasional", "Rata² Trip/Bulan", "Dry (kg)"]
+    row4 = [sel(ws1, t, font=font_header, fill=fill_header, tepi=border,
+                align=tengah) for t in header1]
+    row4 += [
+        sel(ws1, None),
+        sel(ws1, "Hari operasional", font=font_tebal),
+        sel(ws1, r["hari_operasional"], fmt=FORMAT_TRIP_RINGKASAN_VENDOR),
+        sel(ws1, "Jumlah bulan", font=font_tebal),
+        sel(ws1, r["jumlah_bulan"], fmt=FORMAT_TRIP_RINGKASAN_VENDOR),
+    ]
+    ws1.append(row4)
+    for b in baris:
+        ws1.append([
+            sel(ws1, b["peringkat"], font=font_isi, tepi=border,
+                fmt=FORMAT_TRIP_RINGKASAN_VENDOR),
+            sel(ws1, b["label"], font=font_isi, tepi=border),
+            sel(ws1, b["total_trip"], font=font_isi, tepi=border,
+                fmt=FORMAT_TRIP_RINGKASAN_VENDOR),
+            sel(ws1, b["porsi_trip"], font=font_isi, tepi=border,
+                fmt=FORMAT_PORSEN_RINGKASAN_VENDOR),
+            sel(ws1, b["hari_aktif"], font=font_isi, tepi=border,
+                fmt=FORMAT_TRIP_RINGKASAN_VENDOR),
+            sel(ws1, b["rata_trip_per_hari_operasional"], font=font_isi,
+                tepi=border, fmt=FORMAT_RATA_RINGKASAN_VENDOR),
+            sel(ws1, b["rata_trip_per_bulan"], font=font_isi, tepi=border,
+                fmt=FORMAT_RATA_RINGKASAN_VENDOR),
+            sel(ws1, b["dry_kg"], font=font_isi, tepi=border,
+                fmt=FORMAT_TRIP_RINGKASAN_VENDOR),
+        ])
+    ws1.append([
+        sel(ws1, None, font=font_tebal, tepi=border),
+        sel(ws1, "TOTAL", font=font_tebal, tepi=border),
+        sel(ws1, r["total_trip"], font=font_tebal, tepi=border,
+            fmt=FORMAT_TRIP_RINGKASAN_VENDOR),
+        sel(ws1, 1.0 if r["total_trip"] else 0.0, font=font_tebal,
+            tepi=border, fmt=FORMAT_PORSEN_RINGKASAN_VENDOR),
+        sel(ws1, None, font=font_tebal, tepi=border),
+        sel(ws1, None, font=font_tebal, tepi=border),
+        sel(ws1, None, font=font_tebal, tepi=border),
+        sel(ws1, r["total_dry_kg"], font=font_tebal, tepi=border,
+            fmt=FORMAT_TRIP_RINGKASAN_VENDOR),
+    ])
+    catatan1 = [
+        ["Periode", p["label_inggris"]],
+        ["Sumber", m["sumber"]],
+        ["Trip", m["trip"]],
+        ["Hari Aktif & rata", m["hari_operasional"] + " " + m["rata"]],
+        ["Semua vendor", "Tiap vendor menjadi baris detail; tidak ada baris "
+                         "gabungan sisa vendor dan tidak ada sheet Master "
+                         "Data."],
+        ["Di luar data", m["di_luar_data"]],
+        ["Periode panjang", m["minimalisir"]],
+    ]
+    for i, (a, b) in enumerate(catatan1):
+        ws1.append([sel(ws1, a, font=font_tebal), sel(ws1, b, font=font_isi)])
+    if n_vendor:
+        skala(ws1, f"C5:C{4 + n_vendor}")
+
+    ch1 = BarChart()
+    ch1.type, ch1.grouping = "col", "clustered"
+    ch1.title = (f"{min(10, n_vendor)} Vendor Teratas - Total Trip "
+                 f"{judul_tahun}" if n_vendor else
+                 f"Total Trip {judul_tahun}")
+    ch1.y_axis.title, ch1.x_axis.title = "Total Trip", "Vendor"
+    ch1.legend = None
+    ch1.height, ch1.width = 10, 20
+    if n_vendor:
+        n_top1 = min(10, n_vendor)
+        ch1.add_data(Reference(ws1, min_col=3, min_row=4,
+                               max_row=4 + n_top1), titles_from_data=True)
+        ch1.set_categories(Reference(ws1, min_col=2, min_row=5,
+                                     max_row=4 + n_top1))
+    ws1.add_chart(ch1, "J5")
+
+    # ==================================================== 2. Vendor per Bulan
+    ws2 = wb.create_sheet("Vendor per Bulan")
+    ws2.freeze_panes = "B5"
+    ws2.row_dimensions[1].height = 19.5
+    ws2.row_dimensions[2].height = 15.75
+    ws2.row_dimensions[3].height = 15.75
+    ws2.row_dimensions[4].height = 15.75
+    baris_total2 = 4 + n_vendor + 1
+    ws2.row_dimensions[baris_total2].height = 15.75
+    ws2.row_dimensions[baris_total2 + 2].height = 48
+    ws2.row_dimensions[baris_total2 + 3].height = 15.75
+    ws2.row_dimensions[baris_total2 + 4].height = 15.75
+    ws2.column_dimensions["A"].width = 40
+    for i in range(2, 2 + n_bulan):
+        ws2.column_dimensions[get_column_letter(i)].width = 11
+    ws2.column_dimensions[get_column_letter(2 + n_bulan)].width = 11
+    ws2.column_dimensions[get_column_letter(3 + n_bulan)].width = 8.71
+
+    ws2.append([sel(ws2, f"Trip Intake per Vendor per Bulan {judul_tahun} "
+                          f"(Semua Vendor)", font=font_judul)])
+    ws2.append([sel(ws2, f"Periode {p['label_inggris']} · "
+                          f"{n_bulan} bulan mengikuti Dari/Sampai",
+                     font=font_abu)])
+    ws2.append([sel(ws2, "Awal bulan →", font=font_kecil)] + [
+        sel(ws2, x, font=font_kecil,
+            fmt=FORMAT_AWAL_BULAN_RINGKASAN_VENDOR) for x in awal_bulan])
+    ws2.append([sel(ws2, t, font=font_header, fill=fill_header, tepi=border,
+                    align=tengah)
+                for t in ["Vendor"] + label_bulan + ["Total"]])
+    for v in vendor_bulan:
+        ws2.append(
+            [sel(ws2, v["label"], font=font_isi, tepi=border)] +
+            [sel(ws2, x, font=font_isi, tepi=border,
+                 fmt=FORMAT_TRIP_RINGKASAN_VENDOR)
+             for x in v["trip_per_bulan"]] +
+            [sel(ws2, v["total_trip"], font=font_isi, tepi=border,
+                 fmt=FORMAT_TRIP_RINGKASAN_VENDOR)])
+    ws2.append(
+        [sel(ws2, "TOTAL", font=font_tebal, tepi=border)] +
+        [sel(ws2, x, font=font_tebal, tepi=border,
+             fmt=FORMAT_TRIP_RINGKASAN_VENDOR)
+         for x in hasil["total_per_bulan"]] +
+        [sel(ws2, r["total_trip"], font=font_tebal, tepi=border,
+             fmt=FORMAT_TRIP_RINGKASAN_VENDOR)])
+    ws2.append([None])
+    ws2.append(
+        [sel(ws2, "Vendor #1 bulan ini", font=font_tebal)] +
+        [sel(ws2, x, font=font_isi) for x in hasil["vendor_utama_bulan"]])
+    ws2.append(
+        [sel(ws2, "Trip vendor #1", font=font_tebal)] +
+        [sel(ws2, x, font=font_isi, fmt=FORMAT_TRIP_RINGKASAN_VENDOR)
+         for x in hasil["trip_utama_bulan"]])
+    ws2.append(
+        [sel(ws2, "Share vendor #1", font=font_tebal)] +
+        [sel(ws2, x, font=font_isi,
+             fmt=FORMAT_PORSEN_RINGKASAN_VENDOR)
+         for x in hasil["share_utama_bulan"]])
+    if n_vendor and n_bulan:
+        skala(ws2, f"B5:{get_column_letter(1 + n_bulan)}{4 + n_vendor}")
+
+    ch2 = BarChart()
+    ch2.type, ch2.grouping, ch2.overlap = "col", "stacked", 100
+    ch2.title = (f"Trip per Bulan per Vendor ({min(10, n_vendor)} teratas) "
+                 f"{judul_tahun}" if n_vendor > 10 else
+                 f"Trip per Bulan per Vendor (Semua Vendor) {judul_tahun}")
+    ch2.y_axis.title, ch2.x_axis.title = "Trip", "Bulan"
+    ch2.legend.position = "r"
+    ch2.height, ch2.width = 11, 22
+    for j in range(min(10, n_vendor)):
+        ch2.add_data(
+            Reference(ws2, min_col=1, max_col=1 + n_bulan,
+                      min_row=5 + j, max_row=5 + j),
+            titles_from_data=True, from_rows=True)
+    ch2.set_categories(
+        Reference(ws2, min_col=2, max_col=1 + n_bulan,
+                  min_row=4, max_row=4))
+    ws2.add_chart(ch2, f"A{baris_total2 + 6}")
+
+    # ======================================================= 3. Vendor Harian
+    ws3 = wb.create_sheet("Vendor Harian")
+    ws3.freeze_panes = "C5"
+    ws3.row_dimensions[1].height = 19.5
+    ws3.row_dimensions[2].height = 15.75
+    ws3.row_dimensions[4].height = 61.5
+    baris_rata3 = 4 + n_hari + 1
+    ws3.row_dimensions[baris_rata3].height = 15.75
+    ws3.column_dimensions["A"].width = 21.29
+    ws3.column_dimensions["B"].width = 9
+    for i in range(3, 3 + n_vendor):
+        ws3.column_dimensions[get_column_letter(i)].width = 12
+    ws3.column_dimensions[get_column_letter(3 + n_vendor)].width = 34
+    ws3.column_dimensions[get_column_letter(4 + n_vendor)].width = 8
+    ws3.column_dimensions[get_column_letter(5 + n_vendor)].width = 14
+
+    ws3.append([sel(ws3, f"Trip Intake Harian per Vendor {judul_tahun} "
+                          f"(Semua Vendor, Semua Hari Kalender)",
+                     font=font_judul)])
+    ws3.append([sel(ws3, f"Periode {p['label_inggris']} · Tanggal di luar "
+                          f"rentang tiket ditandai abu-abu (Di luar data)",
+                     font=font_abu)])
+    ws3.append([None])
+    header3 = (["Tanggal", "Total Trip"] +
+               [v["label"] for v in vendor_harian] +
+               ["Vendor #1", "Trip #1", "Tanggal (YYYY-MM-DD)"])
+    ws3.append([sel(ws3, t, font=font_header, fill=fill_header, tepi=border,
+                    align=tengah) for t in header3])
+    for i, h in enumerate(hari):
+        tanggal = dt.date.fromisoformat(h["tanggal"])
+        row = [
+            sel(ws3, tanggal, font=font_isi, tepi=border,
+                fmt=FORMAT_TANGGAL_RINGKASAN_VENDOR,
+                fill=fill_luar if h["di_luar_data"] else None),
+            sel(ws3, hasil["total_per_hari"][i], font=font_isi, tepi=border,
+                fmt=FORMAT_TRIP_RINGKASAN_VENDOR),
+        ]
+        row += [sel(ws3, v["trip_per_hari"][i], font=font_isi, tepi=border,
+                    fmt=FORMAT_TRIP_RINGKASAN_VENDOR)
+                for v in vendor_harian]
+        row += [
+            sel(ws3, hasil["vendor_utama_harian"][i], font=font_isi,
+                tepi=border),
+            sel(ws3, hasil["trip_utama_harian"][i], font=font_isi,
+                tepi=border, fmt=FORMAT_TRIP_RINGKASAN_VENDOR),
+            sel(ws3, h["tanggal"], font=font_isi, tepi=border),
+        ]
+        ws3.append(row)
+    ws3.append(
+        [sel(ws3, "Rata² / hari", font=font_tebal),
+         sel(ws3, hasil["rata_total_per_hari"], font=font_tebal,
+             fmt=FORMAT_RATA_RINGKASAN_VENDOR)] +
+        [sel(ws3, x, font=font_tebal,
+             fmt=FORMAT_RATA_RINGKASAN_VENDOR)
+         for x in hasil["rata_vendor_per_hari"]] +
+        [sel(ws3, None), sel(ws3, None), sel(ws3, None)])
+    ws3.append([None])
+    ws3.append([sel(ws3, "Keterangan", font=font_tebal),
+                sel(ws3, "Baris tanggal di luar rentang tiket ditandai "
+                         "abu-abu (Di luar data); hari tanpa intake dari "
+                         "vendor mana pun (pabrik tutup) bernilai 0 Trip "
+                         "dan tetap ditulis.", font=font_isi)])
+    ws3.append([sel(ws3, "Sumber", font=font_tebal),
+                sel(ws3, m["sumber"] + " " + m["trip"], font=font_isi)])
+    ws3.append([sel(ws3, "Catatan", font=font_tebal),
+                sel(ws3, m["dasar_hari"] + " " + m["minimalisir"],
+                    font=font_isi)])
+    if n_vendor and n_hari:
+        skala(ws3, f"C5:{get_column_letter(2 + n_vendor)}{4 + n_hari}")
+
+    ch3 = LineChart()
+    ch3.title = (f"Trip Harian - Total vs Vendor #1 {judul_tahun}"
+                 if n_vendor else f"Trip Harian - Total {judul_tahun}")
+    ch3.y_axis.title, ch3.x_axis.title = "Trip", "Tanggal"
+    ch3.legend.position = "r"
+    ch3.height, ch3.width = 9, 20
+    ch3.add_data(
+        Reference(ws3, min_col=2, max_col=3 if n_vendor else 2,
+                  min_row=4, max_row=4 + n_hari),
+        titles_from_data=True)
+    ch3.set_categories(
+        Reference(ws3, min_col=1, min_row=5, max_row=4 + n_hari))
+    anchor3 = f"{get_column_letter(min(6 + n_vendor, 16_000))}3"
+    ws3.add_chart(ch3, anchor3)
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    wb.close()
+    buf.seek(0)
+    nama = (f"ringkasan_vendor_{p['dari']}_sd_{p['sampai']}.xlsx")
+    return StreamingResponse(
+        buf,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{nama}"'})
 
 
 def _baris_periode_bulanan(session: Session, tahun: int, bulan: int):
@@ -1376,7 +3191,8 @@ def pasang_router(app, ambil_session):
                                judul, isi)
         return hasil
     @router.get("/ringkasan-elemen")
-    def ringkasan_elemen(dari: str | None = None, sampai: str | None = None,
+    def ringkasan_elemen(request: Request, dari: str | None = None,
+                         sampai: str | None = None,
                          format: str | None = None, session: Session = dep):
         """Elemen pemengaruh OP Margin per bulan, meniru sheet Excel
         'RM Stock-Intake VS Pricing': RM Stock (akhir bulan), Intake,
@@ -1400,6 +3216,9 @@ def pasang_router(app, ambil_session):
                     float(t.dry_kg) / 1000.0
         referensi = {(s["tahun"], s["bulan"]): s["tiket_ton"]
                      for s in SELISIH_DIKETAHUI}
+        # Keputusan Rekonsiliasi Jul/Agu 2026 menggantikan sumber intake
+        # pada kartu ini, termasuk bila data tiket mentah tersedia.
+        keputusan = keputusan_intake_diketahui(session)
 
         mart = {(m.tahun, m.bulan): m for m in session.scalars(select(MartBulanan))}
         if not stok_bulan:
@@ -1430,7 +3249,10 @@ def pasang_router(app, ambil_session):
             tiket_ton = tiket_bulan.get((th, bl))
             # tiket dipakai hanya bila wajar (>=50% pembelian) agar baris
             # contoh/parsial tidak menggantikan angka bulan penuh
-            if tiket_ton and (not pembelian_ton or tiket_ton >= 0.5 * pembelian_ton):
+            kep = keputusan.get((th, bl))
+            if kep:
+                intake, sumber = round(kep[0], 3), kep[1]
+            elif tiket_ton and (not pembelian_ton or tiket_ton >= 0.5 * pembelian_ton):
                 intake, sumber = round(tiket_ton, 3), "tiket"
             elif (th, bl) in referensi:
                 intake, sumber = referensi[(th, bl)], "tiket (referensi rekonsiliasi)"
@@ -1453,6 +3275,13 @@ def pasang_router(app, ambil_session):
                 "op_price": m.harga_beli_usc if m else None,
                 "op_margin": m.op_margin_usc if m else None,
             })
+        # Tonase disediakan dalam dua satuan sekaligus: MT (*_ton, nilai lama
+        # tetap ada supaya layar/tes lama aman) dan kg (*_kg). 1 MT = 1.000 kg.
+        for b in baris:
+            for kunci_ton in ("rm_stock_ton", "intake_ton", "safety_ton"):
+                nilai_ton = b[kunci_ton]
+                b[kunci_ton.replace("_ton", "_kg")] = (
+                    round(nilai_ton * 1000, 3) if nilai_ton is not None else None)
         hasil = {"baris": baris, "catatan": [
             "Intake = tonase kering tiket (sumber resmi); bulan tanpa data tiket "
             "memakai angka referensi rekonsiliasi atau kuantitas Pembelian.",
@@ -1464,32 +3293,45 @@ def pasang_router(app, ambil_session):
             "Mohon konfirmasi.",
             "Baris proyeksi (Sep-Des 26) di Excel tidak direplikasi karena rumus "
             "proyeksinya belum ditetapkan [TERBUKA].",
+            "Tonase tersedia dalam MT (*_ton) dan kg (*_kg); 1 MT = 1.000 kg. "
+            "SICOM, OP Price, dan OP Margin tetap dalam US¢/kg.",
+            "Untuk Jul/Agu 2026, sumber intake mengikuti keputusan pada "
+            "halaman Rekonsiliasi bila sudah disimpan; data asli tidak diubah.",
         ]}
         if format == "xlsx":
-            return respon_xlsx(
-                "rm_stock_intake_vs_pricing.xlsx",
-                ["Date", "RM Stock", "Intake", "Safety Level Stock", "SICOM",
-                 "OP Price", "OP Margin", "Sumber intake", "Catatan"],
-                [[b["label"], b["rm_stock_ton"], b["intake_ton"], b["safety_ton"],
-                  b["sicom"], b["op_price"], b["op_margin"], b["sumber_intake"],
-                  "stok sebagian" if b["stok_sebagian"] else ""] for b in baris])
+            awal_tpl = kunci[0] if kunci else None
+            akhir_tpl = kunci[-1] if kunci else None
+            return respon_xlsx_template(
+                "rm_stock",
+                _fmt_periode_template(awal_tpl, akhir_tpl),
+                ["Date", "RM Stock (MT)", "Intake (MT)",
+                 "Safety Level Stock (MT)", "SICOM (US¢/kg)",
+                 "OP Price (US¢/kg)", "OP Margin (US¢/kg)"],
+                [[b["label"], b["rm_stock_ton"], b["intake_ton"],
+                  b["safety_ton"], b["sicom"], b["op_price"], b["op_margin"]]
+                 for b in baris],
+                ["teks", "angka", "angka", "angka", "angka", "angka", "angka"],
+                mode_chart="rm_stock",
+                nama_pengguna=_nama_pengguna_export(request))
         return hasil
 
     @router.get("/ringkasan-elemen/analisa")
-    def analisa_elemen(dari: str | None = None, sampai: str | None = None,
-                       session: Session = dep):
+    def analisa_elemen(request: Request, dari: str | None = None,
+                       sampai: str | None = None, session: Session = dep):
         """Analisa 5W1H otomatis atas grafik RM Stock - Intake vs Pricing,
         dihitung dari data pada periode terfilter."""
         from .core.analisa import analisa_5w1h
-        data = ringkasan_elemen(dari=dari, sampai=sampai, session=session)
+        data = ringkasan_elemen(request=request, dari=dari, sampai=sampai,
+                                session=session)
         return analisa_5w1h(data["baris"], session)
 
     @router.get("/ringkasan-elemen/rca")
-    def analisa_rca_elemen(dari: str | None = None, sampai: str | None = None,
-                           session: Session = dep):
+    def analisa_rca_elemen(request: Request, dari: str | None = None,
+                           sampai: str | None = None, session: Session = dep):
         """RCA 5 Why berbasis angka kartu, memakai filter periode yang sama."""
         from .core.analisa_rca import analisa_rca
-        data = ringkasan_elemen(dari=dari, sampai=sampai, session=session)
+        data = ringkasan_elemen(request=request, dari=dari, sampai=sampai,
+                                session=session)
         return analisa_rca(data["baris"])
 
     @router.get("/analisis/analisa")
@@ -1538,19 +3380,126 @@ def pasang_router(app, ambil_session):
 
     # ------------------------------------------------------------ rekonsiliasi
     @router.get("/rekonsiliasi")
-    def rekonsiliasi(format: str | None = None, session: Session = dep):
+    def rekonsiliasi(request: Request, format: str | None = None,
+                     session: Session = dep):
         harian = rekonsiliasi_harian(session)
+        diketahui = selisih_diketahui(session)
         hasil = {
-            "diketahui": selisih_diketahui(),
+            "diketahui": diketahui,
             "catatan": CATATAN_DIKETAHUI,
             "harian": harian,
+            "bisa_revisi": _boleh_revisi(request),
         }
         if format == "xlsx":
-            judul = ["Periode", "Tiket (ton)", "Excel lama (ton)", "Selisih (ton)", "Status"]
-            isi = [[d["periode"], d["tiket_ton"], d["excel_ton"], d["selisih_ton"],
-                    d["status"]] for d in hasil["diketahui"]]
+            judul = ["Periode", "Tiket (ton)", "Excel lama (ton)",
+                     "Selisih asli (ton)", "Selisih setelah revisi (ton)",
+                     "Sumber dipakai", "Status", "Direvisi oleh", "Waktu", "Alasan"]
+            isi = [[d["periode"], d["tiket_ton"], d["excel_ton"],
+                    d["selisih_ton"], d["selisih_efektif_ton"],
+                    d["sumber_dipakai"] or "", d["status"],
+                    (d["koreksi"] or {}).get("oleh", ""),
+                    (d["koreksi"] or {}).get("pada", ""),
+                    (d["koreksi"] or {}).get("alasan", "")]
+                   for d in diketahui]
             return respon_xlsx("rekonsiliasi.xlsx", judul, isi)
         return hasil
+
+    @router.post("/rekonsiliasi/keputusan")
+    def simpan_keputusan_rekonsiliasi(data: RekonsiliasiKeputusanMasuk,
+                                      request: Request,
+                                      session: Session = dep):
+        """Simpan sumber yang benar; data sumber asli sengaja tidak diubah."""
+        wajib_admin(request)
+        baris = _validasi_keputusan(data, session)
+        kunci, alasan = baris["kunci"], (data.alasan or "").strip() or None
+        lama = session.scalar(select(KoreksiRekonsiliasi).where(
+            KoreksiRekonsiliasi.jenis == data.jenis,
+            KoreksiRekonsiliasi.kunci == kunci))
+        if lama and lama.sumber_benar == data.sumber_benar                 and (lama.alasan or None) == alasan:
+            return {"status": "tidak berubah", "jenis": data.jenis,
+                    "kunci": kunci, "sumber_benar": data.sumber_benar,
+                    "pesan": "Keputusan sudah sama; tidak ada perubahan."}
+
+        sebelum = None
+        if lama is None:
+            keputusan = KoreksiRekonsiliasi(jenis=data.jenis, kunci=kunci)
+            session.add(keputusan)
+            aksi = "tambah"
+        else:
+            keputusan = lama
+            sebelum = {"sumber_benar": lama.sumber_benar,
+                       "alasan": lama.alasan,
+                       "oleh": lama.updated_by}
+            aksi = "ubah"
+
+        pengguna = info_pengguna(request) or {}
+        siapa = pengguna.get("sub") or "dev"
+        keputusan.sumber_benar = data.sumber_benar
+        keputusan.alasan = alasan
+        keputusan.updated_by = siapa
+        keputusan.updated_at = dt.datetime.utcnow()
+        session.flush()
+
+        satuan = "kg" if data.jenis == "harian" else "ton"
+        opsi = next((o for o in baris["pilihan_sumber"]
+                     if o["kode"] == data.sumber_benar), None)
+        nilai_dipakai = opsi[f"nilai_{satuan}"] if opsi else None
+        catat_audit(session, siapa, aksi, "rekonsiliasi_koreksi", {
+            "jenis": data.jenis,
+            "kunci": kunci,
+            "sumber_benar": data.sumber_benar,
+            "alasan": alasan,
+            "nilai_tiket": baris["pilihan_sumber"][0][f"nilai_{satuan}"],
+            "nilai_lawan": baris["pilihan_sumber"][1][f"nilai_{satuan}"],
+            "selisih_asli": baris[f"selisih_asli_{satuan}"],
+            "selisih_efektif": 0.0,
+            "nilai_dipakai": nilai_dipakai,
+            "sebelumnya": sebelum,
+        })
+        evaluasi_alarm(session)
+        session.commit()
+        return {
+            "status": "tersimpan",
+            "jenis": data.jenis,
+            "kunci": kunci,
+            "sumber_benar": data.sumber_benar,
+            "nilai_dipakai": nilai_dipakai,
+            "satuan": satuan,
+            "oleh": siapa,
+            "pada": keputusan.updated_at.isoformat(timespec="seconds"),
+            "alasan": alasan,
+            "pesan": (f"Revisi {kunci} tersimpan: "
+                      f"{data.sumber_benar} dipakai. Data asli tidak diubah."),
+        }
+
+    @router.delete("/rekonsiliasi/keputusan")
+    def hapus_keputusan_rekonsiliasi(request: Request,
+                                     jenis: str = Query(...),
+                                     kunci: str = Query(...),
+                                     session: Session = dep):
+        """Batalkan keputusan; baris kembali memakai selisih aslinya."""
+        wajib_admin(request)
+        if jenis not in PILIHAN_SUMBER or not sah_kunci(jenis, kunci.strip()):
+            raise HTTPException(422, "Jenis/kunci keputusan tidak dikenal.")
+        kunci = kunci.strip()
+        lama = session.scalar(select(KoreksiRekonsiliasi).where(
+            KoreksiRekonsiliasi.jenis == jenis,
+            KoreksiRekonsiliasi.kunci == kunci))
+        if lama is None:
+            raise HTTPException(404, "Belum ada keputusan revisi untuk baris ini.")
+        sebelum = {"sumber_benar": lama.sumber_benar, "alasan": lama.alasan,
+                   "oleh": lama.updated_by}
+        session.delete(lama)
+        session.flush()
+        pengguna = info_pengguna(request) or {}
+        siapa = pengguna.get("sub") or "dev"
+        catat_audit(session, siapa, "hapus", "rekonsiliasi_koreksi", {
+            "jenis": jenis, "kunci": kunci, "sebelumnya": sebelum,
+        })
+        evaluasi_alarm(session)
+        session.commit()
+        return {"status": "dibatalkan", "jenis": jenis, "kunci": kunci,
+                "pesan": "Revisi dibatalkan; selisih asli kembali ditampilkan."}
 
     # ------------------------------------------------------------ kualitas data
     @router.get("/kualitas")
@@ -1654,7 +3603,7 @@ def pasang_router(app, ambil_session):
 
     # ------------------------------------------------------------ kartu: penerimaan biasa vs EUDR
     @router.get("/kartu/penerimaan")
-    def kartu_penerimaan(dimensi: str = "vendor",
+    def kartu_penerimaan(request: Request, dimensi: str = "vendor",
                          dari: dt.date | None = None, sampai: dt.date | None = None,
                          eudr: bool | None = None, vendor: str | None = None,
                          provinsi: str | None = None, kabupaten: str | None = None,
@@ -1667,9 +3616,11 @@ def pasang_router(app, ambil_session):
 
         `per=bulan` -> rincian per bulan untuk dimensi terpilih (dipakai bila
         periode filter lebih dari satu bulan): bulan x dimensi, dengan `top`
-        dimensi terbesar dan sisanya digabung menjadi "Lainnya". Tanpa
-        `per=bulan`, bentuk jawabannya tetap seperti semula (satu baris per
-        dimensi untuk seluruh periode)."""
+        dimensi terbesar dan sisanya digabung menjadi "Lainnya" untuk grafik.
+        Tanpa `per=bulan`, bentuk jawabannya tetap seperti semula (satu baris
+        per dimensi untuk seluruh periode). Khusus `format=xlsx`, `top` dan
+        "Lainnya" TIDAK dipakai: semua dimensi ditulis sebagai baris detail
+        dan semua bulan terpilih menjadi kolom."""
         if dimensi not in DIMENSI_TONASE:
             raise HTTPException(422, f"Dimensi '{dimensi}' tidak dikenal. "
                                      f"Pilihan: {', '.join(DIMENSI_TONASE)}.")
@@ -1726,9 +3677,17 @@ def pasang_router(app, ambil_session):
         else:
             laporan_wilayah = None
 
+        info_ekspor = None
+        if format == "xlsx":
+            info_ekspor = _info_ekspor_penerimaan(
+                dari, sampai, vendor, provinsi, kabupaten, kecamatan, desa,
+                potongan, session)
+
         if per == "bulan":
-            hasil = _penerimaan_per_bulan(potongan, dimensi, dari, sampai,
-                                          top, format, session, label_peta)
+            hasil = _penerimaan_per_bulan(
+                potongan, dimensi, dari, sampai, top, format, session,
+                label_peta, info_ekspor,
+                nama_pengguna=_nama_pengguna_export(request))
             if isinstance(hasil, dict) and laporan_wilayah:
                 hasil["wilayah"] = laporan_wilayah
             return hasil
@@ -1765,12 +3724,29 @@ def pasang_router(app, ambil_session):
         if laporan_wilayah:
             hasil["wilayah"] = laporan_wilayah
         if format == "xlsx":
-            return respon_xlsx(
+            if dimensi == "vendor":
+                awal, akhir = _rentang_periode_ekspor(dari, sampai, potongan)
+                return respon_xlsx_template(
+                    "penerimaan_vendor",
+                    _fmt_periode_template(awal, akhir),
+                    ["Vendor", "Kg biasa", "Kg EUDR", "Kg total",
+                     "Porsi", "Jumlah tiket"],
+                    [[b["label"], b["kg_biasa"], b["kg_eudr"], b["kg_total"],
+                      b["porsi"], b["jumlah_tiket"]] for b in baris],
+                    ["teks", "kg", "kg", "kg", "persen", "teks"],
+                    mode_chart="vendor_total", kolom_tengah=5,
+                    nama_pengguna=_nama_pengguna_export(request))
+            judul_xlsx, periode_xlsx = info_ekspor or (
+                "Penerimaan Karet", "Tidak ada data")
+            return respon_xlsx_penerimaan(
                 f"penerimaan_per_{dimensi}.xlsx",
-                [dimensi, "Kg biasa", "Kg EUDR", "Kg total", "Porsi",
-                 "Jumlah tiket"],
+                judul_xlsx, periode_xlsx,
+                [dimensi.capitalize(), "Kg biasa", "Kg EUDR", "Kg total",
+                 "Porsi", "Jumlah tiket"],
                 [[b["label"], b["kg_biasa"], b["kg_eudr"], b["kg_total"],
-                  b["porsi"], b["jumlah_tiket"]] for b in baris])
+                  b["porsi"], b["jumlah_tiket"]] for b in baris],
+                ["teks", "kg", "kg", "kg", "persen", "teks"],
+                kolom_tengah=5)
         return hasil
 
     # ------------------------------------------- kartu penerimaan: tren & musiman
@@ -2180,6 +4156,103 @@ def pasang_router(app, ambil_session):
             return respon_xlsx(f"komposisi_penerimaan_{dimensi}.xlsx", judul, isi_xlsx)
         return hasil
 
+    # --------------------------------------------- kartu: konsistensi intake vendor
+    @router.get("/kartu/konsistensi-intake-vendor")
+    def kartu_konsistensi_intake_vendor(dari: str | None = None,
+                                        sampai: str | None = None,
+                                        format: str | None = None,
+                                        rinci: int | None = None,
+                                        session: Session = dep):
+        """Laporan Ringkasan Vendor berbasis **Trip**, mengikuti contoh
+        `Intake-2025_Ringkasan-Vendor.xlsx`.
+
+        Kartu layar kini berupa **tiga tabel** (`Ringkasan Vendor`,
+        `Vendor per Bulan`, `Vendor Harian`); chart lama dihapus. Metrik
+        memakai Total Trip, % Trip, Hari Aktif, Rata² Trip/Hari Operasional,
+        Rata² Trip/Bulan, dan Dry (kg). Peringkat diurutkan menurut jumlah
+        Trip (Ticket No unik), bukan lagi jumlah tanggal unik ber-intake.
+
+        `format=xlsx` menghasilkan **3 sheet + 3 chart Excel native** tanpa
+        sheet `Master Data`/raw tiket. Semua vendor (termasuk yang 0 Trip)
+        ditulis sebagai baris detail, tanpa `Lainnya`. Judul, kolom bulan, dan
+        pembagi `Rata² Trip/Bulan` mengikuti `Dari/Sampai`. Sheet harian memuat
+        **semua hari kalender** pada rentang; hari tanpa intake bernilai 0 Trip.
+
+        Bila `dari`/`sampai` kosong, batas diisi dari tanggal tiket paling awal
+        / paling akhir. Seluruh rentang data boleh dipilih; batas 731 hari sudah
+        dihapus. `MAKS_HARI` hanya pengaman tanggal ekstrem (±100 tahun) dan
+        `MAKS_BULAN` pengaman kolom bulan. Periode panjang diminimalisir di
+        layar menjadi rekap per bulan + rentang tanggal `YYYY-MM-DD`; `rinci=1`
+        meminta matriks harian penuh bila pengguna ingin membuka semua baris,
+        sementara ekspor Excel selalu menulis satu baris per tanggal. Data
+        sumber tidak diubah dan tidak ada tabel/dependensi baru.
+        """
+        d = _tanggal_iso(dari, "dari")
+        s = _tanggal_iso(sampai, "sampai")
+        if d and s and d > s:
+            raise HTTPException(422, f"Periode terbalik: 'dari' ({dari}) lebih "
+                                     f"akhir daripada 'sampai' ({sampai}).")
+
+        batas = session.execute(
+            select(func.min(TiketBaris.ticket_date),
+                   func.max(TiketBaris.ticket_date)).where(
+                TiketBaris.tiket_nol == False,  # noqa: E712
+                TiketBaris.ticket_date.is_not(None))).one()
+        min_d, max_d = _ke_tanggal_db(batas[0]), _ke_tanggal_db(batas[1])
+        hari_ini = dt.date.today()
+        awal = d or min_d or dt.date(hari_ini.year, 1, 1)
+        akhir = s or max_d or hari_ini
+        if awal > akhir:
+            raise HTTPException(422, f"Periode terbalik: {awal} lebih akhir "
+                                     f"daripada {akhir}.")
+        jumlah_hari = (akhir - awal).days + 1
+        if jumlah_hari > MAKS_HARI:
+            raise HTTPException(
+                422, f"Rentang {jumlah_hari} hari di luar jangkauan tanggal "
+                     f"yang wajar (batas keamanan {MAKS_HARI} hari, ±100 "
+                     "tahun). Periksa kembali 'Dari/Sampai'.")
+        jumlah_bulan = ((akhir.year - awal.year) * 12
+                        + akhir.month - awal.month + 1)
+        if jumlah_bulan > MAKS_BULAN:
+            jml = f"{jumlah_bulan:,}".replace(",", ".")
+            maks = f"{MAKS_BULAN:,}".replace(",", ".")
+            raise HTTPException(
+                422, f"Periode {jml} bulan terlalu panjang untuk laporan "
+                     f"Ringkasan Vendor; maksimal {maks} bulan (100 tahun). "
+                     "Persempit 'Dari/Sampai' agar tiap bulan tetap menjadi "
+                     "kolom.")
+
+        mentah = session.execute(
+            select(TiketBaris.ticket_date, TiketBaris.kode_vendor,
+                   TiketBaris.ticket_no, TiketBaris.dry_kg).where(
+                TiketBaris.tiket_nol == False,  # noqa: E712
+                TiketBaris.ticket_date.is_not(None),
+                TiketBaris.ticket_date >= awal,
+                TiketBaris.ticket_date <= akhir)).all()
+        nama_vendor = {v.kode: v.nama_baku
+                       for v in session.scalars(select(Vendor))}
+        batas_data = (min_d, max_d) if min_d and max_d else None
+        try:
+            hasil = hitung_ringkasan_vendor(
+                mentah, awal, akhir, nama_vendor, batas_data=batas_data)
+        except ValueError as galat:
+            raise HTTPException(422, str(galat)) from galat
+        hasil["periode"]["dari_otomatis"] = d is None
+        hasil["periode"]["sampai_otomatis"] = s is None
+        if d is None or s is None:
+            hasil["peringatan"].append(
+                "Batas periode yang tidak diisi diambil otomatis dari tanggal "
+                "tiket paling awal/akhir pada database.")
+        hasil["sumber"] = ("tiket_baris (Ticket Date, tanpa tiket nol); "
+                           "Trip = Ticket No unik; dasar hari = semua hari "
+                           "kalender; urutan = jumlah Trip")
+
+        if format == "xlsx":
+            return _xlsx_ringkasan_vendor(hasil)
+        if rinci:
+            return hasil
+        return ringkas_untuk_layar(hasil)
+
     # ------------------------------------------------------------ kartu: konsentrasi vendor
     @router.get("/kartu/konsentrasi-vendor")
     def kartu_konsentrasi(top: int = 5, tahun: int | None = None,
@@ -2291,71 +4364,146 @@ def pasang_router(app, ambil_session):
         return hasil
 
     # ------------------------------------------------------------ kartu: daftar intake
+    @router.get("/kartu/intake-terakhir/opsi")
+    def opsi_intake_terakhir(session: Session = dep):
+        """Opsi filter vendor + batas tiket, bisa dimuat sebelum Refresh kartu."""
+        return _opsi_intake_terakhir(session)
+
     @router.get("/kartu/intake-terakhir")
     def kartu_intake_terakhir(limit: int = 20, format: str | None = None,
+                              dari: str | None = None,
+                              sampai: str | None = None,
+                              vendor: str | None = Query(default=None,
+                                                         max_length=120),
                               session: Session = dep):
-        """Daftar tiket intake terbaru — supaya pengguna tahu kapan intake
-        terakhir masuk dan apa isinya.
+        """Daftar tiket intake terbaru dengan filter records dan breakdown wilayah.
 
-        Satu baris = satu tiket (bukan satu baris tiket): beberapa baris
-        (line_seq) dengan nomor tiket yang sama digabung, karena satu tiket
-        adalah satu kendaraan yang datang.
+        Satu baris = satu tiket (bukan satu baris tiket): beberapa `line_seq`
+        dengan nomor tiket sama digabung, karena satu tiket adalah satu
+        kendaraan yang datang. `dari`/`sampai` memakai tanggal persis
+        `YYYY-MM-DD` (inklusif); `vendor` menyaring `kode_vendor` secara
+        exact. Ringkasan atas, tabel, jumlah total, dan Ekspor Excel sama-sama
+        mengikuti kedua filter. `limit` hanya memotong baris yang ditampilkan.
+
+        Wilayah tidak lagi digabung menjadi `Kabupaten, Provinsi`: tabel dan
+        Excel memuat **Provinsi, Kabupaten/Kota, Kecamatan, Desa** terpisah.
+        Ejaan resmi SCDF dipakai bila kunci normalized cocok dengan
+        `traceability_wilayah` atau koreksi terkontrol; tanpa padanan, nilai
+        tiket ditampilkan apa adanya. Tidak ada penebakan Provinsi dan data
+        intake mentah tidak diubah.
         """
         if limit < 1 or limit > 200:
             raise HTTPException(422, "`limit` harus antara 1 dan 200.")
+        d = _tanggal_iso(dari, "dari")
+        s = _tanggal_iso(sampai, "sampai")
+        if d and s and d > s:
+            raise HTTPException(422, f"Periode terbalik: 'dari' ({dari}) lebih "
+                                     f"akhir daripada 'sampai' ({sampai}).")
+        if d and s and (s - d).days + 1 > MAKS_HARI:
+            raise HTTPException(
+                422, f"Rentang {(s - d).days + 1} hari di luar jangkauan "
+                     f"tanggal yang wajar (batas keamanan {MAKS_HARI} hari, "
+                     "±100 tahun). Periksa kembali 'Dari/Sampai'.")
+
+        opsi = _opsi_intake_terakhir(session)
+        kode_diminta = (vendor or "").strip().upper() or None
+        if kode_diminta and kode_diminta not in {
+                p["kode"] for p in opsi["pilihan_vendor"]}:
+            raise HTTPException(
+                422, f"Kode vendor '{vendor}' tidak dikenal. Pilih kode dari "
+                     "Master Vendor atau kode yang benar-benar ada di tiket.")
+
+        kondisi = [TiketBaris.tiket_nol == False,  # noqa: E712
+                   TiketBaris.ticket_date.is_not(None)]
+        if d:
+            kondisi.append(TiketBaris.ticket_date >= d)
+        if s:
+            kondisi.append(TiketBaris.ticket_date <= s)
+        if kode_diminta:
+            kondisi.append(func.upper(func.trim(
+                TiketBaris.kode_vendor)) == kode_diminta)
+
+        mentah = session.execute(
+            select(TiketBaris.ticket_date, TiketBaris.ticket_no,
+                   TiketBaris.line_seq, TiketBaris.kode_vendor,
+                   TiketBaris.nama_vendor_asli, TiketBaris.item_code,
+                   TiketBaris.provinsi, TiketBaris.kabupaten,
+                   TiketBaris.kecamatan, TiketBaris.desa,
+                   TiketBaris.kabupaten_norm, TiketBaris.kecamatan_norm,
+                   TiketBaris.desa_norm, TiketBaris.wet_kg,
+                   TiketBaris.dry_kg, TiketBaris.reject_kg).where(
+                *kondisi).order_by(
+                TiketBaris.ticket_date.desc(),
+                TiketBaris.ticket_no.desc(),
+                TiketBaris.line_seq.asc())).mappings()
+
         tiket: dict[tuple, dict] = {}
-        for t in session.scalars(select(TiketBaris).where(
-                TiketBaris.tiket_nol == False).order_by(  # noqa: E712
-                TiketBaris.ticket_date.desc(), TiketBaris.ticket_no.desc())):
-            k = (t.ticket_date, t.ticket_no)
+        for r in mentah:
+            k = (r["ticket_date"], r["ticket_no"])
             v = tiket.get(k)
             if v is None:
+                tgl = _ke_tanggal_db(r["ticket_date"])
                 v = tiket[k] = {
-                    "tanggal": t.ticket_date.isoformat(),
-                    "ticket_no": t.ticket_no,
-                    "kode_vendor": t.kode_vendor,
-                    "nama_vendor": t.nama_vendor_asli,
+                    "tanggal": tgl.isoformat() if tgl else "",
+                    "ticket_no": r["ticket_no"],
+                    "kode_vendor": (r["kode_vendor"] or "").strip().upper(),
+                    "nama_vendor": r["nama_vendor_asli"],
                     "item_code": set(),
-                    "provinsi": t.provinsi, "kabupaten": t.kabupaten,
+                    "provinsi": r["provinsi"], "kabupaten": r["kabupaten"],
+                    "kecamatan": r["kecamatan"], "desa": r["desa"],
+                    "kabupaten_norm": (r["kabupaten_norm"] or
+                                       normalisasi_kabupaten(r["kabupaten"])),
+                    "kecamatan_norm": (r["kecamatan_norm"] or
+                                       normalisasi_teks_wilayah(r["kecamatan"])),
+                    "desa_norm": (r["desa_norm"] or
+                                  normalisasi_teks_wilayah(r["desa"])),
                     "wet_kg": Decimal(0), "dry_kg": Decimal(0),
                     "reject_kg": Decimal(0), "jumlah_baris": 0,
                 }
-            if t.item_code:
-                v["item_code"].add(t.item_code)
-            v["wet_kg"] += t.wet_kg or 0
-            v["dry_kg"] += t.dry_kg or 0
-            v["reject_kg"] += t.reject_kg or 0
+            if r["item_code"]:
+                v["item_code"].add(r["item_code"])
+            for kolom in ("wet_kg", "dry_kg", "reject_kg"):
+                v[kolom] += Decimal(str(r[kolom] or 0))
             v["jumlah_baris"] += 1
 
-        urut = sorted(tiket.values(),
-                      key=lambda v: (v["tanggal"], v["ticket_no"]), reverse=True)
-        nama_vendor: dict[str, str] = {}
-        kode_vendor = {v["kode_vendor"] for v in urut}
-        if kode_vendor:
-            for vd in session.scalars(select(Vendor).where(
-                    Vendor.kode.in_(kode_vendor))):
-                nama_vendor[vd.kode] = vd.nama_baku
+        kunci_diminta = {(v["kabupaten_norm"], v["kecamatan_norm"],
+                          v["desa_norm"]) for v in tiket.values()}
+        peta_langsung, peta_koreksi = _peta_wilayah_scdf(session,
+                                                         kunci_diminta)
+        wilayah = {k: _wilayah_intake_tampil(v, peta_langsung, peta_koreksi)
+                   for k, v in tiket.items()}
+        nama_vendor = _nama_vendor_baku(session)
 
-        semua = [{
-            "tanggal": v["tanggal"], "ticket_no": v["ticket_no"],
-            "kode_vendor": v["kode_vendor"],
-            "label_vendor": (f"{v['kode_vendor']} — {nama_vendor[v['kode_vendor']]}"
-                             if nama_vendor.get(v["kode_vendor"])
-                             else (v["nama_vendor"] or v["kode_vendor"])),
-            "grade": ", ".join(sorted(v["item_code"])) or None,
-            "wet_ton": round(float(v["wet_kg"]) / 1000, 3),
-            "dry_ton": round(float(v["dry_kg"]) / 1000, 3),
-            "reject_ton": round(float(v["reject_kg"]) / 1000, 3),
-            "jumlah_baris": v["jumlah_baris"],
-            "provinsi": v["provinsi"], "kabupaten": v["kabupaten"],
-        } for v in urut]
+        urut = sorted(tiket.items(),
+                      key=lambda kv: (kv[1]["tanggal"], kv[1]["ticket_no"]),
+                      reverse=True)
+        semua = []
+        for k, v in urut:
+            w = wilayah[k]
+            kode = v["kode_vendor"]
+            semua.append({
+                "tanggal": v["tanggal"], "ticket_no": v["ticket_no"],
+                "kode_vendor": kode,
+                "label_vendor": (f"{kode} — {nama_vendor[kode]}"
+                                 if nama_vendor.get(kode)
+                                 else (v["nama_vendor"] or kode)),
+                "grade": ", ".join(sorted(v["item_code"])) or None,
+                "wet_ton": round(float(v["wet_kg"]) / 1000, 3),
+                "dry_ton": round(float(v["dry_kg"]) / 1000, 3),
+                "reject_ton": round(float(v["reject_kg"]) / 1000, 3),
+                "jumlah_baris": v["jumlah_baris"],
+                "provinsi": w["provinsi"], "kabupaten": w["kabupaten"],
+                "kecamatan": w["kecamatan"], "desa": w["desa"],
+                "sumber_wilayah": w["sumber_wilayah"],
+            })
 
         terakhir = semua[0] if semua else None
         hari_ini = dt.date.today()
         ringkas = None
         if terakhir:
             tgl = dt.date.fromisoformat(terakhir["tanggal"])
-            tiket_hari_itu = [b for b in semua if b["tanggal"] == terakhir["tanggal"]]
+            tiket_hari_itu = [b for b in semua
+                              if b["tanggal"] == terakhir["tanggal"]]
             ringkas = {
                 "tanggal": terakhir["tanggal"],
                 "umur_hari": (hari_ini - tgl).days,
@@ -2363,8 +4511,14 @@ def pasang_router(app, ambil_session):
                 "label_vendor": terakhir["label_vendor"],
                 "grade": terakhir["grade"],
                 "dry_ton": terakhir["dry_ton"],
+                "provinsi": terakhir["provinsi"],
+                "kabupaten": terakhir["kabupaten"],
+                "kecamatan": terakhir["kecamatan"],
+                "desa": terakhir["desa"],
+                "sumber_wilayah": terakhir["sumber_wilayah"],
                 "jumlah_tiket_hari_itu": len(tiket_hari_itu),
-                "dry_ton_hari_itu": round(sum(b["dry_ton"] for b in tiket_hari_itu), 3),
+                "dry_ton_hari_itu": round(
+                    sum(b["dry_ton"] for b in tiket_hari_itu), 3),
             }
         baris = semua[:limit]
 
@@ -2372,14 +4526,21 @@ def pasang_router(app, ambil_session):
             return respon_xlsx(
                 "intake_terakhir.xlsx",
                 ["Tanggal", "No tiket", "Kode vendor", "Vendor", "Grade",
-                 "Wet ton", "Dry ton", "Reject ton", "Provinsi", "Kabupaten"],
-                [[b["tanggal"], b["ticket_no"], b["kode_vendor"], b["label_vendor"],
-                  b["grade"], b["wet_ton"], b["dry_ton"], b["reject_ton"],
-                  b["provinsi"], b["kabupaten"]] for b in baris])
+                 "Wet ton", "Dry ton", "Reject ton", "Provinsi",
+                 "Kabupaten/Kota", "Kecamatan", "Desa"],
+                [[b["tanggal"], b["ticket_no"], b["kode_vendor"],
+                  b["label_vendor"], b["grade"], b["wet_ton"], b["dry_ton"],
+                  b["reject_ton"], b["provinsi"], b["kabupaten"],
+                  b["kecamatan"], b["desa"]] for b in baris])
 
         return {"terakhir": ringkas, "baris": baris, "limit": limit,
                 "jumlah_tiket_total": len(semua),
-                "tanggal_pertama": semua[-1]["tanggal"] if semua else None}
+                "tanggal_pertama": semua[-1]["tanggal"] if semua else None,
+                "filter": {"dari": dari, "sampai": sampai,
+                           "vendor": kode_diminta, "limit": limit},
+                "pilihan_vendor": opsi["pilihan_vendor"],
+                "batas_data": opsi["batas_data"],
+                "catatan_wilayah": CATATAN_WILAYAH_INTAKE_TERAKHIR}
 
     # ------------------------------------------------------------ kartu: margin harian/bulanan
     @router.get("/kartu/margin-harian")

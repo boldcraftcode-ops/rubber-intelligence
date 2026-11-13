@@ -84,6 +84,9 @@ class Vendor(Base):
     klasifikasi: Mapped[str | None] = mapped_column(String(30), nullable=True)
     is_direct_producer: Mapped[bool] = mapped_column(
         Boolean, default=False, server_default="false", nullable=False)
+    #: Sourcing type Supplier Actors (core/sourcing_type.py). Terpisah dari
+    #: `klasifikasi` agar aturan Master Vendor lama tidak berubah.
+    sourcing_type: Mapped[str | None] = mapped_column(String(30), nullable=True)
 
 
 class Collector(Base):
@@ -154,8 +157,11 @@ class ReferensiWilayahTrace(Base):
     """Referensi pasangan kabupaten/kecamatan/desa dari sheet ID_AUX.
 
     ID_AUX yang disediakan berisi Kabupaten/Kecamatan dan Desa, tetapi tidak
-    berisi Provinsi maupun kode administrasi. Kolom crosswalk Provinsi dan
-    `code` sengaja NULL sampai referensi resmi yang memuatnya tersedia.
+    berisi Provinsi maupun kode administrasi. `provinsi`/`provinsi_norm` kini
+    diisi dari crosswalk resmi Kepmendagri yang terhubung ke `kabupaten_norm`
+    (lihat `backend/data/CROSSWALK_PROVINSI.md`); `code` tetap NULL karena
+    ID_AUX tidak memuat kode administrasi. Baris tanpa pemetaan pasti sengaja
+    dibiarkan NULL, bukan ditebak dari intake.
     """
     __tablename__ = "traceability_wilayah"
     __table_args__ = (UniqueConstraint(
@@ -191,6 +197,27 @@ class KoreksiWilayahTrace(Base):
     source_desa_norm: Mapped[str] = mapped_column(String(120), default="")
     target_ref_id: Mapped[int] = mapped_column(ForeignKey("traceability_wilayah.id"))
     updated_by: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    updated_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
+
+
+class KoreksiRekonsiliasi(Base):
+    """Keputusan sumber yang benar untuk satu baris selisih Rekonsiliasi.
+
+    Data tiket, pembelian, dan angka Excel lama TIDAK diubah. Baris
+    rekap memakai nilai dari sumber yang dipilih; keputusan ini tercatat di
+    audit log dan dapat dibatalkan. Satu keputusan per baris/jenis.
+    """
+
+    __tablename__ = "rekonsiliasi_koreksi"
+    __table_args__ = (UniqueConstraint("jenis", "kunci",
+                                      name="uq_rekonsiliasi_koreksi"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    jenis: Mapped[str] = mapped_column(String(20), index=True)  # harian | diketahui
+    kunci: Mapped[str] = mapped_column(String(20), index=True)  # YYYY-MM-DD | YYYY-MM
+    sumber_benar: Mapped[str] = mapped_column(String(20))  # tiket | pembelian | excel
+    alasan: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    updated_by: Mapped[str] = mapped_column(String(100), default="?")
     updated_at: Mapped[dt.datetime] = mapped_column(DateTime, default=dt.datetime.utcnow)
 
 

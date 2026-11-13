@@ -12,7 +12,7 @@ import openpyxl
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from .core.alarm import catat_audit
@@ -101,11 +101,12 @@ def _periksa_nik(session: Session, nik: str | None, kode: str) -> str | None:
 def _periksa_wilayah(session: Session, provinsi: str | None,
                      kabupaten_kota: str | None, desa: str | None,
                      lokasi_lama: tuple[str | None, str | None, str | None] | None = None) -> None:
-    """Batasi lokasi baru ke referensi ID_AUX.
+    """Batasi lokasi baru ke referensi ID_AUX + crosswalk Provinsi resmi.
 
     Baris lama yang seluruh lokasinya tidak berubah boleh tetap disunting pada
-    kolom lain. ID_AUX saat ini tidak memiliki data provinsi; nilai provinsi
-    baru ditolak sampai mapping resmi tersedia.
+    kolom lain. ID_AUX tidak memuat kolom Provinsi; nilainya kini diverifikasi
+    lewat `backend/data/crosswalk_provinsi_id_aux.csv` yang terhubung ke
+    `kabupaten_norm`. Nilai intake tidak dipakai sebagai pengganti.
     """
     from .api_traceability import muat_referensi_bawaan
     muat_referensi_bawaan(session)
@@ -126,9 +127,8 @@ def _periksa_wilayah(session: Session, provinsi: str | None,
         prov_lama = normalisasi_teks_wilayah(lokasi_lama[0]) if lokasi_lama else ""
         if not resmi and p_norm != prov_lama:
             raise HTTPException(422,
-                "Provinsi tidak dapat diverifikasi: referensi SCDF tidak menyediakan "
-                "kolom Provinsi. Kosongkan sementara atau tambahkan crosswalk "
-                "Provinsi resmi yang terhubung ke SCDF.")
+                "Provinsi tidak ditemukan pada crosswalk resmi SCDF. Pilih "
+                "Provinsi dari dropdown yang tersedia.")
 
     if k_norm:
         kondisi = [ReferensiWilayahTrace.kabupaten_norm == k_norm]
@@ -174,11 +174,12 @@ def pasang_router_collector(app, ambil_session):
     def pilihan_wilayah(provinsi: str | None = None,
                         kabupaten_kota: str | None = None,
                         session: Session = dep):
-        """Pilihan dropdown resmi yang benar-benar tersedia pada ID_AUX.
+        """Pilihan dropdown resmi dari ID_AUX + crosswalk Provinsi.
 
-        Provinsi hanya akan ditampilkan jika ada kolom/mapping provinsi pada
-        referensi resmi. ID_AUX saat ini tidak memuatnya; data intake tidak
-        dipakai sebagai pengganti referensi resmi.
+        Provinsi hanya ditampilkan bila crosswalk resmi sudah terpasang pada
+        `traceability_wilayah`. Data intake tidak dipakai sebagai pengganti
+        referensi resmi. Baris SCDF tanpa pemetaan Provinsi tetap tampil pada
+        dropdown Kabupaten/Kota dan Desa, tetapi tidak ditebak provinsinya.
         """
         from .api_traceability import muat_referensi_bawaan
 
@@ -199,8 +200,9 @@ def pasang_router_collector(app, ambil_session):
             select(ReferensiWilayahTrace.id).where(
                 ReferensiWilayahTrace.provinsi_norm == p_norm).limit(1)))
         if province_in_reference:
-            kabupaten_query = kabupaten_query.where(
-                ReferensiWilayahTrace.provinsi_norm == p_norm)
+            kabupaten_query = kabupaten_query.where(or_(
+                ReferensiWilayahTrace.provinsi_norm == p_norm,
+                ReferensiWilayahTrace.provinsi_norm.is_(None)))
         kabupaten_rows = session.execute(
             kabupaten_query.group_by(ReferensiWilayahTrace.kabupaten_norm)
             .order_by(ReferensiWilayahTrace.kabupaten_norm)).all()
@@ -210,10 +212,15 @@ def pasang_router_collector(app, ambil_session):
         desa_options: list[dict[str, str]] = []
         k_norm = normalisasi_kabupaten(kabupaten_kota)
         if k_norm:
+            kondisi_desa = [ReferensiWilayahTrace.kabupaten_norm == k_norm]
+            if province_in_reference:
+                kondisi_desa.append(or_(
+                    ReferensiWilayahTrace.provinsi_norm == p_norm,
+                    ReferensiWilayahTrace.provinsi_norm.is_(None)))
             desa_rows = session.execute(
                 select(ReferensiWilayahTrace.desa_norm,
                        func.min(ReferensiWilayahTrace.desa).label("nama"))
-                .where(ReferensiWilayahTrace.kabupaten_norm == k_norm)
+                .where(*kondisi_desa)
                 .group_by(ReferensiWilayahTrace.desa_norm)
                 .order_by(ReferensiWilayahTrace.desa_norm)
             ).all()
@@ -223,7 +230,7 @@ def pasang_router_collector(app, ambil_session):
             "provinsi": provinces,
             "kabupaten_kota": kabupaten_options,
             "desa": desa_options,
-            "catatan": "Referensi SCDF menyediakan Kabupaten/Kota dan Desa, tetapi tidak menyediakan Provinsi. Opsi Provinsi tidak diambil dari intake agar tetap sesuai sumber resmi.",
+            "catatan": "Provinsi berasal dari crosswalk resmi Kepmendagri yang terhubung ke ID_AUX; nilai intake tidak dipakai sebagai opsi. Kabupaten/Kota tanpa pemetaan Provinsi tetap tersedia tanpa ditebak.",
         }
 
     @router.get("/collector")
@@ -343,7 +350,7 @@ def pasang_router_collector(app, ambil_session):
             ["3. Afiliasi_Vendor harus memakai Kode_Vendor yang ada di Master Vendor."],
             ["4. NIK harus 16 angka. Atur format sel NIK sebagai Teks sebelum mengisi."],
             ["5. Kabupaten/Kota dan Desa harus sesuai dengan referensi SCDF; pilih nilainya pada form aplikasi."],
-            ["6. Referensi SCDF yang tersedia tidak memuat Provinsi; kolom Provinsi dibiarkan kosong sampai crosswalk resmi tersedia."],
+            ["6. Provinsi dipilih dari crosswalk resmi yang terhubung ke ID_AUX; jangan mengetik nama provinsi sendiri. Baris tanpa pemetaan resmi dibiarkan kosong."],
             ["7. Kode kolektor yang sudah ada akan diperbarui, bukan digandakan."],
             ["8. Sel opsional kosong saat impor tidak menghapus data yang sudah ada."],
             ["9. Baris dengan wilayah di luar referensi resmi ditolak; baris lain tetap diproses."],

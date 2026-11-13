@@ -198,6 +198,10 @@ def buat_app(engine: Engine | None = None) -> FastAPI:
     from .api_collector import pasang_router_collector
     pasang_router_collector(app, ambil_session)
 
+    # Master Data → SCDF (katalog lokasi Indonesia, baca saja)
+    from .api_master_scdf import pasang_router_master_scdf
+    pasang_router_master_scdf(app, ambil_session)
+
     # Traceability (agregasi server-side + referensi ID_AUX)
     from .api_traceability import pasang_router_traceability
     pasang_router_traceability(app, ambil_session)
@@ -205,6 +209,10 @@ def buat_app(engine: Engine | None = None) -> FastAPI:
     # Peta sentra produksi karet + rata-rata intake internal per tahun
     from .api_potensi import pasang_router_potensi
     pasang_router_potensi(app, ambil_session)
+
+    # Kepatuhan vendor sampling (laporan workbook Monitoring Vendor RM)
+    from .api_kepatuhan_vendor import pasang_router_kepatuhan
+    pasang_router_kepatuhan(app, ambil_session)
 
     # Rute modul Database (info, kosongkan, ekspor, impor)
     from .api_database import pasang_router_database
@@ -267,6 +275,19 @@ def buat_app(engine: Engine | None = None) -> FastAPI:
                     "unggah-pratinjau", "unggah-mismatch-xlsx",
                     "vendor-profil",
                     "master-collector",
+                    "kepatuhan-vendor-sampling",
+                    "traceability-tree",
+                    "traceability-scdf-typo",
+                    "traceability-gap-drilldown",
+                    "scdf-provinsi-crosswalk",
+                    "intake-quick-fill",
+                    "intake-excel-diff",
+                    "kartu-konsistensi-intake-vendor",
+                    "kartu-ringkasan-vendor-trip",
+                    "kartu-intake-terakhir-wilayah-vendor-periode",
+                    "master-scdf-hierarki",
+                    "master-scdf-pencarian",
+                    "ekspor-template-export",
                 ],
                 # versi kode ikut dilaporkan supaya mudah membandingkan
                 # folder yang dijalankan dengan kode terbaru di repo

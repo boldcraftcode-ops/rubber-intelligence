@@ -1,20 +1,32 @@
 """API Traceability: volume Dry teragregasi di server, referensi wilayah dan ekspor."""
 from __future__ import annotations
 
+import csv
 import datetime as dt
 import io
+from collections import defaultdict
 from pathlib import Path
 
 import openpyxl
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
-from sqlalchemy import (String, and_, case, cast, distinct, func, or_, select, tuple_)
+from sqlalchemy import (String, and_, case, cast, distinct, func, or_, select,
+                        tuple_, update)
 from sqlalchemy.orm import Session, aliased
 
 from .auth_lokal import info_pengguna, wajib_admin
 from .core.alarm import catat_audit
+from .core.deteksi_salah_ketik import (ambang_untuk, indeks_kandidat,
+                                       norma_mirip, skor_kemiripan,
+                                       skor_pasangan)
+from .core.kelas_intake import (KELAS_URUTAN, batas_untuk_layar,
+                                 distribusi as distribusi_kelas,
+                                 kelas as kelas_intake, kelas_tertinggi)
 from .core.klasifikasi_vendor import label as label_klasifikasi
+from .core.sourcing_type import (bakukan as bakukan_sourcing,
+                                 daftar_untuk_layar as daftar_sourcing,
+                                 label as label_sourcing)
 from .core.traceability import (normalisasi_kabupaten, normalisasi_teks_wilayah,
                                 persen_traceable, rentang_periode)
 from .models import (Collector, KoreksiWilayahTrace, PengaturanTraceability,
@@ -24,58 +36,128 @@ from .models import (Collector, KoreksiWilayahTrace, PengaturanTraceability,
 def _desa_norm(teks: str | None) -> str:
     return normalisasi_teks_wilayah(teks) or ""
 
-# Pabrik tujuan akhir rantai. Saat ini hanya satu: PT. BSRE.
-PABRIK = {"code": "PT. BSRE", "name": "PT. BSRE"}
-
 NAMA_FILE_REFERENSI = Path(__file__).resolve().parents[1] / "data" / "ID_AUX.xlsx"
+NAMA_FILE_CROSSWALK = (Path(__file__).resolve().parents[1] / "data"
+                       / "crosswalk_provinsi_id_aux.csv")
+#: Crosswalk hanya dipasang pada tabel referensi ID_AUX skala penuh, bukan
+#: pada fixture tes/import kecil yang sengaja belum punya Provinsi.
+BATAS_REFERENSI_RES = 80_000
+
+
+def baca_crosswalk_provinsi(path: Path | None = None) -> dict[str, tuple[str, str]]:
+    """Baca crosswalk resmi Kabupaten/Kota → Provinsi.
+
+    Hasilnya `kabupaten_norm -> (provinsi, provinsi_norm)`. Kunci yang
+    dipetakan ke lebih dari satu provinsi dibuang supaya tidak ada tebakan.
+    """
+    sumber = path or NAMA_FILE_CROSSWALK
+    if not sumber.exists():
+        return {}
+    kandidat: dict[str, set[tuple[str, str]]] = defaultdict(set)
+    with sumber.open("r", encoding="utf-8", newline="") as f:
+        for baris in csv.DictReader(f):
+            kab = normalisasi_kabupaten(baris.get("kabupaten_norm"))
+            prov = (baris.get("provinsi") or "").strip()
+            if not kab or not prov:
+                continue
+            kandidat[kab].add((prov, normalisasi_teks_wilayah(prov)))
+    return {k: next(iter(v)) for k, v in kandidat.items() if len(v) == 1}
+
+
+def terapkan_crosswalk_provinsi(session: Session, path: Path | None = None) -> int:
+    """Isi `provinsi`/`provinsi_norm` pada baris SCDF yang masih kosong.
+
+    Tidak menimpa nilai yang sudah ada, tidak menyentuh tabel intake, dan
+    aman dipanggil berulang.
+    """
+    peta = baca_crosswalk_provinsi(path)
+    if not peta:
+        return 0
+    perlu = session.scalar(
+        select(func.count()).select_from(ReferensiWilayahTrace)
+        .where(ReferensiWilayahTrace.provinsi_norm.is_(None))) or 0
+    if not perlu:
+        return 0
+    total = 0
+    for kab, (prov, pnorm) in peta.items():
+        hasil = session.execute(
+            update(ReferensiWilayahTrace)
+            .where(ReferensiWilayahTrace.kabupaten_norm == kab,
+                   ReferensiWilayahTrace.provinsi_norm.is_(None))
+            .values(provinsi=prov, provinsi_norm=pnorm))
+        total += hasil.rowcount or 0
+    session.commit()
+    return total
+
+
+def kabupaten_memiliki_provinsi(session: Session, kabupaten_norm: str) -> bool:
+    """Apakah Kabupaten/Kota ini sudah terikat ke Provinsi crosswalk resmi."""
+    if not kabupaten_norm:
+        return False
+    return session.scalar(
+        select(ReferensiWilayahTrace.id)
+        .where(ReferensiWilayahTrace.kabupaten_norm == kabupaten_norm,
+               ReferensiWilayahTrace.provinsi_norm.is_not(None))
+        .limit(1)) is not None
 
 
 def muat_referensi_bawaan(session: Session, path: Path | None = None) -> int:
-    """Seed ID_AUX satu kali; file tidak membawa kode wilayah, jadi Code NULL."""
-    if (session.scalar(select(func.count()).select_from(ReferensiWilayahTrace)) or 0) > 0:
-        return 0
-    sumber = path or NAMA_FILE_REFERENSI
-    if not sumber.exists():
-        return 0
-    wb = openpyxl.load_workbook(sumber, read_only=True, data_only=True)
-    try:
-        ws = wb["ID AUX"] if "ID AUX" in wb.sheetnames else wb[wb.sheetnames[0]]
-        seen: set[tuple[str, str, str]] = set()
-        batch: list[dict] = []
-        jumlah = 0
-        for row in ws.iter_rows(min_row=2, values_only=True):
-            kab_kec = str(row[0] or "").strip()
-            desa = str(row[1] or "").strip()
-            match = row[3] if len(row) > 3 else None
-            if not kab_kec or not desa or match not in (1, True, "1"):
-                continue
-            kabupaten, pemisah, kecamatan = kab_kec.partition("_")
-            if not pemisah or not kabupaten.strip() or not kecamatan.strip():
-                continue
-            kabupaten, kecamatan, desa = kabupaten.strip(), kecamatan.strip(), desa.strip()
-            kunci = (normalisasi_kabupaten(kabupaten),
-                     normalisasi_teks_wilayah(kecamatan),
-                     normalisasi_teks_wilayah(desa))
-            if not all(kunci) or kunci in seen:
-                continue
-            seen.add(kunci)
-            batch.append({
-                "provinsi_norm": None, "provinsi": None,
-                "kabupaten_norm": kunci[0], "kecamatan_norm": kunci[1],
-                "desa_norm": kunci[2], "kabupaten": kabupaten,
-                "kecamatan": kecamatan, "desa": desa, "code": None,
-            })
-            if len(batch) >= 2000:
-                session.execute(ReferensiWilayahTrace.__table__.insert(), batch)
-                jumlah += len(batch)
-                batch.clear()
-        if batch:
-            session.execute(ReferensiWilayahTrace.__table__.insert(), batch)
-            jumlah += len(batch)
-        session.commit()
-        return jumlah
-    finally:
-        wb.close()
+    """Seed ID_AUX satu kali, lalu pasang crosswalk Provinsi bila skala penuh.
+
+    ID_AUX tidak membawa kode administrasi, jadi kolom `code` tetap NULL.
+    """
+    jumlah = 0
+    if (session.scalar(select(func.count()).select_from(ReferensiWilayahTrace)) or 0) == 0:
+        sumber = path or NAMA_FILE_REFERENSI
+        if sumber.exists():
+            wb = openpyxl.load_workbook(sumber, read_only=True, data_only=True)
+            try:
+                ws = wb["ID AUX"] if "ID AUX" in wb.sheetnames else wb[wb.sheetnames[0]]
+                seen: set[tuple[str, str, str]] = set()
+                batch: list[dict] = []
+                for row in ws.iter_rows(min_row=2, values_only=True):
+                    kab_kec = str(row[0] or "").strip()
+                    desa = str(row[1] or "").strip()
+                    match = row[3] if len(row) > 3 else None
+                    if not kab_kec or not desa or match not in (1, True, "1"):
+                        continue
+                    kabupaten, pemisah, kecamatan = kab_kec.partition("_")
+                    if not pemisah or not kabupaten.strip() or not kecamatan.strip():
+                        continue
+                    kabupaten, kecamatan, desa = (kabupaten.strip(),
+                                                 kecamatan.strip(), desa.strip())
+                    kunci = (normalisasi_kabupaten(kabupaten),
+                             normalisasi_teks_wilayah(kecamatan),
+                             normalisasi_teks_wilayah(desa))
+                    if not all(kunci) or kunci in seen:
+                        continue
+                    seen.add(kunci)
+                    batch.append({
+                        "provinsi_norm": None, "provinsi": None,
+                        "kabupaten_norm": kunci[0], "kecamatan_norm": kunci[1],
+                        "desa_norm": kunci[2], "kabupaten": kabupaten,
+                        "kecamatan": kecamatan, "desa": desa, "code": None,
+                    })
+                    if len(batch) >= 2000:
+                        session.execute(ReferensiWilayahTrace.__table__.insert(), batch)
+                        jumlah += len(batch)
+                        batch.clear()
+                if batch:
+                    session.execute(ReferensiWilayahTrace.__table__.insert(), batch)
+                    jumlah += len(batch)
+                session.commit()
+            finally:
+                wb.close()
+    if (session.scalar(select(func.count()).select_from(ReferensiWilayahTrace)) or 0) \
+            >= BATAS_REFERENSI_RES:
+        terapkan_crosswalk_provinsi(session)
+    return jumlah
+
+
+class SourcingTypeMasuk(BaseModel):
+    """Pilihan sourcing type yang diisi dari tabel Supplier Actors."""
+    sourcing_type: str | None = None
+    pengisi: str = "?"
 
 
 class PengaturanMasuk(BaseModel):
@@ -87,8 +169,20 @@ class KoreksiLokasiMasuk(BaseModel):
     source_kabupaten_norm: str = Field(max_length=120)
     source_kecamatan_norm: str = Field(max_length=120)
     source_desa_norm: str = Field(max_length=120)
+    target_kabupaten_norm: str | None = Field(default=None, max_length=120)
     target_kecamatan_norm: str | None = Field(default=None, max_length=120)
     target_desa_norm: str | None = Field(default=None, max_length=120)
+
+
+class KoreksiGapMasuk(KoreksiLokasiMasuk):
+    """Koreksi SCDF dari modal gap; node asal tetap diverifikasi server."""
+    tingkat: str = Field(min_length=1, max_length=30)
+    name: str = Field(min_length=1, max_length=200)
+    parent_path: str = Field(default="—", max_length=400)
+
+
+TINGKAT_GAP = {"Kabupaten/Kota": 1, "Kecamatan": 2, "Desa/Kelurahan": 3}
+KOSONG_WILAYAH = "(BELUM DIISI)"
 
 
 def _dedup_ids():
@@ -137,12 +231,243 @@ def _filter_base(session: Session, tahun: int | None, periode: str,
     return q.subquery()
 
 
+def _supplier_bulan(session: Session, base,
+                    supplier_code: str | None = None) -> list[dict]:
+    """Agregat Dry per (bulan, supplier) dari baris intake terfilter.
+
+    SQL mengelompokkan per tanggal + vendor, lalu bulan dirangkum di Python.
+    Ini sengaja tidak memakai ``strftime`` agar tetap jalan di SQLite maupun
+    PostgreSQL. Klasifikasi memakai MT sebelum dibulatkan.
+    """
+    T = TiketBaris
+    q = (select(T.ticket_date.label("tanggal"), T.kode_vendor,
+                func.sum(T.dry_kg).label("dry"))
+         .select_from(T).join(base, base.c.id == T.id)
+         .group_by(T.ticket_date, T.kode_vendor))
+    if supplier_code:
+        q = q.where(T.kode_vendor == supplier_code)
+    kumpul: dict[tuple[str, str], float] = {}
+    for r in session.execute(q):
+        bulan = str(r.tanggal)[:7]
+        kunci = (bulan, r.kode_vendor)
+        kumpul[kunci] = kumpul.get(kunci, 0.0) + float(r.dry or 0)
+    hasil = []
+    for (bulan, kode), kg in sorted(kumpul.items()):
+        mt = kg / 1000.0
+        hasil.append({"bulan": bulan, "supplier_code": kode,
+                      "dry_mt": round(mt, 3), "kelas": kelas_intake(mt)})
+    return hasil
+
+
 def _koreksi_kunci(T, K):
     return and_(
         func.coalesce(K.source_kabupaten_norm, "") == func.coalesce(T.kabupaten_norm, ""),
         func.coalesce(K.source_kecamatan_norm, "") == func.coalesce(T.kecamatan_norm, ""),
         func.coalesce(K.source_desa_norm, "") == func.coalesce(T.desa_norm, ""),
     )
+
+
+def _label_gap(tingkat: str, name: str, parent_path: str) -> list[str]:
+    """Pastikan path modal cocok dengan tingkat pohon Traceability."""
+    if tingkat not in TINGKAT_GAP:
+        raise HTTPException(422, "Tingkat gap harus Kabupaten/Kota, Kecamatan, atau Desa/Kelurahan.")
+    bersih = (parent_path or "").strip()
+    induk = ([] if bersih in ("", "—")
+             else [bagian.strip() or KOSONG_WILAYAH
+                   for bagian in bersih.split(" / ")])
+    if len(induk) != TINGKAT_GAP[tingkat] - 1:
+        raise HTTPException(422, "Parent wilayah tidak sesuai dengan tingkat KPI.")
+    return induk + [(name or "").strip() or KOSONG_WILAYAH]
+
+
+def _rincian_gap(session: Session, base, tingkat: str, name: str,
+                 parent_path: str, info_filter: dict,
+                 batas_tiket: int = 200,
+                 sertakan_tiket: bool = True) -> dict:
+    """Baris sumber di balik SATU node gap, memakai aturan `_wilayah`.
+
+    Tidak ada penulisan data. Baris dikelompokkan per kunci koreksi
+    (kabupaten/kecamatan/desa normalized sumber) agar pengguna memperbaiki
+    satu kombinasi sekaligus, tanpa mengubah intake asli.
+    """
+    label = _label_gap(tingkat, name, parent_path)
+    T = TiketBaris
+    K = KoreksiWilayahTrace
+    target = aliased(ReferensiWilayahTrace)
+    kab_ref = (select(ReferensiWilayahTrace.kabupaten_norm.label("kabupaten_norm"),
+                      func.min(ReferensiWilayahTrace.id).label("id"))
+               .group_by(ReferensiWilayahTrace.kabupaten_norm).subquery())
+    kec_ref = (select(ReferensiWilayahTrace.kabupaten_norm.label("kabupaten_norm"),
+                      ReferensiWilayahTrace.kecamatan_norm.label("kecamatan_norm"),
+                      func.min(ReferensiWilayahTrace.id).label("id"))
+               .group_by(ReferensiWilayahTrace.kabupaten_norm,
+                         ReferensiWilayahTrace.kecamatan_norm).subquery())
+    desa_ref = (select(ReferensiWilayahTrace.kabupaten_norm.label("kabupaten_norm"),
+                       ReferensiWilayahTrace.kecamatan_norm.label("kecamatan_norm"),
+                       ReferensiWilayahTrace.desa_norm.label("desa_norm"),
+                       func.min(ReferensiWilayahTrace.id).label("id"))
+                .group_by(ReferensiWilayahTrace.kabupaten_norm,
+                          ReferensiWilayahTrace.kecamatan_norm,
+                          ReferensiWilayahTrace.desa_norm).subquery())
+    kab = func.coalesce(target.kabupaten_norm, T.kabupaten_norm)
+    kec = func.coalesce(target.kecamatan_norm, T.kecamatan_norm)
+    desa = func.coalesce(target.desa_norm, T.desa_norm)
+    label_kab = case((or_(kab.is_(None), kab == ""), KOSONG_WILAYAH), else_=kab)
+    label_kec = case((or_(kec.is_(None), kec == ""), KOSONG_WILAYAH), else_=kec)
+    label_desa = case((or_(desa.is_(None), desa == ""), KOSONG_WILAYAH), else_=desa)
+    manual = K.id.is_not(None)
+    valid_sumber = T.asal_getah_valid.is_(True)
+    ref_id = {"Kabupaten/Kota": kab_ref.c.id,
+              "Kecamatan": kec_ref.c.id,
+              "Desa/Kelurahan": desa_ref.c.id}[tingkat]
+    level_ok = and_(or_(manual, valid_sumber), ref_id.is_not(None))
+    terlacak = case((level_ok, 1), else_=0)
+
+    q = (select(T.id.label("baris_id"), T.ticket_no, T.ticket_date, T.line_seq,
+                T.kode_vendor, Vendor.nama_baku, T.nama_vendor_asli,
+                T.item_code, T.asal_getah,
+                T.kabupaten, T.kecamatan, T.desa,
+                T.kabupaten_norm.label("source_kabupaten_norm"),
+                T.kecamatan_norm.label("source_kecamatan_norm"),
+                T.desa_norm.label("source_desa_norm"),
+                kab.label("kabupaten_norm"), kec.label("kecamatan_norm"),
+                desa.label("desa_norm"), T.dry_kg,
+                case((manual, 1), else_=0).label("manual_correction"),
+                case((valid_sumber, 1), else_=0).label("valid_asal_getah"),
+                ref_id.label("ref_id"), K.id.label("correction_id"),
+                target.kabupaten.label("target_kabupaten"),
+                target.kecamatan.label("target_kecamatan"),
+                target.desa.label("target_desa"),
+                target.kabupaten_norm.label("target_kabupaten_norm"),
+                target.kecamatan_norm.label("target_kecamatan_norm"),
+                target.desa_norm.label("target_desa_norm"))
+         .select_from(T).join(base, base.c.id == T.id)
+         .outerjoin(K, _koreksi_kunci(T, K))
+         .outerjoin(target, target.id == K.target_ref_id)
+         .outerjoin(kab_ref, kab_ref.c.kabupaten_norm == kab)
+         .outerjoin(kec_ref, and_(kec_ref.c.kabupaten_norm == kab,
+                                  kec_ref.c.kecamatan_norm == kec))
+         .outerjoin(desa_ref, and_(desa_ref.c.kabupaten_norm == kab,
+                                   desa_ref.c.kecamatan_norm == kec,
+                                   desa_ref.c.desa_norm == desa))
+         .outerjoin(Vendor, Vendor.kode == T.kode_vendor)
+         .where(label_kab == label[0], terlacak == 0))
+    if len(label) >= 2:
+        q = q.where(label_kec == label[1])
+    if len(label) >= 3:
+        q = q.where(label_desa == label[2])
+    q = q.order_by(T.ticket_date.desc(), T.ticket_no.desc(),
+                   T.line_seq, T.id)
+
+    baris = list(session.execute(q).mappings())
+    kelompok: dict[tuple[str, str, str], dict] = {}
+    semua_tiket: set[str] = set()
+    for r in baris:
+        kunci = (r["source_kabupaten_norm"] or "",
+                 r["source_kecamatan_norm"] or "",
+                 r["source_desa_norm"] or "")
+        if not r["valid_asal_getah"] and not r["manual_correction"]:
+            alasan = "Asal Getah tidak valid"
+        elif r["ref_id"] is None:
+            alasan = f"{tingkat} tidak cocok dengan referensi SCDF"
+        else:
+            alasan = "Baris belum traceable"
+        if kunci not in kelompok:
+            kelompok[kunci] = {
+                "source_key": {"kabupaten_norm": kunci[0],
+                               "kecamatan_norm": kunci[1],
+                               "desa_norm": kunci[2]},
+                "source_kabupaten": r["kabupaten"] or kunci[0] or "—",
+                "source_kecamatan": r["kecamatan"] or kunci[1] or "—",
+                "source_desa": r["desa"] or kunci[2] or "—",
+                "effective": {"kabupaten_norm": r["kabupaten_norm"] or "",
+                              "kecamatan_norm": r["kecamatan_norm"] or "",
+                              "desa_norm": r["desa_norm"] or ""},
+                "manual_correction": bool(r["correction_id"]),
+                "target_saat_ini": ({
+                    "kabupaten": r["target_kabupaten"],
+                    "kecamatan": r["target_kecamatan"],
+                    "desa": r["target_desa"],
+                    "kabupaten_norm": r["target_kabupaten_norm"],
+                    "kecamatan_norm": r["target_kecamatan_norm"],
+                    "desa_norm": r["target_desa_norm"],
+                } if r["correction_id"] else None),
+                "pilihan": {
+                    "kabupaten_norm": kunci[0],
+                    "kecamatan_norm": (r["target_kecamatan_norm"] or
+                                       r["kecamatan_norm"] or kunci[1]),
+                    "desa_norm": (r["target_desa_norm"] or
+                                  r["desa_norm"] or kunci[2]),
+                },
+                "dry_kg": 0.0, "ticket_lines": 0,
+                "ticket_no": set(), "alasan": set(), "tiket": [],
+            }
+        g = kelompok[kunci]
+        g["dry_kg"] += float(r["dry_kg"] or 0)
+        g["ticket_lines"] += 1
+        g["alasan"].add(alasan)
+        if r["ticket_no"]:
+            semua_tiket.add(str(r["ticket_no"]))
+            g["ticket_no"].add(str(r["ticket_no"]))
+        if sertakan_tiket:
+            g["tiket"].append({
+                "baris_id": int(r["baris_id"]),
+                "ticket_no": r["ticket_no"],
+                "line_seq": int(r["line_seq"] or 0),
+                "ticket_date": (r["ticket_date"].isoformat()
+                                if r["ticket_date"] else None),
+                "supplier_code": r["kode_vendor"],
+                "supplier": (r["nama_baku"] or r["nama_vendor_asli"] or
+                             r["kode_vendor"] or "—"),
+                "item_code": r["item_code"] or "—",
+                "asal_getah": r["asal_getah"] or "—",
+                "kabupaten": r["kabupaten"] or kunci[0] or "—",
+                "kecamatan": r["kecamatan"] or kunci[1] or "—",
+                "desa": r["desa"] or kunci[2] or "—",
+                "dry_kg": round(float(r["dry_kg"] or 0), 3),
+                "reason": alasan,
+                "asal_getah_valid": bool(r["valid_asal_getah"]),
+                "manual_correction": bool(r["manual_correction"]),
+            })
+
+    hasil = []
+    for g in kelompok.values():
+        semua_baris = sorted(g["tiket"], key=lambda x: (
+            x["ticket_date"] or "", x["ticket_no"] or "", x["line_seq"]),
+            reverse=True)
+        hasil.append({
+            "source_key": g["source_key"],
+            "source_kabupaten": g["source_kabupaten"],
+            "source_kecamatan": g["source_kecamatan"],
+            "source_desa": g["source_desa"],
+            "effective": g["effective"],
+            "manual_correction": g["manual_correction"],
+            "target_saat_ini": g["target_saat_ini"],
+            "pilihan": g["pilihan"],
+            "dry_kg": round(g["dry_kg"], 3),
+            "dry_mt": round(g["dry_kg"] / 1000, 3),
+            "ticket_lines": g["ticket_lines"],
+            "tickets": len(g["ticket_no"]),
+            "alasan": " · ".join(sorted(g["alasan"])),
+            "tiket_terpotong": len(semua_baris) > batas_tiket,
+            "tiket": semua_baris[:batas_tiket] if sertakan_tiket else [],
+        })
+    hasil.sort(key=lambda x: (-x["dry_kg"], x["source_key"]["kabupaten_norm"],
+                              x["source_key"]["kecamatan_norm"],
+                              x["source_key"]["desa_norm"]))
+    return {
+        "filters": info_filter,
+        "tingkat": tingkat, "name": name, "parent_path": parent_path,
+        "path": label,
+        "dry_kg": round(sum(float(r["dry_kg"] or 0) for r in baris), 3),
+        "dry_mt": round(sum(float(r["dry_kg"] or 0) for r in baris) / 1000, 3),
+        "ticket_lines": len(baris), "tickets": len(semua_tiket),
+        "jumlah_kelompok": len(hasil), "kelompok": hasil,
+        "batas_tiket": batas_tiket,
+        "catatan": ("Rincian mengikuti filter aktif dan aturan traceability "
+                    "pada tingkat KPI ini. Koreksi SCDF hanya ditulis setelah "
+                    "Simpan; intake asli dan referensi SCDF tidak diubah."),
+    }
 
 
 def _rentang_tahun(session: Session) -> list[int]:
@@ -286,10 +611,12 @@ def _buat_xlsx(utama: dict, aktor: list[dict], unmapped: list[dict] | None = Non
     tambah(utama["wilayah"])
     wa = wb.create_sheet("Supplier Actors")
     wa.append(["Supplier Code", "Supplier", "Direct Producer", "Tickets", "Dry (MT)",
-               "Regencies", "Traceable Dry (MT)"])
+               "Regencies", "Traceable Dry (MT)", "Sourcing type",
+               "Sourcing type source"])
     for a in aktor:
         wa.append([a["supplier_code"], a["supplier"], "Yes" if a["is_direct_producer"] else "No",
-                   a["tickets"], a["dry_mt"], a["regencies"], a["traceable_mt"]])
+                   a["tickets"], a["dry_mt"], a["regencies"], a["traceable_mt"],
+                   a.get("sourcing_type"), a.get("sourcing_type_source")])
     if unmapped is not None:
         wu = wb.create_sheet("Unmapped Records")
         wu.append(["Ticket No", "Date", "Supplier Code", "Supplier", "Item Code",
@@ -364,7 +691,7 @@ def pasang_router_traceability(app, ambil_session):
         trace_ok = and_(or_(K.id.is_not(None), T.asal_getah_valid.is_(True)), reg_ok)
         q = (select(T.kode_vendor, C.kode.label("collector_code"),
                     Vendor.nama_baku, Vendor.klasifikasi,
-                    Vendor.is_direct_producer,
+                    Vendor.is_direct_producer, Vendor.sourcing_type,
                     func.min(T.nama_vendor_asli).label("nama_intake"),
                     func.min(C.nama).label("collector_name"),
                     func.count(distinct(T.ticket_no)).label("tickets"),
@@ -386,7 +713,7 @@ def pasang_router_traceability(app, ambil_session):
                                                             "_", " ")) == func.coalesce(target.desa_norm, ""))))
              .outerjoin(reg, reg.c.kabupaten_norm == kab_eff)
              .group_by(T.kode_vendor, C.kode, Vendor.nama_baku, Vendor.klasifikasi,
-                       Vendor.is_direct_producer)
+                       Vendor.is_direct_producer, Vendor.sourcing_type)
              .order_by(func.sum(T.dry_kg).desc(), T.kode_vendor, C.kode))
         result: dict[str, dict] = {}
         for r in session.execute(q).mappings():
@@ -394,6 +721,20 @@ def pasang_router_traceability(app, ambil_session):
             collector_code = r["collector_code"]
             direct = bool(r["is_direct_producer"])
             klasifikasi = label_klasifikasi(r["klasifikasi"])
+            kode_sourcing = r["sourcing_type"]
+            label_s = label_sourcing(kode_sourcing)
+            if label_s:
+                sourcing = label_s
+                sumber_sourcing = "Supplier Actors"
+            elif direct:
+                sourcing = "Direct producer (provisional)"
+                sumber_sourcing = "Master Vendor"
+            elif klasifikasi:
+                sourcing = klasifikasi
+                sumber_sourcing = "Master Vendor"
+            else:
+                sourcing = "Belum diklasifikasi"
+                sumber_sourcing = "Belum tersedia pada data intake/master"
             actor = result.setdefault(code, {
                 "supplier_code": code,
                 "supplier": r["nama_baku"] or r["nama_intake"] or code,
@@ -405,8 +746,9 @@ def pasang_router_traceability(app, ambil_session):
                 "tier": "T1",
                 "activity_type": klasifikasi,
                 "terminal_status": None,
-                "sourcing_type": ("Direct producer (provisional)" if direct
-                                  else (klasifikasi or "Belum diklasifikasi")),
+                "sourcing_type": sourcing,
+                "sourcing_type_code": kode_sourcing,
+                "sourcing_type_source": sumber_sourcing,
                 "tickets": 0,
                 "dry_mt": 0.0,
                 "period_turnover_mt": 0.0,
@@ -519,193 +861,52 @@ def pasang_router_traceability(app, ambil_session):
             return _buat_xlsx(data, actors(session, base_for_actors))
         return data
 
+    @router.get("/kelas-intake")
+    def kelas_intake_supplier(tahun: int | None = None, periode: str = "ALL",
+                              supplier: str | None = None,
+                              eudr: str = Query("all", pattern="^(all|eudr|non_eudr)$"),
+                              include_latex: bool = False, session: Session = dep):
+        """Distribusi kelas supplier dari Dry (MT) per supplier per bulan.
+
+        Ringkasan hanya menghitung kode supplier yang punya baris Master
+        Vendor; kode yang hanya ada di intake tetap mendapat kelas pada detail
+        supplier, dan jumlahnya dilaporkan terpisah agar tidak tersembunyi.
+        """
+        years, effective_year, base = filter_data(
+            session, tahun, periode, supplier, eudr, include_latex)
+        semua = _supplier_bulan(session, base, supplier)
+        kode_master = set(session.scalars(select(Vendor.kode)))
+        terdaftar = [b for b in semua if b["supplier_code"] in kode_master]
+        tanpa_master = sorted({b["supplier_code"] for b in semua
+                               if b["supplier_code"] not in kode_master})
+        return {
+            "batas": batas_untuk_layar(),
+            "urutan": KELAS_URUTAN,
+            "distribusi": distribusi_kelas(b["kelas"] for b in terdaftar),
+            "total_supplier_bulan": len(terdaftar),
+            "total_dry_mt": round(sum(b["dry_mt"] for b in terdaftar), 3),
+            "bulan_tersedia": sorted({b["bulan"] for b in terdaftar}),
+            "supplier_bulan_tanpa_master": len(semua) - len(terdaftar),
+            "kode_tanpa_master": tanpa_master,
+            "catatan": (
+                "Kelas dihitung dari Dry (MT) per supplier per bulan dengan tanda ≥ "
+                "pada setiap batas. Distribusi hanya menghitung kode supplier yang "
+                "terdaftar di Master Vendor; kode yang hanya ada pada tiket intake "
+                "tetap mendapat kelas di detail supplier tetapi tidak masuk ringkasan."
+            ),
+            "filters": {"year": effective_year, "period": periode.upper(),
+                        "eudr": eudr, "include_latex": include_latex},
+            "years": years,
+        }
+
     @router.get("/actors")
     def supplier_actors(tahun: int | None = None, periode: str = "ALL",
                         supplier: str | None = None,
                         eudr: str = Query("all", pattern="^(all|eudr|non_eudr)$"),
                         include_latex: bool = False, session: Session = dep):
         _, _, base = filter_data(session, tahun, periode, supplier, eudr, include_latex)
-        return {"baris": actors(session, base)}
-
-    @router.get("/cards")
-    def kartu_traceability(tahun: int | None = None, periode: str = "ALL",
-                           supplier: str | None = None,
-                           eudr: str = Query("all", pattern="^(all|eudr|non_eudr)$"),
-                           include_latex: bool = False, session: Session = dep):
-        """Kartu rantai per entitas (vendor, kolektor, pabrik) per tiket intake.
-
-        Menjelaskan asal usul intake karet dari desa sampai ke factory. Setiap
-        entitas rantai mendapat satu kartu: vendor (T1), kolektor (T2), dan
-        pabrik tujuan akhir (PT. BSRE). Granularitas per baris tiket.
-        """
-        years, effective_year, base = filter_data(session, tahun, periode,
-                                                  supplier, eudr, include_latex)
-        T = TiketBaris
-        V = Vendor
-        C = Collector
-        # Baris tiket per tiket, digabung kolektor yang cocok berdasarkan
-        # desa sumber + afiliasi vendor. Fan-out kolektor dihilangkan nanti.
-        q = (select(
-                T.ticket_no, T.line_seq, T.ticket_date, T.item_code, T.dry_kg,
-                T.kode_vendor, V.nama_baku,
-                T.desa_norm, T.kecamatan_norm, T.kabupaten_norm,
-                T.desa, T.kecamatan, T.kabupaten,
-                C.kode.label("collector_code"),
-                C.nama.label("collector_name"),
-                C.desa.label("collector_desa"))
-             .select_from(T).join(base, base.c.id == T.id)
-             .outerjoin(V, V.kode == T.kode_vendor)
-             .outerjoin(C, and_(C.kode_vendor == T.kode_vendor,
-                                or_(
-                                    func.coalesce(C.desa, "") == "",
-                                    func.upper(func.replace(func.coalesce(C.desa, ""),
-                                                            "_", " ")) == func.coalesce(T.desa_norm, ""),
-                                    func.upper(func.replace(func.coalesce(C.desa, ""),
-                                                            "_", " ")) == func.coalesce(T.desa, ""))))
-             .order_by(T.ticket_no, T.line_seq, C.kode))
-        raw = list(session.execute(q).mappings())
-
-        def nama_tampilan(kolom_norm, kolom_asli):
-            return kolom_asli or (kolom_norm.title() if kolom_norm else None)
-
-        # Baris per tiket (kolektor pertama saja per tiket).
-        baris_tiket: dict[tuple, dict] = {}
-        for r in raw:
-            key = (r["ticket_no"], r["line_seq"])
-            if key in baris_tiket:
-                continue  # ambil kolektor pertama yang cocok
-            baris_tiket[key] = {
-                "ticket_no": r["ticket_no"],
-                "line_seq": r["line_seq"],
-                "date": r["ticket_date"].isoformat() if r["ticket_date"] else None,
-                "item_code": r["item_code"],
-                "dry_kg": round(float(r["dry_kg"] or 0), 3),
-                "dry_mt": round(float(r["dry_kg"] or 0) / 1000, 3),
-                "vendor_code": r["kode_vendor"],
-                "vendor_name": r["nama_baku"] or r["kode_vendor"],
-                "desa": nama_tampilan(r["desa_norm"], r["desa"]),
-                "kecamatan": nama_tampilan(r["kecamatan_norm"], r["kecamatan"]),
-                "kabupaten": nama_tampilan(r["kabupaten_norm"], r["kabupaten"]),
-                "desa_norm": r["desa_norm"] or "",
-                "kecamatan_norm": r["kecamatan_norm"] or "",
-                "kabupaten_norm": r["kabupaten_norm"] or "",
-                "collector_code": r["collector_code"],
-                "collector_name": r["collector_name"],
-            }
-
-        def rantai(baris: dict) -> list[dict]:
-            """Rantai desa → kecamatan → kabupaten → kolektor → vendor → pabrik."""
-            langkah = [
-                {"step": "desa", "level": "Sub-district", "name": baris["desa"],
-                 "code": baris["desa_norm"] or None},
-                {"step": "kecamatan", "level": "District", "name": baris["kecamatan"],
-                 "code": baris["kecamatan_norm"] or None},
-                {"step": "kabupaten", "level": "Regency", "name": baris["kabupaten"],
-                 "code": baris["kabupaten_norm"] or None},
-            ]
-            if baris["collector_code"]:
-                langkah.append({"step": "kolektor", "level": "Collector",
-                                "name": baris["collector_name"] or baris["collector_code"],
-                                "code": baris["collector_code"]})
-            langkah.append({"step": "vendor", "level": "Vendor (T1)",
-                            "name": baris["vendor_name"], "code": baris["vendor_code"]})
-            langkah.append({"step": "factory", "level": "Factory",
-                            "name": PABRIK["name"], "code": PABRIK["code"]})
-            return langkah
-
-        tiket_terurut = list(baris_tiket.values())
-        tiket_terurut.sort(key=lambda b: (b["ticket_no"], b["line_seq"]))
-
-        # ---- Kartu vendor (T1) per vendor ---------------------------------
-        vendor_baris: dict[str, list[dict]] = {}
-        vendor_kolektor: dict[str, set] = {}
-        for baris in tiket_terurut:
-            vendor_baris.setdefault(baris["vendor_code"], []).append(baris)
-            if baris["collector_code"]:
-                vendor_kolektor.setdefault(baris["vendor_code"], set()).add(
-                    (baris["collector_code"], baris["collector_name"]))
-
-        def total(baris_list):
-            return round(sum(float(b["dry_kg"] or 0) for b in baris_list) / 1000, 3)
-
-        kartu_vendor = []
-        for kode, baris_list in vendor_baris.items():
-            desa_unik = sorted({b["desa"] for b in baris_list if b["desa"]})
-            kartu_vendor.append({
-                "entity_type": "vendor",
-                "entity_code": kode,
-                "entity_name": baris_list[0]["vendor_name"],
-                "tier": "T2" if vendor_kolektor.get(kode) else "T1",
-                "factory": PABRIK,
-                "total_dry_mt": total(baris_list),
-                "tickets": len(baris_list),
-                "desa_count": len(desa_unik),
-                "desas": desa_unik,
-                "collectors": [{"code": c, "name": n}
-                               for c, n in sorted(vendor_kolektor.get(kode, set()))],
-                "chain_summary": rantai(baris_list[0]),
-                "lines": [{**b, "chain": rantai(b)} for b in baris_list],
-            })
-        kartu_vendor.sort(key=lambda k: k["total_dry_mt"], reverse=True)
-
-        # ---- Kartu kolektor (T2) per kolektor yang cocok -------------------
-        kolektor_baris: dict[str, list[dict]] = {}
-        kolektor_meta: dict[str, dict] = {}
-        for baris in tiket_terurut:
-            if not baris["collector_code"]:
-                continue
-            kolektor_baris.setdefault(baris["collector_code"], []).append(baris)
-            kolektor_meta.setdefault(baris["collector_code"], {
-                "name": baris["collector_name"] or baris["collector_code"],
-                "vendor_code": baris["vendor_code"],
-                "vendor_name": baris["vendor_name"],
-                "desa": baris["desa"],
-            })
-        kartu_kolektor = []
-        for kode, baris_list in kolektor_baris.items():
-            meta = kolektor_meta[kode]
-            kartu_kolektor.append({
-                "entity_type": "collector",
-                "entity_code": kode,
-                "entity_name": meta["name"],
-                "tier": "T2",
-                "desa": meta["desa"],
-                "vendor_code": meta["vendor_code"],
-                "vendor_name": meta["vendor_name"],
-                "factory": PABRIK,
-                "total_dry_mt": total(baris_list),
-                "tickets": len(baris_list),
-                "chain_summary": rantai(baris_list[0]),
-                "lines": [{**b, "chain": rantai(b)} for b in baris_list],
-            })
-        kartu_kolektor.sort(key=lambda k: k["total_dry_mt"], reverse=True)
-
-        # ---- Kartu pabrik (tujuan akhir, satu: PT. BSRE) --------------------
-        kartu_pabrik = {
-            "entity_type": "factory",
-            "entity_code": PABRIK["code"],
-            "entity_name": PABRIK["name"],
-            "factory": PABRIK,
-            "total_dry_mt": total(tiket_terurut),
-            "tickets": len(tiket_terurut),
-            "by_vendor": [
-                {"vendor_code": v, "vendor_name": bs[0]["vendor_name"],
-                 "dry_mt": total(bs), "tickets": len(bs),
-                 "desas": sorted({b["desa"] for b in bs if b["desa"]})}
-                for v, bs in sorted(vendor_baris.items(),
-                                    key=lambda kv: total(kv[1]), reverse=True)
-            ],
-        }
-
-        return {
-            "years": years, "year": effective_year, "period": periode.upper(),
-            "factory": PABRIK,
-            "filters": {"supplier": supplier, "eudr": eudr,
-                        "include_latex": include_latex},
-            "vendor_cards": kartu_vendor,
-            "collector_cards": kartu_kolektor,
-            "factory_card": kartu_pabrik,
-        }
+        return {"baris": actors(session, base),
+                "sourcing_type_options": daftar_sourcing()}
 
     def _actor_origins(session: Session, base, supplier_code: str) -> list[dict]:
         T = TiketBaris
@@ -762,6 +963,7 @@ def pasang_router_traceability(app, ambil_session):
                 (r["source_desa_norm"].title() if r["source_desa_norm"] else None),
                 "target_district_norm": r["ref_kecamatan_norm"] or r["source_kecamatan_norm"] or "",
                 "target_subdistrict_norm": r["ref_desa_norm"] or r["source_desa_norm"] or "",
+                "source_regency": r["source_kabupaten"] or r["source_kabupaten_norm"],
                 "source_district": r["source_kecamatan"] or r["source_kecamatan_norm"],
                 "source_sub_district": r["source_desa"] or r["source_desa_norm"],
                 "source_key": {
@@ -778,6 +980,214 @@ def pasang_router_traceability(app, ambil_session):
                 "tickets": int(r["tickets"] or 0),
             })
         return origins
+
+    def _supply_chain_lanes(session: Session, supplier_code: str,
+                            origins: list[dict]) -> dict:
+        """Lintasan rantai: Asal Getah -> Kolektor (T2) -> Vendor (T1).
+
+        Kolektor bukan aktor terpisah. Satu lintasan = satu kelompok lokasi
+        sumber dari ``_actor_origins``; kolektor dicocokkan lewat afiliasi
+        vendor yang sama dan kesamaan desa (nama asli maupun hasil koreksi
+        SCDF). Kolektor tanpa desa berlaku untuk semua desa. Volume diambil
+        langsung dari kelompok lokasi, sehingga tidak dihitung berulang
+        ketika beberapa kolektor cocok.
+        """
+        terdaftar = list(session.scalars(
+            select(Collector).where(Collector.kode_vendor == supplier_code)
+            .order_by(Collector.kode)))
+        lanes: list[dict] = []
+        kode_cocok: set[str] = set()
+        for origin in origins:
+            kunci = origin.get("source_key") or {}
+            desa_sumber = {
+                _desa_norm(origin.get("source_sub_district")),
+                _desa_norm(origin.get("sub_district")),
+                _desa_norm(origin.get("target_subdistrict_norm")),
+                _desa_norm(kunci.get("desa_norm")),
+            }
+            desa_sumber.discard("")
+            cocok: list[dict] = []
+            for c in terdaftar:
+                c_desa = _desa_norm(c.desa)
+                if c_desa and c_desa not in desa_sumber:
+                    continue
+                cocok.append({
+                    "kode": c.kode,
+                    "nama": c.nama,
+                    "desa": c.desa,
+                    "match": "desa" if c_desa else "semua_desa",
+                })
+                kode_cocok.add(c.kode)
+            # Kolektor dengan desa spesifik didahulukan daripada wildcard.
+            cocok.sort(key=lambda x: (x["match"] == "semua_desa", x["kode"]))
+            lanes.append({
+                "origin": origin,
+                "mode": "T2" if cocok else "T1",
+                "collector": cocok[0] if cocok else None,
+                "collectors": cocok,
+                "ambiguous": len(cocok) > 1,
+                "dry_mt": origin["dry_mt"],
+                "tickets": origin["tickets"],
+                "traceable_mt": origin["traceable_mt"],
+            })
+        return {
+            "nodes": ["Asal Getah", "Kolektor (T2)", "Vendor (T1)"],
+            "lane_count": len(lanes),
+            "lanes": lanes,
+            "ambiguous_lane_count": sum(1 for l in lanes if l["ambiguous"]),
+            "registered_collectors": len(terdaftar),
+            "matched_collectors": sorted(kode_cocok),
+            "collector_count": len(kode_cocok),
+            "total_dry_mt": round(sum(l["dry_mt"] for l in lanes), 3),
+            "note": (
+                "Satu baris Supplier Actors = satu rantai. Lintasan disusun dari "
+                "kesamaan desa Asal Getah dan afiliasi kolektor ke vendor; ini "
+                "inferensi dari data intake, bukan catatan transaksi jual-beli. "
+                "Pabrik/titik terima tidak tercatat pada data sehingga tidak "
+                "ditampilkan sebagai simpul."
+            ),
+            "ticket_note": (
+                "Tiket dihitung per kelompok lokasi sumber. Satu tiket yang "
+                "memuat beberapa desa dapat muncul di lebih dari satu lintasan; "
+                "pakai total tiket unik pada ringkasan untuk angka keseluruhan."
+            ),
+        }
+
+    @router.get("/tree")
+    @router.get("/pohon", include_in_schema=False)
+    def pohon_rantai_pasok(
+        tahun: int | None = None,
+        periode: str = "ALL",
+        supplier: str | None = None,
+        eudr: str = Query("all", pattern="^(all|eudr|non_eudr)$"),
+        include_latex: bool = False,
+        batas: int = Query(8, ge=0, le=100,
+                           description="Jumlah T1 terbesar; 0 = semua vendor"),
+        session: Session = dep):
+        """Pohon rantai pasok dari data intake + master, bukan contoh statis.
+
+        Kode tier sengaja dipertahankan: **T1 = vendor**, **T2 = kolektor**.
+        Pabrik hanya simpul akar visual; volumenya adalah jumlah Dry (kg)
+        vendor T1 yang tampil. Volume T2 berasal dari lintasan
+        ``_supply_chain_lanes`` sehingga tidak dihitung berulang saat satu
+        desa cocok dengan beberapa kolektor.
+        """
+        years, effective_year, base = filter_data(
+            session, tahun, periode, supplier, eudr, include_latex)
+        semua = actors(session, base)
+        semua.sort(key=lambda a: (
+            -float(a.get("period_turnover_mt") or 0),
+            str(a.get("supplier_code") or "")))
+        dipilih = semua if batas == 0 else semua[:batas]
+
+        nodus: list[dict] = [{
+            "id": "PABRIK", "kode": "PABRIK", "nama": "Pabrik",
+            "tier": "PABRIK", "label": "Pabrik", "volume_kg": 0.0,
+            "tickets": 0, "parents": [],
+        }]
+        sambungan: list[dict] = []
+        t2_map: dict[str, dict] = {}
+        anak_t1: dict[str, list[str]] = {}
+        ambiguous = 0
+        langsung_kg = 0.0
+
+        for a in dipilih:
+            kode = str(a.get("supplier_code") or "")
+            if not kode:
+                continue
+            nama = str(a.get("supplier") or kode)
+            kg = round(float(a.get("period_turnover_mt") or 0) * 1000, 1)
+            if kg <= 0:
+                continue
+            tiket = int(a.get("tickets") or 0)
+            nodus.append({
+                "id": kode, "kode": kode, "nama": nama, "tier": "T1",
+                "label": kode, "volume_kg": kg, "tickets": tiket,
+                "parents": ["PABRIK"],
+            })
+            sambungan.append({"dari": "PABRIK", "ke": kode, "volume_kg": kg})
+
+            origins = _actor_origins(session, base, kode)
+            rantai = _supply_chain_lanes(session, kode, origins)
+            ambiguous += int(rantai.get("ambiguous_lane_count") or 0)
+            per_kolektor: dict[str, float] = {}
+            info_kolektor: dict[str, dict] = {}
+            for lane in rantai.get("lanes") or []:
+                for c in lane.get("collectors") or []:
+                    ck_info = str(c.get("kode") or "")
+                    if ck_info:
+                        info_kolektor.setdefault(ck_info, {
+                            "nama": c.get("nama") or ck_info,
+                            "desa": c.get("desa"),
+                            "match": c.get("match"),
+                        })
+                c = lane.get("collector")
+                if not c:
+                    continue
+                ck = str(c.get("kode") or "")
+                if not ck:
+                    continue
+                per_kolektor[ck] = (per_kolektor.get(ck, 0.0)
+                                    + float(lane.get("dry_mt") or 0) * 1000)
+
+            anak: list[str] = []
+            for ck, nilai in sorted(per_kolektor.items(), key=lambda x: -x[1]):
+                kg_c = round(nilai, 1)
+                if kg_c <= 0:
+                    continue
+                info = info_kolektor.get(ck, {})
+                rek = t2_map.setdefault(ck, {
+                    "id": ck, "kode": ck,
+                    "nama": info.get("nama") or ck,
+                    "tier": "T2", "label": ck,
+                    "volume_kg": 0.0, "desa": info.get("desa"),
+                    "match": info.get("match"), "parents": [],
+                })
+                rek["volume_kg"] = round(rek["volume_kg"] + kg_c, 1)
+                if kode not in rek["parents"]:
+                    rek["parents"].append(kode)
+                sambungan.append({"dari": kode, "ke": ck, "volume_kg": kg_c})
+                anak.append(ck)
+            anak_t1[kode] = anak
+            langsung_kg += max(0.0, kg - sum(per_kolektor.values()))
+
+        t2_nodes = sorted(t2_map.values(),
+                          key=lambda n: (-float(n["volume_kg"]), str(n["kode"])))
+        nodus.extend(t2_nodes)
+        root_kg = round(sum(float(n["volume_kg"]) for n in nodus
+                            if n["tier"] == "T1"), 1)
+        nodus[0]["volume_kg"] = root_kg
+        nodus[0]["tickets"] = sum(int(n.get("tickets") or 0) for n in nodus
+                                  if n["tier"] == "T1")
+        return {
+            "sumber": "tiket_baris + Master Vendor + Master Collector",
+            "filters": {
+                "year": effective_year, "period": periode.upper(),
+                "supplier": supplier, "eudr": eudr,
+                "include_latex": include_latex, "batas": batas,
+            },
+            "years": years,
+            "kode_tier": {"PABRIK": "Pabrik", "T1": "Vendor", "T2": "Kolektor"},
+            "nodes": nodus,
+            "edges": sambungan,
+            "anak_t1": anak_t1,
+            "meta": {
+                "total_t1": len([n for n in nodus if n["tier"] == "T1"]),
+                "total_t2": len(t2_nodes),
+                "total_t1_semua": len(semua),
+                "terpotong": max(0, len(semua) - len(dipilih)),
+                "volume_pabrik_kg": root_kg,
+                "volume_tanpa_kolektor_kg": round(langsung_kg, 1),
+                "ambiguous_lane_count": ambiguous,
+            },
+            "catatan": (
+                "Data asli dari tiket intake dan master; T1 tetap vendor, T2 tetap "
+                "kolektor. Pabrik adalah simpul akar visual. Volume memakai Dry (kg) "
+                "pada filter halaman. Sebagian volume T1 dapat langsung masuk tanpa "
+                "kolektor tercatat; volume T2 adalah jumlah lintasan yang mempunyai "
+                "kolektor, bukan volume vendor yang diduplikasi."
+            ),
+        }
 
     @router.get("/actors/{supplier_code}")
     def detail_supplier_actor(supplier_code: str, tahun: int | None = None,
@@ -803,6 +1213,8 @@ def pasang_router_traceability(app, ambil_session):
         ) or 0
         classification = label_klasifikasi(vendor.klasifikasi) if vendor else None
         direct = bool(vendor.is_direct_producer) if vendor else False
+        kode_sourcing = vendor.sourcing_type if vendor else None
+        label_s = label_sourcing(kode_sourcing)
         has_collector = bool(session.scalar(
             select(Collector.kode).where(Collector.kode_vendor == supplier_code)
             .limit(1)))
@@ -815,6 +1227,10 @@ def pasang_router_traceability(app, ambil_session):
                 .order_by(Collector.kode))
              if _desa_norm(c.desa) in origin_desas or not _desa_norm(c.desa)), None)
         has_collector = matched_collector is not None
+        rantai = _supply_chain_lanes(session, supplier_code, origins)
+        rantai["tier"] = "T2" if has_collector else "T1"
+        bulan_kelas = _supplier_bulan(session, base, supplier_code)
+        supplier_class = kelas_tertinggi([b["kelas"] for b in bulan_kelas])
         return {
             "supplier_code": supplier_code,
             "supplier": (vendor.nama_baku if vendor else None) or nama_intake or supplier_code,
@@ -831,12 +1247,25 @@ def pasang_router_traceability(app, ambil_session):
             "country": "Indonesia" if origins else None,
             "top_geography": origins[0] if origins else None,
             "origins": origins,
+            "supply_chain": rantai,
+            "supplier_class": supplier_class,
+            "class_by_month": bulan_kelas,
+            "class_thresholds": batas_untuk_layar(),
+            "class_basis": (
+                "Kelas tertinggi yang dicapai pada periode terpilih, dihitung dari "
+                "Dry (MT) per supplier per bulan dengan tanda ≥ pada setiap batas. "
+                "Bukan klasifikasi Master Vendor dan bukan sourcing type."
+            ),
             "classification": classification,
             "is_direct_producer": direct,
-            "sourcing_type_label": ("Direct producer (provisional)" if direct
-                                    else (classification or "Belum diklasifikasi")),
-            "sourcing_type_source": ("Master Vendor" if classification or direct
-                                     else "Belum tersedia pada data intake/master"),
+            "sourcing_type_code": kode_sourcing,
+            "sourcing_type_label": (label_s or
+                                    ("Direct producer (provisional)" if direct
+                                     else (classification or "Belum diklasifikasi"))),
+            "sourcing_type_source": ("Supplier Actors" if label_s
+                                     else ("Master Vendor" if classification or direct
+                                           else "Belum tersedia pada data intake/master")),
+            "sourcing_type_options": daftar_sourcing(),
             "coordinates": None,
             "coordinates_note": "Koordinat tidak tersedia pada referensi SCDF atau data intake.",
             "source_from": origins,
@@ -846,6 +1275,46 @@ def pasang_router_traceability(app, ambil_session):
                         "eudr": eudr, "include_latex": include_latex},
             "years": years,
         }
+
+    @router.put("/actors/{supplier_code}/sourcing-type")
+    def ubah_sourcing_type(supplier_code: str, data: SourcingTypeMasuk,
+                           request: Request, session: Session = dep):
+        """Simpan sourcing type yang dipilih langsung di tabel Supplier Actors.
+
+        Field `klasifikasi` Master Vendor sengaja tidak disentuh. Bila kode
+        supplier hanya ada di intake (belum punya baris master), baris master
+        minimal disiapkan memakai nama vendor asli dari tiket.
+        """
+        kode = (supplier_code or "").strip().upper()
+        try:
+            baru = bakukan_sourcing(data.sourcing_type)
+        except ValueError as exc:
+            raise HTTPException(422, str(exc))
+        vendor = session.get(Vendor, kode)
+        if vendor is None:
+            nama = session.scalar(
+                select(func.min(TiketBaris.nama_vendor_asli))
+                .where(TiketBaris.kode_vendor == kode))
+            if not nama:
+                raise HTTPException(
+                    404, f"Supplier '{kode}' tidak ditemukan pada intake/master.")
+            vendor = Vendor(kode=kode, nama_baku=nama, status="aktif")
+            session.add(vendor)
+        lama = vendor.sourcing_type
+        vendor.sourcing_type = baru
+        pengguna = info_pengguna(request) or {}
+        catat_audit(session, pengguna.get("sub") or data.pengisi or "?",
+                    "ubah", "vendor", {
+                        "kode": kode, "field": "sourcing_type",
+                        "lama": lama, "baru": baru,
+                        "catatan": "Diisi dari form Supplier Actors; klasifikasi tidak diubah"})
+        session.commit()
+        return {"status": "tersimpan",
+                "pesan": f"Sourcing type {kode}: "
+                         f"{label_sourcing(baru) or 'Belum diisi'}.",
+                "supplier_code": kode,
+                "sourcing_type_code": baru,
+                "sourcing_type_label": label_sourcing(baru)}
 
     @router.get("/locations/districts")
     def pilihan_district(kabupaten_norm: str, session: Session = dep):
@@ -945,6 +1414,168 @@ def pasang_router_traceability(app, ambil_session):
                       "probabilitas bahwa lokasi saat ini pasti benar."),
         }
 
+    @router.get("/actors/{supplier_code}/origin-typo-check")
+    def deteksi_salah_ketik_asal(
+            supplier_code: str,
+            source_kabupaten_norm: str = Query(..., max_length=120),
+            source_kecamatan_norm: str = Query(..., max_length=120),
+            source_desa_norm: str = Query(..., max_length=120),
+            source_kecamatan: str | None = Query(default=None, max_length=120),
+            source_desa: str | None = Query(default=None, max_length=120),
+            session: Session = dep):
+        """Bandingkan District/Sub-district sumber dengan ejaan resmi SCDF.
+
+        Ini PELENGKAP rekomendasi intake tahun sebelumnya, bukan turunan dari
+        riwayat pembelian. Tidak ada data yang disimpan. Kandidat boleh berada
+        di Kabupaten/Kota SCDF lain; induk sumber tidak ditebak salah ketik,
+        tetapi pemetaan lintas induk tetap bisa dipilih secara eksplisit.
+        """
+        muat_referensi_bawaan(session)
+        kab_sumber = normalisasi_kabupaten(source_kabupaten_norm) or ""
+        kec_sumber = normalisasi_teks_wilayah(source_kecamatan_norm) or ""
+        desa_sumber = normalisasi_teks_wilayah(source_desa_norm) or ""
+        sumber = {
+            "supplier_code": supplier_code,
+            "kabupaten_norm": kab_sumber,
+            "kecamatan_norm": kec_sumber,
+            "desa_norm": desa_sumber,
+            "kecamatan": source_kecamatan or kec_sumber,
+            "desa": source_desa or desa_sumber,
+        }
+        dasar = (
+            "Membandingkan ejaan District dan Sub-district sumber dengan nama "
+            "resmi pada referensi SCDF. Huruf, spasi, tanda baca, dan awalan "
+            "umum seperti Gampong/Keuchik dibakukan terlebih dahulu. Ini "
+            "bukan rekomendasi pembelian/intake tahun sebelumnya."
+        )
+        catatan = (
+            "Skor kemiripan bukan probabilitas dan bukan vonis lokasi benar. "
+            "Tombol Pakai hanya mengisi pilihan; data tersimpan setelah Simpan. "
+            "Intake asli tetap tidak diubah."
+        )
+        if not kec_sumber or not desa_sumber:
+            return {"status": "sumber_tidak_lengkap", "source": sumber,
+                    "checks": {}, "candidates": [], "basis": dasar,
+                    "catatan": catatan}
+        jumlah_ref = session.scalar(
+            select(func.count()).select_from(ReferensiWilayahTrace)) or 0
+        if not jumlah_ref:
+            return {"status": "referensi_kosong", "source": sumber,
+                    "checks": {}, "candidates": [], "basis": dasar,
+                    "pesan": "Referensi SCDF belum termuat.", "catatan": catatan}
+
+        ada_district = session.scalar(
+            select(ReferensiWilayahTrace.id)
+            .where(ReferensiWilayahTrace.kabupaten_norm == kab_sumber,
+                   ReferensiWilayahTrace.kecamatan_norm == kec_sumber)
+            .limit(1)) is not None
+        ada_subdistrict = session.scalar(
+            select(ReferensiWilayahTrace.id)
+            .where(ReferensiWilayahTrace.kabupaten_norm == kab_sumber,
+                   ReferensiWilayahTrace.kecamatan_norm == kec_sumber,
+                   ReferensiWilayahTrace.desa_norm == desa_sumber)
+            .limit(1)) is not None
+
+        baris_kec = session.execute(
+            select(ReferensiWilayahTrace.kecamatan_norm,
+                   func.min(ReferensiWilayahTrace.kecamatan).label("label"))
+            .group_by(ReferensiWilayahTrace.kecamatan_norm)).all()
+        baris_desa = session.execute(
+            select(ReferensiWilayahTrace.desa_norm,
+                   func.min(ReferensiWilayahTrace.desa).label("label"))
+            .group_by(ReferensiWilayahTrace.desa_norm)).all()
+        label_kec = {r[0]: r[1] for r in baris_kec if r[0] and r[1]}
+        label_desa = {r[0]: r[1] for r in baris_desa if r[0] and r[1]}
+        indeks_kec = indeks_kandidat(list(label_kec.items()))
+        indeks_desa = indeks_kandidat(list(label_desa.items()))
+        kec_mirip = norma_mirip(kec_sumber, indeks_kec, maksimal=18)
+        desa_mirip = norma_mirip(desa_sumber, indeks_desa, maksimal=24)
+        if kec_sumber in label_kec:
+            kec_mirip[kec_sumber] = 100.0
+        if desa_sumber in label_desa:
+            desa_mirip[desa_sumber] = 100.0
+        kec_mirip = dict(sorted(kec_mirip.items(),
+                                key=lambda kv: (-kv[1], kv[0]))[:18])
+        desa_mirip = dict(sorted(desa_mirip.items(),
+                                 key=lambda kv: (-kv[1], kv[0]))[:24])
+
+        def ringkasan(norm: str, peta: dict[str, str],
+                      mirip: dict[str, float], exact: bool) -> dict:
+            daftar = [{"norm": k, "label": peta.get(k, k), "score_pct": v}
+                      for k, v in list(mirip.items())[:3]]
+            return {"input": norm, "exact": exact, "best": daftar[0] if daftar else None,
+                    "candidates": daftar}
+
+        checks = {
+            "district": ringkasan(kec_sumber, label_kec, kec_mirip, ada_district),
+            "subdistrict": ringkasan(desa_sumber, label_desa, desa_mirip,
+                                     ada_subdistrict),
+        }
+        if ada_subdistrict:
+            return {"status": "cocok", "source": sumber, "checks": checks,
+                    "candidates": [], "basis": dasar,
+                    "pesan": "District dan Sub-district sumber sudah persis ada "
+                             "pada referensi SCDF untuk induk ini.",
+                    "catatan": catatan}
+
+        kandidat: list[dict] = []
+        if kec_mirip and desa_mirip:
+            calon = session.execute(
+                select(ReferensiWilayahTrace.id,
+                       ReferensiWilayahTrace.kabupaten_norm,
+                       ReferensiWilayahTrace.kabupaten,
+                       ReferensiWilayahTrace.kecamatan_norm,
+                       ReferensiWilayahTrace.kecamatan,
+                       ReferensiWilayahTrace.desa_norm,
+                       ReferensiWilayahTrace.desa)
+                .where(ReferensiWilayahTrace.kecamatan_norm.in_(list(kec_mirip)),
+                       ReferensiWilayahTrace.desa_norm.in_(list(desa_mirip)))
+                .limit(6000)).mappings()
+            ambang_kec = ambang_untuk(kec_sumber)
+            ambang_desa = ambang_untuk(desa_sumber)
+            seen: set[int] = set()
+            for r in calon:
+                if r["id"] in seen:
+                    continue
+                seen.add(r["id"])
+                skor_kec = skor_kemiripan(kec_sumber, r["kecamatan_norm"])
+                skor_desa = skor_kemiripan(desa_sumber, r["desa_norm"])
+                if skor_kec < ambang_kec and skor_desa < ambang_desa:
+                    continue
+                skor = skor_pasangan(skor_kec, skor_desa)
+                if skor < 60.0:
+                    continue
+                kandidat.append({
+                    "ref_id": r["id"],
+                    "kabupaten": r["kabupaten"],
+                    "kabupaten_norm": r["kabupaten_norm"],
+                    "kecamatan": r["kecamatan"],
+                    "kecamatan_norm": r["kecamatan_norm"],
+                    "desa": r["desa"],
+                    "desa_norm": r["desa_norm"],
+                    "district_score_pct": skor_kec,
+                    "subdistrict_score_pct": skor_desa,
+                    "score_pct": skor,
+                    "same_regency": r["kabupaten_norm"] == kab_sumber,
+                    "dapat_dipakai": True,
+                    "alasan": (f"District {skor_kec:.1f}% · "
+                               f"Sub-district {skor_desa:.1f}%"),
+                })
+        kandidat.sort(key=lambda c: (
+            not c["same_regency"], -c["score_pct"],
+            -c["subdistrict_score_pct"], c["kabupaten"], c["kecamatan"], c["desa"]))
+        total_kandidat = len(kandidat)
+        kandidat = kandidat[:6]
+        return {
+            "status": "potensi_salah_ketik" if kandidat else "tidak_ada_kandidat",
+            "source": sumber, "checks": checks, "candidates": kandidat,
+            "candidate_count": total_kandidat, "basis": dasar,
+            "pesan": ("Ditemukan ejaan SCDF yang mirip; periksa sebelum memakai."
+                      if kandidat else
+                      "Tidak ada ejaan SCDF yang cukup mirip untuk ditawarkan."),
+            "catatan": catatan,
+        }
+
     @router.put("/actors/{supplier_code}/origin-correction")
     def simpan_koreksi_asal(supplier_code: str, data: KoreksiLokasiMasuk,
                             request: Request, tahun: int | None = None,
@@ -969,17 +1600,19 @@ def pasang_router_traceability(app, ambil_session):
             KoreksiWilayahTrace.source_kecamatan_norm == source_kec,
             KoreksiWilayahTrace.source_desa_norm == source_desa))
         sebelumnya = koreksi.target_ref_id if koreksi else None
+        target_kab_norm = normalisasi_kabupaten(
+            data.target_kabupaten_norm) or source_kab
         target_kec_norm = normalisasi_teks_wilayah(
             data.target_kecamatan_norm or source_kec)
         target_norm = normalisasi_teks_wilayah(data.target_desa_norm)
         if target_norm:
             target = session.scalar(select(ReferensiWilayahTrace).where(
-                ReferensiWilayahTrace.kabupaten_norm == source_kab,
+                ReferensiWilayahTrace.kabupaten_norm == target_kab_norm,
                 ReferensiWilayahTrace.kecamatan_norm == target_kec_norm,
                 ReferensiWilayahTrace.desa_norm == target_norm))
             if target is None:
                 raise HTTPException(422,
-                    "Pilih pasangan District dan Sub-district resmi SCDF pada Kabupaten/Kota sumber ini.")
+                    "Pilih pasangan Kabupaten/Kota, District, dan Sub-district resmi SCDF.")
             if koreksi is None:
                 koreksi = KoreksiWilayahTrace(
                     source_kabupaten_norm=source_kab,
@@ -998,13 +1631,17 @@ def pasang_router_traceability(app, ambil_session):
                 "source": {"kabupaten": source_kab, "kecamatan": source_kec,
                            "desa": source_desa},
                 "target": {"id": target.id, "kabupaten": target.kabupaten,
-                           "kecamatan": target.kecamatan, "desa": target.desa},
+                           "kabupaten_norm": target_kab_norm,
+                           "kecamatan": target.kecamatan, "desa": target.desa,
+                           "berbeda_dari_induk_sumber": target_kab_norm != source_kab},
                 "sebelumnya_ref_id": sebelumnya,
             })
             session.commit()
             return {"status": "tersimpan", "manual_correction": True,
                     "target": {"kabupaten": target.kabupaten,
                                "kecamatan": target.kecamatan, "desa": target.desa},
+                    "induk_scdf": {"kabupaten": target.kabupaten,
+                                   "berbeda_dari_sumber": target_kab_norm != source_kab},
                     "scope": "Semua tiket dengan kombinasi lokasi sumber yang sama."}
 
         if koreksi:
@@ -1021,6 +1658,139 @@ def pasang_router_traceability(app, ambil_session):
             session.commit()
         return {"status": "tersimpan", "manual_correction": False,
                 "pesan": "Koreksi manual dihapus; pencocokan kembali memakai nilai intake."}
+
+    def _info_filter_gap(effective_year: int | None, periode: str,
+                         supplier: str | None, eudr: str,
+                         include_latex: bool) -> dict:
+        return {"year": effective_year, "period": periode.upper(),
+                "supplier": supplier, "eudr": eudr,
+                "include_latex": include_latex}
+
+    @router.get("/gap-details")
+    def rincian_gap(tingkat: str, name: str, parent_path: str = "—",
+                    tahun: int | None = None, periode: str = "ALL",
+                    supplier: str | None = None,
+                    eudr: str = Query("all", pattern="^(all|eudr|non_eudr)$"),
+                    include_latex: bool = False,
+                    batas_tiket: int = Query(200, ge=1, le=500),
+                    session: Session = dep):
+        """Daftar ticket_no dan kunci sumber di balik satu baris gap."""
+        _, effective_year, base = filter_data(session, tahun, periode,
+                                              supplier, eudr, include_latex)
+        return _rincian_gap(session, base, tingkat, name, parent_path,
+                            _info_filter_gap(effective_year, periode, supplier,
+                                             eudr, include_latex),
+                            batas_tiket=batas_tiket)
+
+    @router.put("/gap-correction")
+    def simpan_koreksi_gap(data: KoreksiGapMasuk, request: Request,
+                           tahun: int | None = None, periode: str = "ALL",
+                           supplier: str | None = None,
+                           eudr: str = "all", include_latex: bool = False,
+                           session: Session = dep):
+        """Simpan koreksi SCDF SATU kunci sumber dari modal gap.
+
+        Sama seperti koreksi Supplier Actors: hanya tabel koreksi terkontrol
+        yang ditulis. Kunci sumber diverifikasi masih menjadi penyebab gap
+        node/filter yang sedang dibuka, sehingga tidak ada koreksi diam-diam
+        atau auto-correct dari agregat.
+        """
+        _, effective_year, base = filter_data(session, tahun, periode,
+                                              supplier, eudr, include_latex)
+        info_filter = _info_filter_gap(effective_year, periode, supplier,
+                                       eudr, include_latex)
+        label = _label_gap(data.tingkat, data.name, data.parent_path)
+        detail = _rincian_gap(session, base, data.tingkat, data.name,
+                              data.parent_path, info_filter,
+                              batas_tiket=1, sertakan_tiket=False)
+        source_kab = normalisasi_kabupaten(data.source_kabupaten_norm) or ""
+        source_kec = normalisasi_teks_wilayah(data.source_kecamatan_norm) or ""
+        source_desa = normalisasi_teks_wilayah(data.source_desa_norm) or ""
+        kunci = (source_kab, source_kec, source_desa)
+        cocok = next((g for g in detail["kelompok"]
+                      if (g["source_key"]["kabupaten_norm"],
+                          g["source_key"]["kecamatan_norm"],
+                          g["source_key"]["desa_norm"]) == kunci
+                      and g["dry_kg"] > 0), None)
+        if cocok is None:
+            raise HTTPException(404,
+                "Kombinasi lokasi sumber tidak lagi termasuk gap node/filter ini. "
+                "Muat ulang rincian sebelum menyimpan koreksi.")
+
+        koreksi = session.scalar(select(KoreksiWilayahTrace).where(
+            KoreksiWilayahTrace.source_kabupaten_norm == source_kab,
+            KoreksiWilayahTrace.source_kecamatan_norm == source_kec,
+            KoreksiWilayahTrace.source_desa_norm == source_desa))
+        pengguna = info_pengguna(request) or {}
+        oleh = pengguna.get("sub") or "pengguna aplikasi"
+        target_kab_norm = (normalisasi_kabupaten(data.target_kabupaten_norm)
+                           or source_kab)
+        if target_kab_norm != source_kab:
+            raise HTTPException(422,
+                "Koreksi dari modal gap harus tetap pada Kabupaten/Kota sumber. "
+                "Gunakan Supplier Actors bila pemetaan lintas induk memang disengaja.")
+        target_kec_norm = (normalisasi_teks_wilayah(
+            data.target_kecamatan_norm or source_kec) or "")
+        target_norm = normalisasi_teks_wilayah(data.target_desa_norm) or ""
+        if not target_norm:
+            if koreksi:
+                target_id = koreksi.target_ref_id
+                session.delete(koreksi)
+                catat_audit(session, oleh, "hapus",
+                            "traceability_wilayah_koreksi", {
+                                "sumber_ui": "traceability-gap",
+                                "tingkat": data.tingkat, "path": label,
+                                "filters": info_filter,
+                                "source": {"kabupaten": source_kab,
+                                           "kecamatan": source_kec,
+                                           "desa": source_desa},
+                                "target_ref_id": target_id,
+                            })
+                session.commit()
+            return {"status": "tersimpan", "manual_correction": False,
+                    "pesan": "Koreksi manual dihapus; pencocokan kembali memakai nilai intake."}
+
+        target = session.scalar(select(ReferensiWilayahTrace).where(
+            ReferensiWilayahTrace.kabupaten_norm == target_kab_norm,
+            ReferensiWilayahTrace.kecamatan_norm == target_kec_norm,
+            ReferensiWilayahTrace.desa_norm == target_norm))
+        if target is None:
+            raise HTTPException(422,
+                "Pilih pasangan District dan Sub-district resmi SCDF pada "
+                "Kabupaten/Kota sumber yang sama.")
+        sebelumnya = koreksi.target_ref_id if koreksi else None
+        if koreksi is None:
+            koreksi = KoreksiWilayahTrace(
+                source_kabupaten_norm=source_kab,
+                source_kecamatan_norm=source_kec,
+                source_desa_norm=source_desa,
+                target_ref_id=target.id)
+            session.add(koreksi)
+        else:
+            koreksi.target_ref_id = target.id
+        koreksi.updated_by = oleh
+        koreksi.updated_at = dt.datetime.utcnow()
+        catat_audit(session, oleh, "ubah" if sebelumnya else "tambah",
+                    "traceability_wilayah_koreksi", {
+                        "sumber_ui": "traceability-gap",
+                        "tingkat": data.tingkat, "path": label,
+                        "filters": info_filter,
+                        "source": {"kabupaten": source_kab,
+                                   "kecamatan": source_kec,
+                                   "desa": source_desa},
+                        "target": {"id": target.id,
+                                   "kabupaten": target.kabupaten,
+                                   "kecamatan": target.kecamatan,
+                                   "desa": target.desa},
+                        "sebelumnya_ref_id": sebelumnya,
+                    })
+        session.commit()
+        return {"status": "tersimpan", "manual_correction": True,
+                "target": {"kabupaten": target.kabupaten,
+                           "kecamatan": target.kecamatan,
+                           "desa": target.desa},
+                "scope": "Semua tiket dengan kombinasi lokasi sumber yang sama.",
+                "catatan": "Intake asli dan referensi SCDF tidak diubah."}
 
     @router.get("/unmapped")
     def ekspor_unmapped(tahun: int | None = None, periode: str = "ALL",

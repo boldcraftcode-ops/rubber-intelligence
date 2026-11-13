@@ -272,7 +272,24 @@ kartu:
       dipakai angka referensi rekonsiliasi (Jul/Agu 2026), lalu kuantitas
       Pembelian. SICOM dan OP Price = angka bulanan tertimbang tonase (rumus
       resmi bagian 6). Baris proyeksi di Excel tidak direplikasi karena rumus
-      proyeksi belum ditetapkan.
+      proyeksi belum ditetapkan. Tonase disediakan dalam MT (kunci *_ton)
+      sekaligus kg (kunci *_kg, 1 MT = 1.000 kg); kartu bisa diganti satuan
+      MT/kg dan ekspor Excel memuat kedua satuan. Harga tetap US¢/kg.
+  ekspor_template_export:
+    judul: Ekspor Excel sesuai Template Export
+    cara_dihitung: >
+      Tiga unduhan mengikuti nama berkas di folder Template Export tanpa
+      akhiran `_template`: `penerimaan_per_vendor.xlsx`,
+      `penerimaan_per_vendor_per_bulan.xlsx`, dan
+      `rm_stock_intake_vs_pricing.xlsx`. Ketiga workbook memakai berkas
+      `*_template.xlsx` di folder `Template Export` sebagai dasar saat runtime;
+      worksheet dan chart XML disalin lalu diperbarui agar isi mengikuti data
+      dan periode aktual. Nama sheet, judul, subjudul, periode tanpa tanda
+      kurung, header baris 4, data mulai baris 5, baris TOTAL bulanan, footer,
+      lebar kolom, dan chart Excel native mengikuti template. Nama unduh tidak
+      memuat `_template`. Data tetap dihitung dari database; payload JSON,
+      kartu layar, dan ekspor dimensi lain tidak diubah. Health menambah fitur
+      `ekspor-template-export`.
   penerimaan:
     judul: Penerimaan karet biasa vs EUDR
     cara_dihitung: >
@@ -281,6 +298,88 @@ kartu:
       Dipisah dua tumpukan - grade biasa dan grade EUDR (grade ber-flag EUDR
       atau kode mengandung TTSR). Filter "Hanya EUDR" menampilkan vendor/
       wilayah yang memasok karet EUDR saja. Tanggal memakai Ticket Date.
+      Ekspor Excel dimensi selain vendor mengikuti
+      Format_penerimaan_per_desa.xlsx: judul & periode di A2/A3, header di
+      baris 5, font Courier New, fill biru theme dk2+tint 40%, border tipis,
+      format accounting/0%, dan data mulai baris 6. Khusus dimensi vendor,
+      ekspor total dan per-bulan mengikuti folder Template Export lewat
+      entri `ekspor_template_export`. Ekspor tidak memakai batas top maupun
+      baris Lainnya: semua dimensi menjadi baris detail dan semua bulan
+      terpilih menjadi kolom; pengaman 1.200 bulan (100 tahun). Grafik di
+      layar tetap dibatasi agar terbaca.
+  daftar_intake_terakhir:
+    judul: Daftar intake terakhir
+    cara_dihitung: >
+      Satu baris = satu Ticket No pada tiket_baris; beberapa line_seq dengan
+      nomor sama digabung dan tiket nol tidak dihitung, lalu diurutkan dari
+      tanggal terbaru. Ringkasan, tabel, jumlah tiket, dan Ekspor Excel
+      mengikuti filter rentang tanggal YYYY-MM-DD inklusif serta kode_vendor
+      exact; limit hanya memotong baris tampilan, bukan total tiket terfilter.
+      Wilayah dipecah menjadi Provinsi, Kabupaten/Kota, Kecamatan, dan Desa,
+      bukan lagi satu kolom gabungan. Ejaan resmi SCDF dipakai bila kombinasi
+      kabupaten/kecamatan/desa normalized cocok dengan traceability_wilayah
+      atau koreksi terkontrol; tanpa padanan, nilai tiket ditampilkan apa
+      adanya dan Provinsi tidak ditebak. Dropdown vendor memuat semua Master
+      Vendor ditambah kode yang hanya ada di tiket, dengan opsi Semua vendor.
+      Data intake mentah, referensi SCDF, dan kartu lain tidak diubah.
+  traceability_gap_drilldown:
+    judul: Data belum traceable — rincian tiket
+    cara_dihitung: >
+      Modal gap memanggil GET /api/traceability/gap-details dengan tingkat
+      KPI, nama node, parent path, dan filter aktif yang sama. Baris yang
+      dihitung adalah baris intake valid hasil dedup yang gagal aturan
+      traceable pada tingkat itu: Asal Getah tidak valid dan tidak memiliki
+      koreksi manual, atau kombinasi Kabupaten/Kota/Kecamatan/Desa normalized
+      tidak cocok dengan traceability_wilayah. Baris dikelompokkan per kunci
+      koreksi sumber; tiap kelompok memuat ticket_no, tanggal, vendor,
+      item_code, Asal Getah, kabupaten/kecamatan/desa, Dry kg, dan alasan.
+      GET tidak menulis data. PUT /api/traceability/gap-correction hanya
+      menyimpan satu pasangan District/Sub-district SCDF resmi pada induk
+      Kabupaten/Kota sumber yang sama untuk satu kunci sumber, tercatat di
+      audit, dan berlaku bagi semua tiket dengan kunci itu. Intake asli dan
+      referensi SCDF tetap tidak diubah.
+  master_scdf:
+    judul: SCDF — Referensi lokasi Indonesia
+    cara_dihitung: >
+      Modul Master Data → SCDF hanya membaca traceability_wilayah hasil
+      ID_AUX, dengan Provinsi dari crosswalk resmi Kepmendagri. Ringkasan
+      menghitung Provinsi non-null, Kabupaten/Kota unik, pasangan
+      Kabupaten/Kota + Kecamatan unik, dan baris kombinasi Desa/Kelurahan.
+      Pohon empat tingkat menampilkan jumlah anak serta jumlah baris per
+      node; rincian menampilkan nama resmi, normalized key, dan status
+      pemetaan Provinsi. Kolom pencarian GET mencari case-insensitive pada
+      keempat nama resmi, keempat normalized key, dan status Provinsi, lalu
+      menampilkan hasil berhalaman tanpa mengubah data. Baris tanpa padanan
+      Provinsi tetap tampil sebagai Belum dipetakan, tidak disembunyikan
+      atau ditebak. Tidak ada CRUD, impor, ekspor, tabel baru, atau
+      perubahan data intake.
+  konsistensi_intake_vendor:
+    judul: Laporan Ringkasan Vendor (Trip)
+    cara_dihitung: >
+      Laporan tiga tabel mengikuti Intake-2025_Ringkasan-Vendor.xlsx:
+      Ringkasan Vendor, Vendor per Bulan, dan Vendor Harian. Trip dihitung
+      sebagai Ticket No unik pada `tiket_baris` (Ticket Date, tiket nol tidak
+      dihitung); baris tambahan dengan nomor tiket sama tidak menambah Trip,
+      tetapi Dry (kg) tetap dijumlahkan. Metrik: Total Trip, % Trip, Hari Aktif,
+      Rata² Trip/Hari Operasional, Rata² Trip/Bulan, Dry (kg). Peringkat
+      diurutkan menurut jumlah Trip, lalu Dry (kg), lalu nama vendor — bukan
+      lagi jumlah tanggal unik ber-intake. Hari Aktif = jumlah tanggal unik
+      dengan minimal satu Trip untuk vendor itu; Hari Operasional = jumlah
+      tanggal unik dengan minimal satu Trip dari vendor mana pun. Dasar
+      tampilan adalah SEMUA HARI KALENDER: tiap tanggal Dari–Sampai tetap
+      menjadi baris, termasuk Sabtu/Minggu/libur; hari tanpa intake bernilai
+      0 Trip (pabrik tutup). Rata² Trip/Bulan membagi Total Trip dengan
+      jumlah bulan yang
+      tersentuh rentang, dan judul/kolom bulan mengikuti Dari/Sampai (bukan
+      hardcode 2025/12). Semua vendor, termasuk yang 0 Trip, ditulis sebagai
+      baris detail tanpa pengelompokan sisa vendor. Batas 731 hari dihapus:
+      seluruh rentang data boleh dipilih, termasuk 1.766 hari; hanya pengaman
+      ±100 tahun/1.200 bulan yang menolak tanggal ekstrem. Periode panjang
+      diminimalisir di layar menjadi rekap per bulan + rentang tanggal
+      YYYY-MM-DD, dengan `rinci=1` bila pengguna membuka semua baris.
+      Ekspor Excel memuat 3 sheet (Ringkasan Vendor, Vendor per Bulan, Vendor
+      Harian) dan 3 chart Excel native yang bisa diedit, tanpa sheet Master
+      Data/raw tiket; tanggal di luar rentang tiket ditandai Di luar data.
   analisa_5w1h:
     judul: Analisa grafik (5W1H)
     cara_dihitung: >

@@ -137,14 +137,16 @@ def evaluasi_alarm(session: Session, hari_ini: dt.date | None = None) -> list[Al
     # ---- selisih rekonsiliasi --------------------------------------------------
     p = aktif("SELISIH_REKONSILIASI")
     if p:
-        for d in selisih_diketahui():
+        for d in selisih_diketahui(session):
+            if d["direvisi"]:
+                continue  # keputusan sumber benar sudah menutup selisih ini
             nyalakan("SELISIH_REKONSILIASI",
                      f"{d['periode']}: selisih tiket vs Excel {d['selisih_ton']:,.3f} "
                      f"ton — {d['status']}.",
                      dt.date(d["tahun"], d["bulan"], 1), d["selisih_ton"])
         if p.ambang is not None:
             buruk = [h for h in rekonsiliasi_harian(session)
-                     if abs(h["selisih_kg"]) > p.ambang]
+                     if abs(h["selisih_efektif_kg"]) > p.ambang]
             if buruk:
                 terparah = max(buruk, key=lambda h: abs(h["selisih_kg"]))
                 nyalakan("SELISIH_REKONSILIASI",
