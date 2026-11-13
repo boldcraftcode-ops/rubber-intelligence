@@ -50,7 +50,7 @@ Menu kiri dikelompokkan supaya tidak perlu membaca 16 baris sekaligus:
 
 - 📊 **Analitik** — Margin Performance, Intake Analisis, Stok, Stok vs Margin
 - 💰 **Harga & Perencanaan** — Aturan Harga, Simulasi, Perencanaan
-- 🛡️ **Pengawasan & Kontrol** — Alarm, Rekonsiliasi, Kualitas Data
+- 🛡️ **Pengawasan & Kontrol** — Alarm, Rekonsiliasi, Kualitas Data, Kepatuhan vendor sampling
 - 🗂️ **Master Data** — Master Vendor, Grade & Harga
 - 📥 **Input Data** — Input Harian, Unggah Data
 - ⚙️ **Administrasi** — Database, Pengguna (hanya terlihat oleh admin)
@@ -61,6 +61,18 @@ browser. Kalau sebuah halaman dibuka dari tempat lain (mis. tombol di Margin
 Performance), grupnya otomatis terbuka sehingga menu tidak terlihat kosong.
 Di layar Bahasa Inggris nama grupnya: *Analytics, Pricing & Planning,
 Monitoring & Control, Master Data, Data Entry, Administration*.
+
+**Tombol Refresh pada kartu berperiode.** Di **Intake Analisis** dan
+**Margin Performance**, tombol **Refresh periode ini** berada tepat di samping
+kontrol periode kartu itu (Dari/Sampai bulan, pilihan tahun, atau tombol tahun),
+bukan lagi di kanan header kartu. Jadi tombol yang ditekan jelas memuat ulang
+data untuk periode yang baru dipilih pada kartu yang sama. Kartu yang memang
+tidak punya kontrol periode tetap memakai tombol **Refresh** di headernya.
+Mengubah periode tidak otomatis memanggil API; tekan Refresh di sampingnya
+untuk mengambil data terbaru. **Pengecualian:** kartu **Angka kunci Margin
+Performance** memakai query tersendiri yang aktif sejak halaman dibuka, jadi
+datanya **auto tampil** dan kartu itu **tidak punya tombol Refresh**. Kartu
+lain tetap memakai Refresh seperti di atas.
 
 ## 3c. Membaca menu Stok vs Margin
 
@@ -240,6 +252,464 @@ set SAJIKAN_WEB=true
 .venv\Scripts\python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
 ```
 
+## 3h. Memutuskan selisih di Rekonsiliasi
+
+Pada kedua kartu **Rekonsiliasi**, baris yang berselisih memiliki dropdown
+**"Data mana yang benar?"**:
+
+- kartu **Selisih yang sudah diketahui**: pilih **Tiket** atau **Excel lama**
+  untuk Jul/Agu 2026;
+- kartu **Pemeriksaan harian**: pilih **Dry tiket** atau **Qty pembelian**
+  untuk tanggal yang berselisih lebih dari 1 kg.
+
+Isi **Alasan revisi** bila perlu, lalu tekan **Simpan revisi**. Setelah
+tersimpan, baris **tidak lagi menampilkan form besar**: formatnya kembali
+ringkas seperti baris lain, kolom **Selisih** memakai nilai efektif (`0`) dengan
+tanda kecil **Direvisi**, dan kolom **Status/Keputusan** memakai badge hijau
+**✓ Direvisi · Histori** plus nilai yang dipakai, pembuat, dan waktu. Selisih
+asli tetap menjadi histori di tooltip, ekspor Excel, dan audit log, bukan lagi
+angka besar yang dicoret di sel utama.
+
+**Data tiket/pembelian/Excel asli tidak diubah**; yang tersimpan adalah
+keputusan pada tabel `rekonsiliasi_koreksi` plus jejak di audit log. Karena itu
+keputusan tetap bisa diganti lewat tombol kecil **Revisi** (form hanya muncul
+saat tombol itu ditekan, lalu bisa ditutup) atau dikembalikan ke kondisi semula
+lewat tombol kecil **Batal**. Hanya **admin** yang bisa menyimpan/membatalkan;
+pengguna lain tetap bisa membaca statusnya tanpa tombol aksi.
+
+Efek keputusan:
+
+1. Baris Rekonsiliasi dianggap cocok dan alarm `SELISIH_REKONSILIASI` untuk
+   baris itu padam.
+2. Ekspor Excel `rekonsiliasi.xlsx` memuat kolom sumber dipakai, selisih
+   setelah revisi, pembuat, waktu, dan alasan.
+3. Untuk Jul/Agu 2026, sumber yang dipilih juga menjadi **referensi intake**
+   pada kartu **RM Stock – Intake vs Pricing**. Memilih Excel lama mengubah
+   angka intake bulanan itu ke nilai Excel; memilih Tiket memakai angka
+   referensi tiket. Modul lain tidak diubah.
+
+## 3i. Kepatuhan vendor sampling
+
+Menu **Pengawasan & Kontrol → Kepatuhan vendor sampling** membaca workbook
+`Laporan_Monitoring_Vendor_RM_Purchasing (1).xlsx` yang disalin dari GitHub ke
+akar repo. Delapan sheet di dalamnya dipasangkan otomatis menjadi empat
+periode: **Agustus, September, Oktober, November 2026**; setiap periode punya
+satu sheet `Log Monitoring ...` dan satu sheet `Summary ...`.
+
+Halaman menyediakan:
+
+- pilihan periode, pencarian vendor/catatan, tombol **Refresh**, dan
+  **Ekspor Excel** untuk periode aktif (sheet `Summary` + `Log Monitoring`);
+- kartu angka kunci: Total kunjungan, Tepat waktu, Terlambat, Tanpa data waktu,
+  dan % Tepat waktu;
+- tabel perbandingan empat bulan, tabel `Summary` per vendor, serta tabel log
+  detail mengikuti jumlah kolom aslinya (16 kolom untuk Agu/Sep, 19 kolom
+  untuk Okt/Nov).
+
+Data **ditampilkan apa adanya** dari workbook melalui
+`GET /api/kepatuhan-vendor-sampling`. Tidak ada tabel database, unggahan,
+perhitungan ulang, atau koreksi otomatis. Perlu diperhatikan: header log
+menulis *"Min. 30 menit"*, tetapi formula yang tersimpan memakai ambang
+**40 menit** dengan arah yang berbeda — Agu/Sep `selisih ≥ 40 = Tepat Waktu`,
+Okt/Nov `selisih ≥ 40 = Terlambat`. Perbedaan itu sengaja dijelaskan di layar
+dan tidak diam-diam diseragamkan.
+
+## 3j. Quick-fill koreksi intake (sejak 07/11/2026)
+
+Di menu **Data Intake Details — Penerimaan Karet**, setelah filter diterapkan,
+centang beberapa baris pada kolom paling kiri. Tombol **Pilih semua baris di
+halaman ini** memilih 50 baris yang sedang tampil; pilihan tetap tersimpan saat
+berpindah halaman, tetapi dibersihkan bila filter atau pencarian diubah. Panel
+**Quick-fill koreksi intake** lalu muncul.
+
+Isi **satu kolom** yang sama untuk semua baris terpilih — 17 kolom operasional
+yang sama dengan modal Edit, termasuk tanggal, kode/nama supplier, kendaraan,
+grade, berat/DRC, wilayah, Bin, dan Location. Kolom opsional bisa dikosongkan
+lewat checkbox **Kosongkan nilai**; `Tanggal tiket` dan `Kode supplier` wajib
+diisi sehingga tidak bisa dikosongkan. Untuk kolom wilayah, ketik nama persis
+sesuai referensi **SCDF** karena validasi dilakukan per baris terhadap induk
+wilayah yang sudah tersimpan.
+
+Tekan **Pratinjau** dulu. Endpoint `POST /api/intake/quick-fill/pratinjau`
+menghitung diff `sebelumnya → sesudah` per baris dan menolak baris yang tidak
+valid tanpa menyimpan apa pun. Bila semua valid, di **bagian bawah kartu hasil
+pratinjau** muncul blok hijau **Konfirmasi pratinjau** berisi tombol
+**Konfirmasi & terapkan X perubahan** dan **Batalkan pratinjau**. Klik tombol
+konfirmasi, lalu pilih **OK** pada dialog browser. Token pratinjau berlaku 15
+menit. `POST /api/intake/quick-fill/terapkan` menyimpan **semua baris atau tidak
+ada** dalam satu transaksi; token sekali pakai dan pendaftaran ditolak bila ada
+baris yang berubah sejak pratinjau. Endpoint ini **admin-only** bila login lokal
+aktif. Bila status pratinjau `ada_galat`, blok konfirmasi tidak muncul: perbaiki
+baris yang ditolak lalu pratinjau ulang.
+
+Setiap baris dicatat di audit log dengan aksi `ubah_massal` dan diff
+`sebelumnya`/`sesudah`; mart dan alarm disegarkan sekali di akhir. Yang sengaja
+tidak berubah: `ticket_no`, `line_seq`, `asal_getah`, `source_fingerprint`,
+`unggahan_id`, `peringatan`, `Pembelian`, `RawUnggahan`, dan `RawBaris`. Tidak
+ada tabel database baru. Quick-fill ditujukan untuk nilai yang seragam;
+koreksi yang berbeda-beda per baris kini memakai alur **Excel diff
+pratinjau + konfirmasi** di §3l.
+
+## 3k. Bar intake pada peta provinsi (sejak 08/11/2026)
+
+Buka **Intake Analisis**, lalu kartu **Sebaran Intake per Provinsi Indonesia**
+dan pilih lapisan **Intake tercatat**. **Opsi centang `Pakai grafik bar`**
+(bawaan: dicentang) memilih **pakai grafik bar atau tidak**. Centang aktif
+berarti bar dipakai; centang kosong berarti tanpa grafik bar. Label kecil di
+bawah checkbox menegaskan keadaan yang sedang dipilih. Saat dicentang,
+setiap provinsi yang punya `kg_total > 0` dan namanya cocok dengan batas peta
+mendapat satu **bar oranye vertikal** di titik tengah daratan terbesarnya. Titik
+bar dihitung dari geometri `indonesia-provinsi.geojson`, bukan koordinat yang
+diketik manual, sehingga bar tetap mengikuti bentuk peta bila berkas peta
+diganti. Titik kecil putih di kaki bar menandai provinsi yang dimaksud.
+
+Tinggi bar memakai **skala logaritmik** relatif terhadap intake terkecil dan
+terbesar pada periode terpilih supaya provinsi bernilai kecil tidak hilang;
+warna choropleth biru tetap memakai skala warna lamanya. Arahkan kursor ke
+provinsi untuk membaca angka Dry yang pasti. Kosongkan centang **Pakai grafik
+bar** bila ingin **tanpa grafik bar**, yaitu peta warna saja; legenda berubah
+menjadi **Grafik bar dimatikan** dan catatan kaki menjelaskan cara
+mengaktifkannya kembali. Bar **tidak** muncul pada lapisan **Sentra
+produksi**, dan provinsi yang belum cocok dengan batas peta tetap tercantum di
+panel **Belum terpetakan ke batas peta** tanpa bar. Tidak ada endpoint, tabel,
+atau agregasi backend yang berubah.
+
+## 3l. Excel diff pratinjau + konfirmasi di Data Intake Details (sejak 08/11/2026)
+
+Di menu **Data Intake Details — Penerimaan Karet**, setelah filter aktif muncul
+panel **Excel diff koreksi intake**. Alurnya:
+
+1. Klik **Unduh Excel baris filter ini**. File `.xlsx` berisi sheet **Koreksi**
+   dengan `ID`, `Ticket No`, `Baris`, dan **17 kolom operasional** yang sudah
+   terisi nilai lama sesuai database (maksimal 500 baris). Tombol **Unduh
+   template kosong** hanya untuk melihat format; jangan langsung dipakai
+   karena sel kosong diartikan menghapus nilai opsional.
+2. Ubah sel yang perlu pada Excel. **Biarkan nilai lama** bila tidak berubah;
+   **kosongkan sel** untuk menghapus nilai opsional. Jangan mengosongkan
+   `Tanggal tiket` atau `Kode supplier`. Jangan mengubah `ID`, `Ticket No`,
+   dan `Baris`.
+3. Unggah file itu lewat **File koreksi .xlsx**, lalu tekan **Pratinjau**.
+   `POST /api/intake/excel-diff/pratinjau` membaca sheet **Koreksi**,
+   mencocokkan header (nama label Indonesia maupun kode kolom), memeriksa
+   identitas tiket, memvalidasi `IntakeUbah` dan referensi **SCDF** per baris,
+   lalu menampilkan diff **sebelumnya → sesudah** per sel. Baris yang ditolak
+   ditampilkan dengan alasannya; **belum ada data tersimpan** dan token tidak
+   dibuat bila ada galat. Bila tidak ada nilai berubah, statusnya **kosong**.
+4. Bila status **siap**, scroll ke blok hijau **Konfirmasi pratinjau** di bawah
+   tabel diff. Klik **Konfirmasi & terapkan X perubahan**, lalu pilih **OK** pada
+   dialog browser. `POST /api/intake/excel-diff/terapkan` menyimpan **semua
+   perubahan atau tidak ada** dalam satu transaksi, mencatat audit
+   `ubah_massal` per baris dengan penanda `sumber: excel` dan `nama_file`, lalu
+   menyegarkan mart dan alarm sekali di akhir.
+5. **Batalkan pratinjau** memakai `DELETE /api/intake/excel-diff/pratinjau/{token}`.
+   Token di memori proses, berlaku **15 menit**, sekali pakai, dan hangus bila
+   data berubah sejak pratinjau sehingga permintaan ditolak `409`.
+
+`ticket_no`, `line_seq`, `asal_getah`, `source_fingerprint`, `unggahan_id`,
+`peringatan`, `Pembelian`, `RawUnggahan`, dan `RawBaris` tetap tidak diubah.
+Tidak ada tabel database baru. Endpoint lama `/api/unggah/pratinjau` tidak
+dipakai; Quick-fill, Edit/Hapus per baris, filter wajib, dan 50 baris per
+halaman tetap berjalan seperti sebelumnya. Hanya **admin** yang dapat
+membuat pratinjau, menerapkan, atau membatalkannya.
+
+## 3m. Deteksi salah ketik SCDF di Supplier Actor Details (sejak 08/11/2026)
+
+Pada menu **Traceability → Supplier Actors**, klik nama supplier, lalu di kartu
+**Sourcing locations from Asal Getah** tekan **Edit**. Di dalam mode Edit ada
+dua panel yang berbeda: **Rekomendasi dari intake tahun sebelumnya** (pola
+pembelian terdahulu) dan **Deteksi potensi salah ketik dari SCDF**. Panel
+kedua memanggil `GET /api/traceability/actors/{kode}/origin-typo-check` dan
+hanya membandingkan ejaan **District** serta **Sub-district** sumber dengan
+nama resmi pada referensi SCDF. Kabupaten/Kota sumber tidak ditebak salah
+ketik; nilainya tetap dipakai sebagai induk perbandingan.
+
+Perbandingan membakukan huruf, spasi, underscore, tanda baca, dan awalan umum
+seperti `Gampong`, `Keuchik`, `Desa`, serta `Kecamatan`. Jadi `D U M A I`,
+`GAM[PONG REUSAK`, atau `KEUCHIK BINTAH` dapat dibandingkan dengan ejaan SCDF
+yang lebih ringkas. Nama pendek memakai ambang kemiripan lebih tinggi supaya
+tidak banyak peringatan kebetulan. Bila pasangan District + Sub-district sudah
+persis ada pada SCDF untuk induk sumber, statusnya **`cocok`** dan tidak ada
+peringatan. Bila ditemukan ejaan mirip, panel menampilkan kandidat
+`Kabupaten/Kota · District · Sub-district`, skor kemiripan, dan rincian skor
+per level.
+
+Tombol **Pakai** hanya mengisi dropdown District/Sub-district; data **belum
+tersimpan** sampai tombol **Simpan** diklik. Skor kemiripan bukan probabilitas
+dan bukan vonis bahwa lokasi itu pasti benar. Bila kandidat berada di
+Kabupaten/Kota SCDF lain, UI menandai **Induk SCDF berbeda** dan menyediakan
+**Kembali ke induk sumber**. Pemetaan lintas induk tetap koreksi terkontrol:
+`PUT /api/traceability/actors/{kode}/origin-correction` menerima
+`target_kabupaten_norm`, mencatat audit, berlaku untuk semua tiket dengan
+kombinasi lokasi sumber yang sama, dan **tidak mengubah intake asli**. Status
+`tidak_ada_kandidat`, `referensi_kosong`, dan `sumber_tidak_lengkap` juga
+dijelaskan di panel, bukan diubah menjadi tebakan otomatis.
+
+Endpoint rekomendasi historis, dropdown District/Sub-district SCDF, **Hapus
+pemetaan**, ekspor, dan impor workbook belum termapping tetap berjalan seperti
+sebelumnya. Tidak ada tabel database baru. Health menambah fitur
+`traceability-scdf-typo`.
+
+## 3n. Crosswalk Provinsi resmi untuk SCDF (sejak 05/11/2026)
+
+`ID_AUX.xlsx` hanya memuat Kabupaten/Kecamatan dan Desa. Supaya kolom
+**Provinsi** bisa diedit tanpa mengarang nilai dari intake, aplikasi memakai
+`backend/data/crosswalk_provinsi_id_aux.csv`. File itu menghubungkan
+`kabupaten_norm` pada `traceability_wilayah` ke Provinsi dan kode wilayah dari
+snapshot **Keputusan Mendagri No. 100.1.1-6117 Tahun 2022**. Asal-usul,
+lisensi, daftar alias, dan bukti kecocokan kecamatan ada di
+`backend/data/CROSSWALK_PROVINSI.md`; salinan kecil sumber resmi ada di
+`backend/data/sumber_crosswalk/`.
+
+Yang berubah di layar:
+
+- **Data Intake Details → Edit**: dropdown **Provinsi** kini aktif dan
+  berisi nama resmi dari crosswalk, bukan 12 nilai filter intake. Memilih
+  Provinsi mengosongkan Kabupaten/Kota, Kecamatan, dan Desa; dropdown di
+  bawahnya lalu hanya menawarkan kombinasi SCDF untuk Provinsi itu.
+- **Quick-fill** dan **Excel diff** memakai aturan validasi yang sama:
+  Provinsi yang tidak ada di crosswalk ditolak, dan Kabupaten/Kota yang tidak
+  cocok dengan Provinsi itu juga ditolak. Pratinjau tetap tidak menyimpan;
+  konfirmasi eksplisit tetap wajib.
+- **Master Collector**: dropdown **Provinsi** ikut aktif memakai sumber yang
+  sama. Template Excel petunjuknya sudah diperbarui.
+- Endpoint `GET /api/intake/options/scdf/provinsi` mengembalikan
+  `available: true` dan `catatan: null`. Health menambah fitur
+  `scdf-provinsi-crosswalk`.
+
+Database lama tidak perlu dihapus. Saat API versi ini mulai dan endpoint SCDF
+dipanggil, `muat_referensi_bawaan()` mengisi `provinsi` dan `provinsi_norm`
+pada baris yang masih kosong lewat `terapkan_crosswalk_provinsi()`. Prosesnya
+idempoten: nilai yang sudah terisi tidak ditimpa, tabel `tiket_baris`, audit,
+dan koreksi wilayah tidak disentuh. Untuk database yang sudah berjalan, cukup
+restart API lalu buka halaman Intake/Traceability sekali.
+
+Tidak semua kunci dipetakan. `BANJAR` dipakai dua provinsi pada sumber resmi,
+sedangkan `DANAU`, `DANAU TOBA`, `HUTAN`, `UNKNOWN`, `WADUK CIRATA`, dan
+`WADUNG KEDUNGOMBO` adalah fitur geometri/label kosong, bukan
+Kabupaten/Kota. Ketujuh kunci itu sengaja dibiarkan `provinsi_norm = NULL`;
+dropdown tetap menampilkannya tanpa menebak Provinsi, tetapi koreksi Provinsi
+pada baris itu ditolak sampai ada pemetaan resmi yang lebih spesifik.
+
+## 3o. Laporan Ringkasan Vendor — Konsistensi intake harian vendor
+
+Kartu **Konsistensi intake harian vendor** di **Intake Analisis** kini memakai
+format **tiga tabel** mengikuti `Intake-2025_Ringkasan-Vendor.xlsx`:
+**Ringkasan Vendor**, **Vendor per Bulan**, dan **Vendor Harian**. Chart lama
+dihapus. Satu endpoint: `GET /api/kartu/konsistensi-intake-vendor`.
+
+**Cara pakai**
+
+1. Pilih **Dari tanggal** dan **Sampai tanggal** (format `YYYY-MM-DD`, tanggal
+   persis — bukan hanya bulan). Tersedia pilihan cepat: tahun berjalan, bulan
+   berjalan, 30 hari terakhir, Semester 1, dan **pakai batas tiket**. Kosongkan
+   kedua kotak untuk memakai seluruh rentang tiket; batasnya diisi otomatis.
+   **Seluruh rentang data boleh dipilih** — termasuk 1.766 hari; batas 731 hari
+   sudah dihapus. Hanya tanggal ekstrem (±100 tahun / 1.200 bulan) yang ditolak
+   sebagai pengaman. Tanggal sebelum/sesudah rentang tiket tetap ditampilkan
+   bernilai 0 Trip dan ditandai **Di luar data**.
+2. Tekan **↻ Refresh periode ini** di samping filter (data dimuat saat diminta).
+3. Baca angka kunci, lalu tiga tabel:
+   - **Ringkasan Vendor**: `Rank | Vendor | Total Trip | % Trip | Hari Aktif |
+     Rata² Trip/Hari Operasional | Rata² Trip/Bulan | Dry (kg)` + baris `TOTAL`.
+     Semua vendor (termasuk yang 0 Trip) menjadi baris detail; tidak ada baris
+     pengelompokan sisa vendor.
+   - **Vendor per Bulan**: kolom bulan **dinamis** mengikuti `Dari/Sampai`
+     (mis. `Des-25`, `Jan-26`), semua vendor + `TOTAL`, lalu ringkasan
+     `Vendor #1`, `Trip #1`, `Share #1` per bulan.
+   - **Vendor Harian**: satu baris untuk **setiap hari kalender** pada rentang,
+     kolom `Total Trip`, satu kolom per vendor, `Vendor #1`, `Trip #1`, dan
+     `Tanggal (YYYY-MM-DD)`. Hari tanpa intake bernilai **0 Trip**; Sabtu,
+     Minggu, dan libur tetap ada. Baris `Rata² / hari` memakai jumlah hari
+     kalender.
+4. Pada periode panjang (>366 hari), rincian harian otomatis **diminimalisir**
+   menjadi tabel rekap per bulan dan rentang tanggal berurutan dengan tanggal
+   pasti `YYYY-MM-DD`. Tombol **tampilkan semua baris harian** memanggil
+   `rinci=1` bila matriks penuh ingin dibuka di layar. **Ekspor Excel tetap
+   menulis seluruh baris tanpa potongan**.
+5. Tekan **Ekspor Excel**. File memuat **3 sheet** — `Ringkasan Vendor`,
+   `Vendor per Bulan`, `Vendor Harian` — dan **3 chart Excel native** (bar
+   peringkat, bar bertumpuk per bulan, garis harian) yang tetap bisa diedit.
+   **Tanpa sheet `Master Data`/raw tiket**, tanpa baris `Lainnya`, dan tanpa
+   ketergantungan pada file contoh saat runtime. Style (Courier New, header
+   `FF1F4E78`, format angka, colorScale, freeze pane) ditanam di kode.
+
+**Aturan hitung yang dipakai (sesuai pilihan pemilik)**
+
+- **Trip = Ticket No unik**. Beberapa baris dengan nomor tiket sama tidak
+  menambah Trip, tetapi `Dry (kg)` tetap menjumlahkan semua baris. `tiket_nol`
+  tidak dihitung.
+- **Peringkat** memakai jumlah Trip, lalu Dry (kg), lalu nama vendor. Aturan
+  lama "jumlah tanggal unik ber-intake" tidak lagi dipakai untuk kartu ini.
+- **Hari Aktif** = jumlah tanggal unik dengan minimal satu Trip untuk vendor
+  itu. **Hari Operasional** = jumlah tanggal unik dengan minimal satu Trip dari
+  vendor mana pun (contoh: 296 hari). `Rata² Trip/Hari Operasional` =
+  Total Trip ÷ Hari Operasional.
+- **Rata² Trip/Bulan** = Total Trip ÷ jumlah bulan yang tersentuh rentang;
+  judul, periode, dan kolom bulan mengikuti `Dari/Sampai`, bukan hardcode
+  `2025`/12 bulan.
+- **Semua hari kalender** tetap ada. Hari tanpa intake dari vendor mana pun
+  (**pabrik tutup**) bernilai 0 Trip dan tanggal di luar rentang tiket
+  ditandai **Di luar data**, bukan dihapus.
+- Sumber: `ticket_date`, `ticket_no`, `kode_vendor`, `dry_kg` pada
+  `tiket_baris`; kode vendor dibakukan UPPER/TRIM; nama dari Master Vendor.
+  Tidak ada tabel database baru, tidak ada dependensi baru, dan data sumber
+  tidak diubah.
+
+Kartu ini tidak mengubah kartu lain. Tombol **Jelaskan ke saya** memakai entri
+`konsistensi_intake_vendor` di `backend/semantic/metrics.yaml`; health menambah
+fitur `kartu-konsistensi-intake-vendor` dan `kartu-ringkasan-vendor-trip`.
+
+## 3p. Daftar intake terakhir — breakdown wilayah SCDF & filter records
+
+Kartu **Daftar intake terakhir** (paling bawah halaman Intake Analisis) kini
+menjawab tiga hal sekaligus: kapan tiket terakhir masuk, dari wilayah mana
+secara rinci, dan records mana saja yang sedang dilihat.
+
+**Cara pakai**
+
+1. Pada baris **Periode records**, isi **Dari tanggal** / **Sampai tanggal**
+   dengan format `YYYY-MM-DD` (inklusif). Pilihan cepat: **30 hari terakhir**,
+   **Bulan berjalan s.d. hari ini**, **Tahun berjalan s.d. hari ini**,
+   **Seluruh rentang tiket**, dan **pakai batas tiket**. Kosongkan kedua kotak
+   untuk memakai seluruh data.
+2. Pada **Vendor**, pilih **Semua vendor**, salah satu **Master Vendor**, atau
+   kode yang ternyata hanya ada di tiket. Daftar dropdown dimuat lebih dulu lewat
+   `GET /api/kartu/intake-terakhir/opsi`, jadi tetap tersedia walau kartu belum
+   di-Refresh. Kode disaring **exact** (`kode_vendor`), bukan nama bebas.
+3. Tentukan **Tampilkan** 10/20/50/100 tiket terakhir, lalu tekan
+   **↻ Refresh periode ini** di samping filter. Bila Master Vendor diubah,
+   dropdown otomatis diperbarui.
+4. Baca ringkasan atas: tanggal, no tiket, vendor, grade, lalu **Provinsi**,
+   **Kabupaten/Kota**, **Kecamatan**, **Desa**, ton kering, dan total sehari itu.
+   Badge **SCDF** muncul bila ejaan wilayah berhasil dicocokkan.
+5. Tabel dan **Ekspor Excel** memakai 4 kolom wilayah yang sama. Ekspor
+   mengikuti `dari`, `sampai`, `vendor`, dan `limit` yang sedang aktif; file
+   tetap bernama `intake_terakhir.xlsx`.
+
+**Aturan wilayah**
+
+- Sumber tetap `tiket_baris`: `provinsi`, `kabupaten`, `kecamatan`, `desa`.
+  Kolom gabungan `Kabupaten, Provinsi` sudah dihapus.
+- Bila kombinasi `kabupaten_norm / kecamatan_norm / desa_norm` cocok dengan
+  `traceability_wilayah`, atau dengan target `traceability_wilayah_koreksi`,
+  ejaan resmi SCDF dipakai untuk keempat kolom.
+- Bila tidak ada padanan pasti, nilai tiket ditampilkan apa adanya. Provinsi
+  **tidak ditebak** dari nama kabupaten, sesuai aturan crosswalk SCDF.
+- `GET /api/kartu/intake-terakhir` menerima `limit`, `dari`, `sampai`, `vendor`,
+  dan `format=xlsx`; `dari > sampai`, format tanggal salah, `limit` di luar
+  1–200, rentang ekstrem ±100 tahun, atau kode vendor yang tidak dikenal
+  dibalas `422`.
+- Filter diterapkan **sebelum** penggabungan `line_seq`, sehingga ringkasan,
+  `jumlah_tiket_total`, `tanggal_pertama`, tabel, dan XLSX tidak pernah
+  bercampur dengan records di luar filter.
+
+Tombol **Jelaskan ke saya** memakai entri `daftar_intake_terakhir` di
+`backend/semantic/metrics.yaml`; health menambah fitur
+`kartu-intake-terakhir-wilayah-vendor-periode`. Tidak ada tabel database baru,
+tidak ada dependensi baru, dan data intake mentah tidak diubah.
+
+## 3q. Drill-down Data belum traceable sampai ke tiket (sejak 05/11/2026)
+
+Klik salah satu KPI **Traceable** pada menu Traceability, lalu pada modal
+**Data belum traceable** tekan **Lihat tiket & perbaiki** pada baris wilayah
+yang ingin ditelusuri. Untuk contoh `MESUJI / OGAN KOMERING ILIR`, rincian ini
+menjawab ticket_no mana yang menyebabkan volume **Belum traceable**, bukan
+hanya menampilkan agregat Dry/Traceable/Ticket lines.
+
+**Cara pakai**
+
+1. Modal tingkat pertama tetap menampilkan rekap wilayah, volume Dry,
+   Traceable, Belum traceable, persentase, dan Ticket lines. Filter
+   **tahun / periode / supplier / EUDR / LATEX OP** mengikuti halaman.
+2. **Lihat tiket & perbaiki** memanggil
+   `GET /api/traceability/gap-details` untuk **satu node** (`tingkat`, `name`,
+   `parent_path`) dengan filter yang sama. Jawaban berisi kombinasi lokasi
+   sumber yang belum cocok, volume, jumlah Ticket No, alasan, dan baris tiket:
+   `ticket_no`, `line_seq`, tanggal, vendor, `item_code`, `Asal Getah`,
+   Kabupaten/Kecamatan/Desa sumber, Dry (kg), serta alasan per baris.
+   `batas_tiket` 1–500 membatasi baris tampil, bukan agregat; penanda
+   `tiket_terpotong` muncul bila daftar dipotong.
+3. Tekan **Perbaiki** pada **satu kombinasi sumber**. Tabel tiket penyebab gap
+   dan form **District SCDF** + **Sub-district SCDF** muncul di modal yang
+   sama. Dropdown memakai endpoint resmi yang sudah ada; tidak ada tebakan
+   otomatis dari kemiripan nama.
+4. **Simpan koreksi** memanggil
+   `PUT /api/traceability/gap-correction`. Server memverifikasi bahwa kunci
+   sumber masih menjadi penyebab node/filter tersebut, bahwa target berupa
+   pasangan resmi `traceability_wilayah`, dan bahwa Kabupaten/Kota target masih
+   sama dengan induk sumber. Koreksi dicatat di audit dan berlaku untuk semua
+   tiket dengan kombinasi lokasi sumber itu. KPI, tabel, dan rincian dimuat
+   ulang setelah simpan.
+
+**Batas yang sengaja dipertahankan**
+
+- Aturan deteksi `belum traceable` **tidak berubah**: dedup
+  `source_fingerprint`, baris intake valid, `asal_getah_valid`, koreksi manual,
+  dan kecocokan normalized SCDF pada tingkat KPI bersangkutan.
+- `GET /api/traceability/gap-details` **hanya membaca**. Tidak ada
+  auto-correct, tidak ada perubahan `ticket_no`, `Asal Getah`, kolom wilayah
+  intake, maupun `traceability_wilayah`.
+- Koreksi inline hanya menulis `traceability_wilayah_koreksi` setelah klik
+  **Simpan koreksi**. Untuk mengubah isi tiket asli, tetap gunakan
+  **Data Intake Details → Edit/Quick-fill**.
+- Cakupan koreksi adalah **satu kombinasi Kabupaten/Kecamatan/Desa sumber**,
+  bukan seluruh node sekaligus. Pemetaan lintas Kabupaten/Kota sengaja tidak
+  dibuka dari modal ini; bila memang disengaja, gunakan alur
+  **Supplier Actors → Edit** yang sudah punya peringatan induk berbeda.
+- Alur lama tetap utuh: **⬇ Unduh belum termapping**, unggah hasil mapping,
+  koreksi di detail Supplier Actors, deteksi salah ketik SCDF, dan ekspor
+  Excel. Health menambah fitur `traceability-gap-drilldown`; definisi metrik
+  ada pada entri `traceability_gap_drilldown` di
+  `backend/semantic/metrics.yaml`.
+
+## 3r. Master Data → SCDF (sejak 05/11/2026)
+
+Menu **Master Data → SCDF** adalah satu modul katalog lokasi Indonesia,
+**baca saja**, dari **Provinsi → Kabupaten/Kota → Kecamatan →
+Desa/Kelurahan**. Sumbernya tetap tabel `traceability_wilayah` hasil
+`ID_AUX.xlsx`; **Provinsi** diisi dari crosswalk resmi Kepmendagri yang sudah
+dipakai Data Intake, Master Collector, dan Traceability.
+
+**Cara pakai**
+
+1. Buka menu **SCDF**. Ringkasan atas menampilkan jumlah Provinsi
+   terpetakan, Kabupaten/Kota, Kecamatan, Desa/Kelurahan, kunci tanpa
+   Provinsi, dan baris tanpa Provinsi.
+2. **Kolom pencarian**: ketik nama wilayah atau normalized key, misalnya
+   `Aceh Barat`, `MEUREUBO`, `BANJAR`, atau `Belum dipetakan`. Pencarian
+   berjalan otomatis setelah jeda singkat, case-insensitive, dan mencakup
+   **4 nama resmi + 4 normalized key + status Provinsi** di seluruh
+   `traceability_wilayah`. Hasilnya tampil berhalaman pada tabel rincian;
+   klik `✕` atau pilih node pohon untuk kembali ke rincian per node.
+3. Pada **Hierarki wilayah SCDF**, klik tanda `▸` untuk membuka cabang. Tiap
+   node menampilkan **Jumlah anak** dan **Baris SCDF**. Klik nama node atau
+   tombol **Rincian** untuk mengisi tabel detail di bawahnya.
+4. **Rincian lokasi** menampilkan 4 nama resmi, 4 normalized key, dan status
+   **Terpetakan / Belum dipetakan**, dengan 50 baris per halaman. Tidak ada
+   tombol Tambah, Edit, Hapus, Impor, maupun Ekspor Excel.
+
+**Aturan data**
+
+- `GET /api/master/scdf/ringkasan`, `/pohon`, `/detail`, serta
+  `GET /api/master/scdf/cari` (alias `/pencarian`) hanya membaca katalog dan
+  tidak menerima input/impor dari pengguna. Pencarian memakai parameter `q`
+  atau `cari`, `limit` 1..200, dan `offset`; `q`/`cari` kosong ditolak 422.
+  Bila `traceability_wilayah` belum terisi atau belum ada pemetaan Provinsi
+  sama sekali, mekanisme inisialisasi ID_AUX + crosswalk yang sudah dipakai
+  Traceability/Intake dijalankan otomatis; setelah itu GET tidak menulis.
+  Modul tidak mengubah intake, koreksi wilayah, audit, atau data master lain.
+- Tujuh kunci Kabupaten/Kota yang belum punya padanan pasti — `BANJAR`,
+  `DANAU`, `DANAU TOBA`, `HUTAN`, `UNKNOWN`, `WADUK CIRATA`, dan `WADUNG
+  KEDUNGOMBO` — tetap masuk pohon pada node **Belum dipetakan**. Provinsi
+  tidak ditebak dari nama atau data intake.
+- Normalized key mengikuti `normalisasi_kabupaten()` dan
+  `normalisasi_teks_wilayah()` yang sama dengan pencocokan Traceability.
+- Lewat `ask_user` dipilih: **hierarki 4 tingkat**, **baca saja**, serta
+  kolom **nama resmi + normalized + status Provinsi**. Tidak ada tabel
+  database baru, dependensi baru, atau endpoint tulis. Health menambah fitur
+  `master-scdf-hierarki` dan `master-scdf-pencarian`; Jelaskan memakai entri
+  `master_scdf` di `backend/semantic/metrics.yaml`.
+
 ## 4. Mengimpor data (tiket, stok, pembelian, dll.)
 
 Selain lewat tab **Unggah Data**, impor bisa dijalankan dari terminal
@@ -309,6 +779,51 @@ Di atas daftar ada baris **Komposisi** (jumlah tiap klasifikasi + yang belum
 diisi) dan saringan **Klasifikasi**, sehingga bisa langsung dilihat berapa
 banyak pemasok tiap jenis. Kotak **Cari** sekarang juga menelusuri alamat,
 contact person, dan klasifikasi.
+
+**Sourcing type di Supplier Actors (sejak v0.11.2).** Kolom **Sourcing types**
+pada tab Supplier Actors (menu Traceability) diisi langsung lewat dropdown di
+setiap baris: **Direct Smallholder**, **Indirect Smallholder**, atau **Own
+Plantation**. Pilihan tersimpan begitu dipilih, tercatat di audit log, dan
+muncul di detail supplier serta sheet `Supplier Actors` pada ekspor Excel.
+Ini **field terpisah** dari Klasifikasi Master Vendor di atas — mengisi
+sourcing type tidak mengubah Small holder / Small estate / Rubber trader, dan
+bila sourcing type dikosongkan, kolom kembali memakai klasifikasi lama sebagai
+fallback. Nilai di luar ketiga pilihan ditolak dengan pesan yang menyebut
+pilihan yang sah.
+
+**Supplier class berbasis intake (sejak v0.11.2).** Kotak **Supplier class** di
+detail Supplier Actors bukan lagi berasal dari master: kelasnya dihitung dari
+**Dry (MT) per supplier per bulan** dengan batas **≥ 1.500 = SS, ≥ 1.000 = S,
+≥ 500 = A, ≥ 250 = B, ≥ 100 = C, < 100 = D**. Kotak Kpi menampilkan **kelas
+tertinggi** yang dicapai pada periode terpilih (tanpa tabel kelas tiap
+bulan). Ringkasan jumlah *supplier-bulan* per kelas **tidak ditampilkan di
+Traceability**, melainkan sebagai kartu paling atas pada menu **Master
+Vendor**; kartu itu otomatis memakai tahun intake terbaru. Ringkasan hanya
+menghitung kode yang terdaftar di Master Vendor —
+kode yang hanya muncul di tiket intake tetap punya kelas pada detailnya, dan
+jumlahnya ditampilkan terpisah agar tidak hilang. Kelas dihitung dari nilai
+sebelum dibulatkan, tidak disimpan, dan tidak bisa diisi manual.
+
+**Tree node view (sejak v0.11.2, data asli sejak 07/11/2026).** Di menu
+**Traceability**, tepat di sebelah tab **Supplier Actors**, ada tab **Tree node
+view**. Diagramnya kini memakai **data asli** dari endpoint
+`GET /api/traceability/tree`: `tiket_baris` + **Master Vendor** + **Master
+Collector**, mengikuti filter tahun/periode/supplier/EUDR/LATEX pada halaman.
+Bentuknya tetap **Pabrik → T1 vendor → T2 kolektor** dengan node lingkaran,
+garis lengkung, dan warna per tier: pabrik hijau tua, T1 biru, T2 oranye.
+Bawaannya vertikal dari atas ke bawah; tombol **Arah** mengubahnya menjadi
+horizontal kiri → kanan. Label tiap node memuat kode/nama dan volume **Dry
+(kg)**, sedangkan ketebalan garis mengikuti volume jalur.
+
+**Kode tier tidak ditukar: T1 = vendor, T2 = kolektor.** Pabrik hanya simpul
+akar visual. Klik node **T1** untuk menyorot semua **T2** di bawahnya; klik
+lagi atau tekan **Reset sorotan** untuk kembali. Dropdown **T1** membatasi
+jumlah vendor terbesar yang ditampilkan (4/8/12/semua) supaya pohon tetap
+terbaca; sisa vendor dilaporkan di layar. Volume T2 berasal dari lintasan
+`_supply_chain_lanes`, jadi tidak digandakan ketika beberapa kolektor cocok.
+Sebagian volume T1 dapat langsung masuk tanpa kolektor tercatat; jumlahnya
+ditampilkan sebagai catatan. Data ini tidak mengubah tabel Supplier Actors,
+lane detail, SCDF, atau perhitungan modul lain.
 
 Di Excel, tiga kolom baru ada di kanan: `Alamat`, `Kontak_Person`,
 `Klasifikasi`. Mengosongkan selnya berarti **tidak diubah** (bukan dihapus) —
@@ -424,7 +939,8 @@ Lalu buka `http://localhost:5173`. Sejak Fase 3 aplikasi punya lima tab:
   bila Amount belum rinci). Semua kartu punya tombol "Cara dihitung" dan
   "Ekspor Excel".
 - **Rekonsiliasi** — selisih yang sudah diketahui (Jul & Agu 2026) dan
-  pemeriksaan harian tiket vs pembelian.
+  pemeriksaan harian tiket vs pembelian; tiap baris selisih kini bisa
+  diputuskan sumber mana yang benar (lihat bagian 3h).
 - **Kualitas Data** — kesegaran data, hari pembelian tanpa SICOM, lonjakan
   harga, rekap peringatan impor.
 - **Stok** — Days, rasio, status per hari; grafik stok vs safety; daftar hari
@@ -441,6 +957,110 @@ Lalu buka `http://localhost:5173`. Sejak Fase 3 aplikasi punya lima tab:
 - setiap simpanan dicatat (siapa & kapan) dan langsung memperbarui
   perhitungan OP Margin. Menyimpan tanggal yang sama menimpa nilai lama
   dengan pemberitahuan, tidak menggandakan.
+
+## Kalau panel analisa terbuka tetapi datanya tidak muncul
+
+Gejala lama: **RCA · 5 Why**, **Margin Bridge**, **Days of Cover**, **Analisis
+tren & musiman**, dan **Analisis deskriptif & komposisi** terbuka, tetapi isinya
+kosong / hanya "Menghitung…". Bukan karena endpoint rusak: `/api/ringkasan-
+elemen/rca`, `/api/margin-bridge`, `/api/days-of-cover`,
+`/api/kartu/penerimaan/tren`, dan `/api/kartu/penerimaan/komposisi` semuanya
+menjawab 200. Penyebabnya panel-panel itu dulu memakai `useQueryKartu`, yang
+**menahan permintaan jaringan sampai tombol Refresh kartu ditekan**. Karena
+panel baru dipasang saat tombol analisa diklik, Refresh kartu tidak sempat
+mendaftarkan query panel itu. Sekarang panel analisa memakai `useQuery` biasa:
+saat panel dibuka, query langsung aktif dan memuat data. **5W1H** dan **Analisa
+semua data** memakai `Panel5W1H` yang memang sudah `useQuery` biasa; URL 5W1H
+pada kartu elemen juga dirapikan agar tidak menggabungkan dua `?`.
+
+### Arah grafik pada Analisis deskriptif & komposisi
+
+Pada panel **Analisis deskriptif & komposisi — penerimaan karet**, grafik
+**Porsi (%)** memakai batang berdiri/vertikal: nama kategori di sumbu bawah dan
+persentase di sumbu kiri. Label kategori dimiringkan agar 12 batang tetap
+terbaca; nama lengkap muncul di tooltip, dan tabel di bawahnya tetap memuat
+label asli. **Share EUDR vs biasa** sengaja tetap berupa grafik garis bulanan.
+
+Catatan untuk pengembang: prop Recharts berlawanan dengan kesan namanya —
+`layout="horizontal"` menghasilkan **batang vertikal**, sedangkan
+`layout="vertical"` menghasilkan **batang horizontal**. Jangan membaliknya
+hanya berdasarkan nama prop.
+
+### Format Excel kartu Penerimaan Karet (sejak 05/11/2026)
+
+Tombol **Ekspor Excel** pada kartu **Penerimaan Karet** kini mengikuti
+`Format_penerimaan_per_desa.xlsx`:
+
+- satu sheet `Sheet`; baris 1 kosong, A2 berisi
+  `Penerimaan Karet dari - [filter] `, A3 berisi
+  `Periode :  [January ~ December 2026]`, baris 4 kosong;
+- header di baris 5: `Desa` (atau `Vendor`/`Provinsi`/`Kabupaten`/`Kecamatan`
+  sesuai dimensi), `Kg biasa`, `Kg EUDR`, `Kg total`, `Porsi`,
+  `Jumlah tiket`; data mulai baris 6;
+- font **Courier New** 11 (judul 14 warna `#1D2434`), header putih di atas
+  isian biru `theme dk2 + tint 40%`, border tipis di header & seluruh baris
+  data;
+- kolom kg memakai format accounting tanpa desimal, `Porsi` memakai `0%`,
+  `Jumlah tiket` rata tengah; lebar kolom A–G dan tinggi baris 2 (18,75)
+  mengikuti berkas contoh.
+
+Format ini berlaku untuk ekspor dimensi **selain vendor** dan juga saat
+periode lebih dari satu bulan (`per=bulan`, kolom bulan disisipkan sebelum
+`Total kg`/`Porsi`). Ekspor vendor total dan per-bulan kini memakai workbook
+khusus di folder `Template Export` (lihat bagian di bawah). Judul mencerminkan
+filter vendor/wilayah yang aktif; periode mengikuti bulan `Dari/Sampai` atau
+bulan berdata bila filter kosong.
+
+**Data panjang tetap lengkap di Excel.** Batas `Tampilkan N terbesar` dan baris
+`Lainnya (N provinsi/desa/…)` hanya dipakai grafik/tabel di layar supaya tetap
+terbaca. Saat `format=xlsx`, ekspor menulis **setiap dimensi sebagai baris
+detail tersendiri** tanpa baris `Lainnya`, dan **setiap bulan terpilih menjadi
+kolom** (bulan kosong bernilai 0, tidak dipotong ke bulan berdata). Baris
+`TOTAL` tetap ada di akhir. Pengaman: maksimal **1.200 bulan (100 tahun)**;
+rentang lebih panjang ditolak 422 dengan pesan untuk mempersempit
+`Dari/Sampai`. Mode total periode juga selalu menulis semua baris detail,
+terlepas dari `top`.
+
+Kartu lain tetap memakai format ekspornya masing-masing; perhitungan, agregasi,
+dan grafik tidak berubah. Ekspor dimensi selain vendor tetap memakai style
+berbasis kode dan tidak bergantung pada berkas contoh.
+
+### Format Excel sesuai folder `Template Export` (sejak 05/11/2026)
+
+Pemilik mengunggah 3 workbook ke folder **`Template Export`** di GitHub:
+`penerimaan_per_vendor_template.xlsx`,
+`penerimaan_per_vendor_per_bulan_template.xlsx`, dan
+`rm_stock_intake_vs_pricing_template.xlsx`. Lewat `ask_user` dipilih
+**nama + format workbook** serta **nama unduh tanpa akhiran `_template`**.
+
+Tiga tombol ekspor berikut kini mengikuti template itu:
+
+| Endpoint | Nama unduh | Sheet | Chart |
+| --- | --- | --- | --- |
+| `GET /api/kartu/penerimaan?dimensi=vendor&format=xlsx` | `penerimaan_per_vendor.xlsx` | `Sheet` | 1 batang `Kg total` per vendor |
+| `GET /api/kartu/penerimaan?dimensi=vendor&per=bulan&format=xlsx` | `penerimaan_per_vendor_per_bulan.xlsx` | `Data Sheet` | 1 batang bertumpuk per vendor per bulan |
+| `GET /api/ringkasan-elemen?format=xlsx` | `rm_stock_intake_vs_pricing.xlsx` | `Sheet` | 1 batang `RM Stock (MT)` + `Intake (MT)` |
+
+Susunan yang disamakan: A1 judul (`Rubber Intake - Total Periods - All Vendors`,
+`Rubber Intake - Monthly Details`, atau `RM Stock – Intake vs Pricing`), A2
+`Purchasing - Raw Material Section`, A3 `Periode : …` tanpa tanda `[...]`,
+header di **baris 4**, data mulai **baris 5**, baris `TOTAL` khusus laporan
+bulanan, footer `Created by <username-login> Raw Material Big Data` (nama login
+pengguna yang sedang mengekspor), lebar kolom, serta **1 chart Excel native**
+yang bisa diedit. Header bulanan memakai
+`%tage`, bukan `Porsi`. Periode memakai format `January 2026 - Desember 2026`.
+
+Yang **tidak berubah**: payload JSON (termasuk kunci `*_kg` pada ringkasan
+elemen), kartu/grafik di layar, agregasi, dan filter. Ekspor Penerimaan Karet
+untuk dimensi **selain vendor** tetap memakai format
+`Format_penerimaan_per_desa.xlsx` di bagian atas. Ketiga ekspor ini membaca
+workbook `*_template.xlsx` dari folder tersebut pada runtime, menyalin paket
+Excel asli, lalu memperbarui lembar kerja, referensi/cache chart, serta anchor
+chart agar mengikuti jumlah baris/bulan aktual. Karena itu berkas template
+wajib ikut tersedia di folder `Template Export` saat aplikasi berjalan. Data
+laporan tetap dihitung dari database; yang disalin adalah format workbook,
+bukan data contoh. Health menambah `ekspor-template-export`; Jelaskan memakai
+entri `ekspor_template_export` di `backend/semantic/metrics.yaml`.
 
 ## Kalau ada tombol analisa yang bilang "Fitur ini tidak dikenali"
 

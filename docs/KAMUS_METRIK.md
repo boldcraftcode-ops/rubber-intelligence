@@ -38,6 +38,15 @@ yang mudah dibaca manusia.
 | safety (hari) | safety ton / pemakaian harian | hari | 2.795 ton ≈ 21,5 hari pada 130 ton/hari |
 | safety dinamis | 21,5 hari × pemakaian harian | ton | Pengganti safety tetap yang tidak responsif |
 
+**Satuan tonase kartu RM Stock – Intake vs Pricing**: RM Stock, Intake, dan
+Safety Level tersedia dalam **MT (metric ton)** maupun **kg**, dengan
+`1 MT = 1.000 kg`. API `GET /api/ringkasan-elemen` mengirim `*_ton` dan `*_kg`
+sekaligus; tombol **MT / kg** di kartu mengubah sumbu, grafik, dan angka utama
+tabel, sementara angka kecil di bawahnya selalu menampilkan satuan pasangan.
+Ekspor Excel memuat kolom untuk kedua satuan. SICOM, OP Price, dan OP Margin
+tetap **US¢/kg** (harga, bukan berat); panel 5W1H, RCA, Margin Bridge, dan Days
+of Cover tetap memakai ton sesuai rumusnya.
+
 **Margin Bridge** (`/api/margin-bridge`) — tombol analisa pada kartu RM Stock –
 Intake vs Pricing. Dua penyebab: ΔM = ΔSICOM − ΔOP Price. SICOM = harga acuan
 pasar (di luar kendali), OP Price = harga beli (keputusan). Bridge per bulan
@@ -78,3 +87,60 @@ Aturan: angka dibulatkan ("sekitar 2 sen"), tidak ada empat desimal, tanpa kata
 *variance*, *bridge*, atau *MoM*. Bila target berubah di tengah periode, narasi
 menyebutkannya beserta sumbernya (tabel target margin), supaya pertanyaan
 "kenapa target bulan itu X?" tidak menggantung.
+
+## Supplier class berbasis intake (Traceability)
+
+Kelas supplier **bukan** klasifikasi master (Small holder / Small estate /
+Rubber trader) dan **bukan** sourcing type (Direct/Indirect Smallholder, Own
+Plantation). Kelas dihitung murni dari volume intake, tidak disimpan dan tidak
+bisa diisi manual.
+
+| Kelas | Dry per supplier per bulan | Catatan |
+|-------|---------------------------|---------|
+| SS | ≥ 1.500 MT | batas tertinggi |
+| S | ≥ 1.000 MT | |
+| A | ≥ 500 MT | |
+| B | ≥ 250 MT | |
+| C | ≥ 100 MT | |
+| D | < 100 MT | termasuk bulan tanpa intake bila tidak ada baris |
+
+Rumus: `Dry (MT) = Σ dry_kg / 1.000` untuk satu `kode_vendor` pada satu
+`YYYY-MM`, memakai baris intake yang lolos `_filter_base` (tiket valid, Wet/DRC
+konsisten, bukan LATEX OP, mengikuti filter tahun/periode/EUDR). Perbandingan
+memakai nilai **sebelum dibulatkan** supaya 1.499,9996 MT tidak naik menjadi
+SS hanya karena tampil sebagai 1.500,000 MT. Detail Supplier Actors hanya
+menampilkan **satu nilai kelas tertinggi** dalam periode, tanpa tabel bulanan;
+ringkasan jumlah *supplier-bulan* per kelas berada di menu **Master Vendor**
+(dengan tahun terbaru otomatis) dan hanya menghitung kode yang punya baris
+Master Vendor.
+
+## Rekonsiliasi: selisih asli vs selisih efektif
+
+| Istilah | Arti |
+|---------|------|
+| `selisih_ton` / `selisih_kg` | Selisih **asli** antara dua sumber. Nilai ini tidak pernah diubah keputusan, supaya riwayat dan ekspor lama tetap dapat diaudit. |
+| `selisih_efektif_ton` / `selisih_efektif_kg` | Selisih yang dipakai status & alarm: `0` bila sudah ada keputusan sumber benar, jika belum ada keputusan, sama dengan selisih asli. |
+| `nilai_dipakai_ton` / `nilai_dipakai_kg` | Angka dari sumber yang dipilih (Tiket, Excel lama, atau Qty pembelian). |
+| `sumber_dipakai` | Kode sumber yang disetujui: `tiket`, `excel`, atau `pembelian`. |
+| `direvisi` / `koreksi` | Penanda keputusan beserta alasan, pembuat, dan waktu; keputusan dapat dibatalkan. |
+
+Keputusan **tidak menimpa** `tiket_baris`, `pembelian`, atau angka Excel lama.
+Untuk selisih bulanan Jul/Agu 2026, sumber yang dipilih juga menjadi
+`sumber_intake` pada `GET /api/ringkasan-elemen`; bulan tanpa keputusan tetap
+memakai urutan lama: tiket (bila wajar) → referensi rekonsiliasi → pembelian.
+
+
+## Kepatuhan vendor sampling
+
+| Istilah | Arti |
+|---------|------|
+| `Tepat Waktu` / `Terlambat` | Status yang **sudah tersimpan** di sheet Log/Summary workbook. Modul tidak menghitung ulang. |
+| `Tanpa Data Waktu*` / `Tanpa Ada Perwakilan` | Kunjungan tanpa data waktu/perwakilan. Masuk `Total Kunjungan`, tetapi tidak masuk pembilang `% Tepat Waktu`. |
+| `Total Kunjungan` | `Tepat Waktu + Terlambat + Tanpa Data Waktu` sesuai baris TOTAL sheet Summary. |
+| `% Tepat Waktu` | `Tepat Waktu ÷ (Tepat Waktu + Terlambat)`; baris tanpa data waktu tidak ikut pembilang maupun penyebut. |
+| `Selisih Waktu (Menit)` | Angka menit dari workbook. Formula Agu/Sep: `≥ 40 = Tepat Waktu`; Okt/Nov: `≥ 40 = Terlambat`. Header menulis "Min. 30 menit", tetapi nilai 40 menit dari formula dipertahankan. |
+
+Sumber: `Laporan_Monitoring_Vendor_RM_Purchasing (1).xlsx` (8 sheet: 4 Log + 4 Summary).
+Endpoint `GET /api/kepatuhan-vendor-sampling?bulan=yyyy-mm` mengembalikan
+metadata, KPI, ringkasan vendor, dan log; `format=xlsx` mengekspor sheet
+`Summary` dan `Log Monitoring` untuk periode terpilih.
