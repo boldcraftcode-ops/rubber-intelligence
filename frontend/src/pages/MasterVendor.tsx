@@ -59,6 +59,7 @@ export function KartuDaftarVendor() {
     qc.invalidateQueries({ queryKey: ["penerimaan"] });
     qc.invalidateQueries({ queryKey: ["tonase"] });
     qc.invalidateQueries({ queryKey: ["intake-terakhir"] });
+    qc.invalidateQueries({ queryKey: ["intake-terakhir-opsi"] });
   };
 
   const simpan = useMutation({
@@ -453,9 +454,67 @@ export function KartuBulkVendor() {
   );
 }
 
+/* ================= supplier class berbasis intake =================
+   Ringkasan kelas dipindah dari halaman Traceability ke Master Vendor atas
+   permintaan pemilik: di sini pemilik mengelola data vendor, jadi distribusi
+   kelas intake paling pas dibaca berdampingan dengan daftar & komposisi. */
+const WARNA_KELAS_INTAKE: Record<string, string> = {
+  SS: "bg-[#1D2434] text-white", S: "bg-[#175CD3] text-white",
+  A: "bg-[#027A48] text-white", B: "bg-[#B54708] text-white",
+  C: "bg-[#B45309] text-white", D: "bg-[#E4E5E8] text-[#374151]",
+};
+
+export function KartuKelasIntake() {
+  /* Tanpa parameter `tahun`, backend otomatis memakai tahun intake terbaru. */
+  const ki = useQuery({
+    queryKey: ["master-vendor-kelas-intake"],
+    queryFn: () => ambilJson("/api/traceability/kelas-intake"),
+  });
+  return (
+    <Kartu idMetrik="master_vendor"
+      judul="Supplier class berbasis intake · Dry (MT) per supplier per bulan"
+      keterangan="Kelas dihitung dari volume Dry bulanan per supplier, bukan dari isian master. Tanda ≥ berlaku di setiap batas; ringkasan hanya menghitung vendor yang terdaftar di Master Vendor."
+      anak={
+        <>
+          {ki.error && <Pesan jenis="error" teks={(ki.error as Error).message} />}
+          {ki.isLoading && <p className="text-xs text-[#64676C]">Memuat distribusi kelas…</p>}
+          {ki.data && (() => {
+            const d = ki.data;
+            const dist: any[] = d.distribusi ?? [];
+            const batas: any[] = d.batas ?? [];
+            const maks = Math.max(1, ...dist.map((x) => x.jumlah));
+            const bulan: string[] = d.bulan_tersedia ?? [];
+            return <>
+              <div className="mb-2 flex flex-wrap items-end justify-between gap-2 text-[11px] text-[#64676C]">
+                <span><b className="text-[#1D2434]">{fmtAngka(d.total_supplier_bulan, 0)} supplier-bulan</b> · tahun {d.filters?.year ?? "—"} · {bulan.length} bulan ({bulan[0] || "—"} s.d. {bulan[bulan.length - 1] || "—"}) · total {fmtAngka(d.total_dry_mt, 3)} MT</span>
+                <span>Tanda ≥ di setiap batas</span>
+              </div>
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
+                {dist.map((x: any) => {
+                  const b = batas.find((t: any) => t.kelas === x.kelas);
+                  return <div key={x.kelas} className="rounded-sm border border-[#E4E5E8] p-2.5">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className={`rounded-sm px-1.5 py-0.5 font-mono text-[11px] font-bold ${WARNA_KELAS_INTAKE[x.kelas] ?? WARNA_KELAS_INTAKE.D}`}>{x.kelas}</span>
+                      <span className="font-mono text-lg font-bold tabular-nums text-[#1D2434]">{fmtAngka(x.jumlah, 0)}</span>
+                    </div>
+                    <p className="mt-1 text-[10px] text-[#64676C]">{b ? (b.batas_mt === null ? "< 100 MT" : `≥ ${fmtAngka(b.batas_mt, 0)} MT`) : "—"}</p>
+                    <div className="mt-1.5 h-1.5 rounded bg-[#EDEFF2]"><div className="h-1.5 rounded bg-[#FF1313]" style={{ width: `${Math.max(2, x.jumlah / maks * 100)}%` }} /></div>
+                  </div>;
+                })}
+              </div>
+              {d.supplier_bulan_tanpa_master > 0 && <p className="mt-2 text-[10px] text-[#9AA0A6]">{d.supplier_bulan_tanpa_master} supplier-bulan dari kode tanpa Master Vendor ({d.kode_tanpa_master.join(", ")}) tidak masuk ringkasan.</p>}
+              <p className="mt-2 text-[10px] leading-relaxed text-[#9AA0A6]">{d.catatan}</p>
+            </>;
+          })()}
+        </>
+      } />
+  );
+}
+
 export default function MasterVendor() {
   return (
     <div className="grid gap-6">
+      <KartuKelasIntake />
       <KartuDaftarVendor />
       <KartuBulkVendor />
     </div>

@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Kartu, PilihRentangBulan, ambilJson, fmtAngka, useQueryKartu } from "../bersama";
+import { Kartu, PilihRentangBulan, TombolRefreshKartu, ambilJson, fmtAngka, useQueryKartu } from "../bersama";
 
 const akhirBulan = (ym: string) => {
   const [tahun, bulan] = ym.split("-").map(Number);
@@ -24,11 +24,16 @@ type PotentialResponse = {
 };
 
 type ModePeta = "intake" | "potensi";
+type Titik = [number, number];
 
 const LEBAR = 920;
 const TINGGI = 430;
 const WARNA_BERURUT = ["#DBEAFE", "#93C5FD", "#3B82F6", "#1D4ED8", "#172554"];
 const WARNA_KOSONG = "#E5E7EB";
+const WARNA_BAR = "#EA580C";
+const LEBAR_BAR = 9;
+const TINGGI_BAR_MIN = 8;
+const TINGGI_BAR_MAKS = 64;
 const pesanError = (error: unknown) => error instanceof Error ? error.message : "Gagal memuat peta atau data intake.";
 
 function posisi(value: any, output: number[][] = []): number[][] {
@@ -45,7 +50,7 @@ function namaBaku(value: string | null | undefined): string {
   return (value ?? "").trim().replace(/\s+/g, " ").toLocaleUpperCase("id-ID");
 }
 
-function buatPath(geometri: Feature["geometry"], project: (p: number[]) => [number, number]) {
+function buatPath(geometri: Feature["geometry"], project: (p: number[]) => Titik) {
   const polygons = geometri.type === "Polygon" ? [geometri.coordinates] : geometri.coordinates;
   return polygons.map((polygon: any[]) => polygon.map((ring: number[][]) =>
     ring.map((p, i) => {
@@ -55,10 +60,58 @@ function buatPath(geometri: Feature["geometry"], project: (p: number[]) => [numb
   ).join(" ")).join(" ");
 }
 
+function luasPoligon(titik: Titik[]): number {
+  let jumlah = 0;
+  for (let i = 0; i < titik.length; i += 1) {
+    const j = (i + titik.length - 1) % titik.length;
+    jumlah += titik[j][0] * titik[i][1] - titik[i][0] * titik[j][1];
+  }
+  return jumlah / 2;
+}
+
+function pusatBatas(titik: Titik[]): Titik {
+  if (!titik.length) return [LEBAR / 2, TINGGI / 2];
+  const xs = titik.map((p) => p[0]);
+  const ys = titik.map((p) => p[1]);
+  return [(Math.min(...xs) + Math.max(...xs)) / 2, (Math.min(...ys) + Math.max(...ys)) / 2];
+}
+
+function pusatPoligon(titik: Titik[]): Titik {
+  const luas = luasPoligon(titik);
+  if (Math.abs(luas) < 1e-6) return pusatBatas(titik);
+  let cx = 0;
+  let cy = 0;
+  for (let i = 0; i < titik.length; i += 1) {
+    const j = (i + titik.length - 1) % titik.length;
+    const silang = titik[j][0] * titik[i][1] - titik[i][0] * titik[j][1];
+    cx += (titik[j][0] + titik[i][0]) * silang;
+    cy += (titik[j][1] + titik[i][1]) * silang;
+  }
+  return [cx / (6 * luas), cy / (6 * luas)];
+}
+
+function cincinTerbesar(geometri: Feature["geometry"], project: (p: number[]) => Titik): Titik[] {
+  const polygons = geometri.type === "Polygon" ? [geometri.coordinates] : geometri.coordinates;
+  let terbaik: Titik[] = [];
+  let luasTerbaik = -1;
+  polygons.forEach((polygon: any[]) => {
+    const calon = Array.isArray(polygon[0]) && Array.isArray(polygon[0][0]) ? polygon[0] : polygon;
+    if (!Array.isArray(calon) || !Array.isArray(calon[0]) || calon.length < 3) return;
+    const titik = calon.map((p: number[]) => project(p));
+    const luas = Math.abs(luasPoligon(titik));
+    if (luas > luasTerbaik) {
+      luasTerbaik = luas;
+      terbaik = titik;
+    }
+  });
+  return terbaik;
+}
+
 export default function PetaIntake() {
   const [dari, setDari] = useState("");
   const [sampai, setSampai] = useState("");
   const [mode, setMode] = useState<ModePeta>("intake");
+  const [pakaiGrafikBar, setPakaiGrafikBar] = useState(true);
   const params = new URLSearchParams({ dimensi: "provinsi" });
   if (dari) params.set("dari", `${dari}-01`);
   if (sampai) params.set("sampai", akhirBulan(sampai));
@@ -108,7 +161,7 @@ export default function PetaIntake() {
     .flatMap((row) => row.ton !== null && row.ton > 0 ? [row.ton] : [])
     .sort((a, b) => a - b);
 
-  const projectPath = useMemo(() => {
+  const proyeksi = useMemo(() => {
     const features = geo.data?.features ?? [];
     const points = features.flatMap((feature) => posisi(feature.geometry.coordinates));
     if (!points.length) return null;
@@ -120,12 +173,52 @@ export default function PetaIntake() {
     const scale = Math.min((LEBAR - padding * 2) / (maxLon - minLon), (TINGGI - padding * 2) / (maxLat - minLat));
     const offsetX = (LEBAR - (maxLon - minLon) * scale) / 2;
     const offsetY = (TINGGI - (maxLat - minLat) * scale) / 2;
-    const project = (p: number[]): [number, number] => [
+    const project = (p: number[]): Titik => [
       offsetX + (p[0] - minLon) * scale,
       offsetY + (maxLat - p[1]) * scale,
     ];
-    return new Map(features.map((feature) => [feature.properties.PROVINSI, buatPath(feature.geometry, project)]));
+    const paths = new Map(features.map((feature) => [feature.properties.PROVINSI, buatPath(feature.geometry, project)]));
+    const pusat = new Map<string, Titik>();
+    features.forEach((feature) => {
+      const semua = posisi(feature.geometry.coordinates).map(project);
+      const cincin = cincinTerbesar(feature.geometry, project);
+      pusat.set(feature.properties.PROVINSI, cincin.length >= 3 ? pusatPoligon(cincin) : pusatBatas(semua));
+    });
+    return { paths, pusat };
   }, [geo.data]);
+
+  const skalaBar = useMemo(() => {
+    const positif = nilai.positive;
+    if (!positif.length) return null;
+    if (positif.length === 1) return () => TINGGI_BAR_MAKS;
+    const min = Math.log10(positif[0]);
+    const max = Math.log10(positif[positif.length - 1]);
+    const rentang = max - min || 1;
+    return (kg: number) => {
+      const rasio = Math.max(0, Math.min(1, (Math.log10(Math.max(kg, 1)) - min) / rentang));
+      return TINGGI_BAR_MIN + rasio * (TINGGI_BAR_MAKS - TINGGI_BAR_MIN);
+    };
+  }, [nilai.positive]);
+
+  const barRows = useMemo(() => {
+    if (!proyeksi || !skalaBar) return [];
+    return nilai.mapped.flatMap(({ feature, row }) => {
+      if (!row || row.kg_total <= 0) return [];
+      const tengah = proyeksi.pusat.get(feature.properties.PROVINSI);
+      if (!tengah) return [];
+      const x = Math.max(LEBAR_BAR, Math.min(LEBAR - LEBAR_BAR, tengah[0]));
+      const dasar = Math.max(14, Math.min(TINGGI - 8, tengah[1]));
+      const tinggi = Math.max(4, Math.min(skalaBar(row.kg_total), dasar - 10));
+      return [{
+        kunci: feature.properties.PROVINSI,
+        label: feature.properties.PROVINSI,
+        kg: row.kg_total,
+        x,
+        dasar,
+        tinggi,
+      }];
+    });
+  }, [nilai.mapped, proyeksi, skalaBar]);
 
   const colorOf = (kg: number | null) => {
     if (kg === null) return WARNA_KOSONG;
@@ -147,10 +240,11 @@ export default function PetaIntake() {
   const rows: ProvinceRow[] = intake.data?.baris ?? [];
   const totalTerpetakan = nilai.mapped.reduce((sum, item) => sum + (item.row?.kg_total ?? 0), 0);
   const topRows = [...rows].sort((a, b) => b.kg_total - a.kg_total).slice(0, 8);
+  const jumlahBerintake = barRows.length;
 
   return (
     <Kartu idMetrik="peta_intake_provinsi" judul="Sebaran Intake per Provinsi Indonesia"
-      keterangan="Peta sebaran intake karet berdasarkan provinsi yang tercatat pada tiket; warna semakin gelap menunjukkan intake Dry yang semakin besar."
+      keterangan="Peta sebaran intake karet berdasarkan provinsi yang tercatat pada tiket; warna semakin gelap menunjukkan intake Dry yang semakin besar, dan opsi centang 'Pakai grafik bar' menambah bar oranye di setiap provinsi yang punya intake."
       urlEkspor={url}
       anak={
         <>
@@ -165,14 +259,33 @@ export default function PetaIntake() {
                 Sentra produksi
               </button>
             </div>
+            {mode === "intake" && (
+              <label className="inline-flex items-start gap-2 rounded-sm border border-[#E4E5E8] bg-white px-3 py-1.5 text-xs text-[#1D2434] shadow-sm"
+                aria-label="Opsi pakai grafik bar atau tidak">
+                <input type="checkbox" checked={pakaiGrafikBar} onChange={(e) => setPakaiGrafikBar(e.target.checked)}
+                  className="mt-0.5 h-3.5 w-3.5 accent-[#EA580C]" />
+                <span>
+                  <span className="block font-semibold">Pakai grafik bar</span>
+                  <span className="block text-[10px] font-normal text-[#64676C]">
+                    {pakaiGrafikBar ? "Centang aktif: bar oranye tampil di tiap provinsi ber-intake." : "Centang kosong: tanpa grafik bar, peta warna saja."}
+                  </span>
+                </span>
+              </label>
+            )}
             {mode === "intake" ? (
               <>
                 <PilihRentangBulan dari={dari} sampai={sampai}
                                    setDari={setDari} setSampai={setSampai}
-                                   labelKosong="Hapus periode" />
+                                   labelKosong="Hapus periode"
+                                   aksi={<TombolRefreshKartu />} />
                 <span className="ml-auto text-[#64676C]">Periode intake: <b>{period}</b></span>
               </>
-            ) : <span className="ml-auto text-[#64676C]">Produksi karet kering: <b>{potensi.data?.tahun_produksi ?? "—"}</b></span>}
+            ) : (
+              <>
+                <span className="ml-auto text-[#64676C]">Produksi karet kering: <b>{potensi.data?.tahun_produksi ?? "—"}</b></span>
+                <TombolRefreshKartu />
+              </>
+            )}
           </div>
 
           {(geo.isLoading || (mode === "intake" && intake.isLoading) || (mode === "potensi" && potensi.isLoading)) &&
@@ -189,13 +302,14 @@ export default function PetaIntake() {
                   <>
                     <span>Total intake periode: <b className="font-mono text-[#1D2434]">{fmtAngka(intake.data.total_kg, 0)} kg</b></span>
                     <span>Terpetakan: <b className="font-mono text-[#1D2434]">{fmtAngka(totalTerpetakan, 0)} kg</b></span>
+                    <span>Provinsi ber-intake: <b className="font-mono text-[#1D2434]">{jumlahBerintake}</b></span>
                   </>
                 ) : <span>Wilayah sentra resmi: <b className="font-mono text-[#1D2434]">{potensi.data?.produksi_sentra.length ?? 0} provinsi</b></span>}
                 <span>{geo.data.features.length} batas provinsi</span>
               </div>
               <div className="grid gap-4 xl:grid-cols-[minmax(0,2fr)_minmax(250px,1fr)]">
                 <div className="min-w-0 overflow-x-auto rounded-sm border border-[#E4E5E8] bg-[#F8FAFC] p-2">
-                  <svg viewBox={`0 0 ${LEBAR} ${TINGGI}`} role="img" aria-label={mode === "intake" ? `Peta intake Indonesia untuk periode ${period}` : `Peta sentra produksi karet kering tahun ${potensi.data?.tahun_produksi ?? ""}`} className="h-auto min-h-[250px] w-full min-w-[620px]">
+                  <svg viewBox={`0 0 ${LEBAR} ${TINGGI}`} role="img" aria-label={mode === "intake" ? `Peta intake Indonesia untuk periode ${period}${pakaiGrafikBar ? " dengan grafik bar per provinsi" : " tanpa grafik bar"}` : `Peta sentra produksi karet kering tahun ${potensi.data?.tahun_produksi ?? ""}`} className="h-auto min-h-[250px] w-full min-w-[620px]">
                     {nilai.mapped.map(({ feature, row }) => {
                       const production = produksiByName.get(namaBaku(feature.properties.PROVINSI));
                       const productionTon = production?.ton ?? null;
@@ -206,21 +320,54 @@ export default function PetaIntake() {
                         : mode === "intake" ? `${fmtAngka(value, 0)} kg Dry` : `${fmtAngka(value, 0)} ton karet kering`;
                       return (
                         <path key={feature.properties.PROVINSI}
-                          d={projectPath?.get(feature.properties.PROVINSI) ?? ""}
+                          d={proyeksi?.paths.get(feature.properties.PROVINSI) ?? ""}
                           fill={fill} stroke="#FFFFFF" strokeWidth="0.75" strokeLinejoin="round"
                           aria-label={`${feature.properties.PROVINSI}: ${text}`}>
                           <title>{feature.properties.PROVINSI}: {text}{production?.catatan ? ` (${production.catatan})` : ""}</title>
                         </path>
                       );
                     })}
+                    {mode === "intake" && pakaiGrafikBar && barRows.length > 0 && (
+                      <g data-testid="bar-intake" aria-hidden="true" pointerEvents="none">
+                        {barRows.map((bar) => (
+                          <g key={bar.kunci}>
+                            <rect
+                              x={bar.x - LEBAR_BAR / 2}
+                              y={bar.dasar - bar.tinggi}
+                              width={LEBAR_BAR}
+                              height={bar.tinggi}
+                              rx={1.5}
+                              fill={WARNA_BAR}
+                              stroke="#FFFFFF"
+                              strokeWidth={1.2}
+                            />
+                            <circle cx={bar.x} cy={bar.dasar} r={2.2} fill="#FFFFFF" stroke={WARNA_BAR} strokeWidth={1} />
+                            <title>{`${bar.label}: ${fmtAngka(bar.kg, 0)} kg Dry`}</title>
+                          </g>
+                        ))}
+                      </g>
+                    )}
                   </svg>
                   <div className="flex flex-wrap items-center gap-2 px-2 pb-1 text-[11px] text-[#64676C]">
                     <span>{mode === "intake" ? "Intake lebih rendah" : "Produksi lebih rendah"}</span>
                     {WARNA_BERURUT.map((color) => <span key={color} className="h-3 w-5 rounded-sm border border-white" style={{ backgroundColor: color }} />)}
                     <span>{mode === "intake" ? "Intake lebih tinggi" : "Produksi lebih tinggi"}</span>
                     <span className="ml-3 inline-flex items-center gap-1"><span className="h-3 w-5 rounded-sm" style={{ backgroundColor: WARNA_KOSONG }} />{mode === "intake" ? "Belum ada data" : "Bukan sentra / data tidak tersedia"}</span>
+                    {mode === "intake" && (
+                      <span className="ml-3 inline-flex items-center gap-1">
+                        <span className="h-3 w-2.5 rounded-sm border border-white" style={{ backgroundColor: pakaiGrafikBar ? WARNA_BAR : WARNA_KOSONG }} />
+                        {pakaiGrafikBar ? "Bar intake" : "Grafik bar dimatikan"}
+                      </span>
+                    )}
                   </div>
-                  <p className="px-2 pb-1 text-[10px] text-[#7B818A]">Skala warna relatif terhadap provinsi dengan data pada lapisan terpilih. Arahkan kursor ke provinsi untuk melihat nilainya.</p>
+                  <p className="px-2 pb-1 text-[10px] text-[#7B818A]">
+                    Skala warna relatif terhadap provinsi dengan data pada lapisan terpilih. Arahkan kursor ke provinsi untuk melihat nilainya.
+                    {mode === "intake" && pakaiGrafikBar
+                      ? " Tinggi bar memakai skala logaritmik relatif terhadap intake terkecil/terbesar agar provinsi bernilai kecil tetap terlihat; bar hanya muncul pada provinsi yang cocok dengan batas peta. Angka pasti tetap ada pada tooltip provinsi."
+                      : mode === "intake"
+                        ? " Grafik bar sedang dimatikan; centang 'Pakai grafik bar' untuk menampilkannya kembali."
+                        : ""}
+                  </p>
                 </div>
                 <aside className="min-w-0">
                   {mode === "intake" ? (

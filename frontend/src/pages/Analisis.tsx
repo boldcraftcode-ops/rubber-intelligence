@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import {
   Bar, BarChart, CartesianGrid, Legend, Line, LineChart, ResponsiveContainer,
   Tooltip, XAxis, YAxis,
@@ -7,6 +8,7 @@ import {
   Kartu, KartuMuatSaatDiminta, NAMA_BULAN, Panel5W1H, PilihRentangBulan, akhirBulan,
   KepalaPanel, ambilJson, fmtAngka, fmtTanggal, hitungJumlahBulan, kelasInput,
   kelasTombolAnalisa, kelasTombolKecil, pesanGalat, useQueryKartu,
+  TombolRefreshKartu,
 } from "../bersama";
 import PetaIntake from "./PetaIntake";
 
@@ -105,9 +107,9 @@ export function TabelBulanan({ data, dimensi, nilaiKey, desimal, satuan,
   );
 }
 
-function PilihPeriode({ tahun, setTahun, bulan, setBulan }: any) {
+function PilihPeriode({ tahun, setTahun, bulan, setBulan, aksi }: any) {
   return (
-    <div className="flex gap-2 mb-3">
+    <div className="flex flex-wrap items-center gap-2 mb-3">
       <select className={kelasInput + " max-w-32"} value={tahun}
               onChange={(e) => setTahun(e.target.value ? Number(e.target.value) : "")}>
         {TAHUN_SEMUA.map((t) => (
@@ -123,6 +125,7 @@ function PilihPeriode({ tahun, setTahun, bulan, setBulan }: any) {
           ))}
         </select>
       )}
+      {aksi}
     </div>
   );
 }
@@ -273,7 +276,7 @@ export function AnalisisTren({ dari, sampai, modeEudr, bukaAwal = false }: {
   if (sampai) params.set("sampai", sampai);
   if (modeEudr !== "semua") params.set("eudr", String(modeEudr === "eudr"));
   const url = `/api/kartu/penerimaan/tren${params.size ? `?${params.toString()}` : ""}`;
-  const q = useQueryKartu({
+  const q = useQuery({
     queryKey: ["tren-penerimaan", url],
     queryFn: () => ambilJson(url),
     enabled: buka,
@@ -542,7 +545,7 @@ export function AnalisisKomposisi({ dari, sampai, modeEudr, dimensi,
   if (sampai) params.set("sampai", sampai);
   if (modeEudr !== "semua") params.set("eudr", String(modeEudr === "eudr"));
   const url = `/api/kartu/penerimaan/komposisi?${params.toString()}`;
-  const q = useQueryKartu({
+  const q = useQuery({
     queryKey: ["komposisi-penerimaan", url],
     queryFn: () => ambilJson(url),
     enabled: buka,
@@ -556,7 +559,8 @@ export function AnalisisKomposisi({ dari, sampai, modeEudr, dimensi,
     "Share EUDR (%)": m.eudr_pct,
   }));
   const grafikPorsi = baris.slice(0, 12).map((b: any) => ({
-    nama: b.label.length > 22 ? b.label.slice(0, 22) + "…" : b.label,
+    nama: b.label.length > 12 ? b.label.slice(0, 11) + "…" : b.label,
+    namaLengkap: b.label,
     "Porsi (%)": b.porsi_pct,
   }));
 
@@ -644,19 +648,26 @@ export function AnalisisKomposisi({ dari, sampai, modeEudr, dimensi,
                       {d.konsentrasi.label}.
                     </p>
 
-                    {/* ---- grafik porsi ---- */}
+                    {/* ---- grafik porsi: batang berdiri/vertikal ----
+                         Di Recharts, layout="horizontal" menempatkan kategori
+                         di sumbu X dan angka di sumbu Y, sehingga batangnya
+                         berdiri. layout="vertical" justru membuat batang
+                         mendatar; jangan tertukar bila ingin direvisi lagi. */}
                     {grafikPorsi.length > 1 && (
-                      <div style={{ height: Math.max(160, grafikPorsi.length * 28 + 40) }}
+                      <div style={{ height: Math.max(280, grafikPorsi.length * 26 + 120) }}
                            className="mt-3">
                         <AlatGrafik id="analisis-04"><ResponsiveContainer>
-                          <BarChart data={grafikPorsi} layout="vertical"
-                                    margin={{ top: 5, right: 20, bottom: 5, left: 10 }}>
+                          <BarChart data={grafikPorsi} layout="horizontal"
+                                    margin={{ top: 5, right: 20, bottom: 90, left: 10 }}>
                             <CartesianGrid strokeDasharray="3 3" />
-                            <XAxis type="number" fontSize={10} unit="%"
+                            <XAxis type="category" dataKey="nama" fontSize={10}
+                                   interval={0} angle={-45} textAnchor="end" height={90} />
+                            <YAxis type="number" fontSize={10} unit="%"
                                    tickFormatter={(v) => fmtAngka(v as number, 0)} />
-                            <YAxis type="category" dataKey="nama" width={150} fontSize={10} />
-                            <Tooltip formatter={(v: any) => [fmtAngka(v as number, 2) + "%", "Porsi"]} />
-                            <Bar dataKey="Porsi (%)" fill="#1D2434" />
+                            <Tooltip formatter={(v: any) => [fmtAngka(v as number, 2) + "%", "Porsi"]}
+                                     labelFormatter={(label: any, payload: any) =>
+                                       payload?.[0]?.payload?.namaLengkap ?? label} />
+                            <Bar dataKey="Porsi (%)" fill="#1D2434" maxBarSize={48} />
                           </BarChart>
                         </ResponsiveContainer></AlatGrafik>
                       </div>
@@ -887,7 +898,8 @@ function KartuPenerimaan() {
         <div className="flex flex-wrap items-end gap-3 mb-3 text-xs">
           <PilihRentangBulan dari={dari} sampai={sampai}
                              setDari={setDari} setSampai={setSampai}
-                             labelKosong="tampilkan semua periode" />
+                             labelKosong="tampilkan semua periode"
+                             aksi={<TombolRefreshKartu />} />
           {dimensi !== "vendor" && (
             <div>
               <label className="block text-[#64676C] mb-1">Vendor</label>
@@ -956,6 +968,12 @@ function KartuPenerimaan() {
                 </select>
                 {dimensiData} terbesar
               </label>
+            )}
+            {modeBulan && (
+              <p className="w-full text-[11px] text-[#64676C]">
+                Grafik/tabel dibatasi agar terbaca; <b>Ekspor Excel</b> tetap
+                memuat semua baris detail, tanpa baris "Lainnya".
+              </p>
             )}
           </div>
         )}
@@ -1116,7 +1134,8 @@ function KartuTonase() {
         </div>
         <div className="mb-3 flex flex-wrap items-end gap-3">
           <PilihRentangBulan dari={dari} sampai={sampai}
-                             setDari={setDari} setSampai={setSampai} />
+                             setDari={setDari} setSampai={setSampai}
+                             aksi={<TombolRefreshKartu />} />
           {modeBulan && (
             <label className="flex items-center gap-1.5 text-xs text-[#64676C]">
               Tampilkan
@@ -1225,7 +1244,7 @@ function KartuKonsentrasi() {
                 ? "bg-[#FF1313] text-white" : "bg-[#F1F2F4] text-[#1D2434]"}`}
               onClick={() => setTop(n)}>Top {n}</button>
           ))}
-          <PilihPeriode tahun={tahun} setTahun={setTahun} />
+          <PilihPeriode tahun={tahun} setTahun={setTahun} aksi={<TombolRefreshKartu />} />
         </div>
         <table className="w-full text-xs">
           <thead>
@@ -1269,7 +1288,7 @@ function KartuGrade() {
     <Kartu idMetrik="bauran_grade" judul="Bauran grade & porsi EUDR" urlEkspor={url}
            anak={
       <>
-        <PilihPeriode tahun={tahun} setTahun={setTahun} />
+        <PilihPeriode tahun={tahun} setTahun={setTahun} aksi={<TombolRefreshKartu />} />
         <table className="w-full text-xs">
           <thead>
             <tr className="text-left text-[#64676C] border-b">
@@ -1321,68 +1340,76 @@ function KartuGrade() {
 const umurDalamKata = (hari: number) =>
   hari <= 0 ? "hari ini" : hari === 1 ? "kemarin" : `${hari} hari lalu`;
 
+/* Satu gaya sel untuk kedua tabel: padding kiri/kanan + garis pemisah kolom,
+   supaya nilai panjang (nama vendor, wilayah) tidak menyatu dengan kolom
+   sebelahnya. `last:` membuang garis di kolom paling kanan. */
+const selIntake = "border-r border-[#EDEFF2] px-3 py-2 last:border-r-0";
+const selKepala = `${selIntake} whitespace-nowrap bg-[#F8F8F8] text-left text-[10px] font-semibold uppercase tracking-wide text-[#64676C]`;
+
 export function KartuIntakeTerakhir() {
   const [limit, setLimit] = useState(20);
-  const url = `/api/kartu/intake-terakhir?limit=${limit}`;
+  const [dari, setDari] = useState("");
+  const [sampai, setSampai] = useState("");
+  const [vendor, setVendor] = useState("");
+
+  const params = new URLSearchParams();
+  params.set("limit", String(limit));
+  if (dari) params.set("dari", dari);
+  if (sampai) params.set("sampai", sampai);
+  if (vendor) params.set("vendor", vendor);
+  const url = `/api/kartu/intake-terakhir?${params.toString()}`;
+
+  const paramsJelaskan = new URLSearchParams();
+  if (dari) paramsJelaskan.set("dari", dari);
+  if (sampai) paramsJelaskan.set("sampai", sampai);
+  if (vendor) paramsJelaskan.set("vendor", vendor);
+  const qsJelaskan = paramsJelaskan.size ? `?${paramsJelaskan.toString()}` : "";
+
   const q = useQueryKartu({ queryKey: ["intake-terakhir", url], queryFn: () => ambilJson(url) });
+  const qOps = useQuery({
+    queryKey: ["intake-terakhir-opsi"],
+    queryFn: () => ambilJson("/api/kartu/intake-terakhir/opsi"),
+    staleTime: 300_000,
+  });
   const t = q.data?.terakhir;
+  const daftarVendor: any[] = qOps.data?.pilihan_vendor ?? q.data?.pilihan_vendor ?? [];
+  const batasData = qOps.data?.batas_data ?? q.data?.batas_data;
+  const labelPeriode = dari && sampai
+    ? `${fmtTanggal(dari)} s.d. ${fmtTanggal(sampai)}`
+    : dari ? `sejak ${fmtTanggal(dari)}`
+      : sampai ? `s.d. ${fmtTanggal(sampai)}` : "seluruh tiket";
 
   return (
-    <Kartu idMetrik="penerimaan" judul="Daftar intake terakhir"
-           urlEkspor={url}
-           keterangan={"Satu baris = satu tiket (satu kendaraan datang). Urut dari yang paling baru, supaya kelihatan kapan intake terakhir masuk."}
+    <Kartu idMetrik="daftar_intake_terakhir" judul="Daftar intake terakhir"
+           urlEkspor={url} qsJelaskan={qsJelaskan}
+           keterangan="Satu baris = satu tiket. Wilayah dipecah 4 kolom SCDF; filter vendor dan rentang tanggal ikut tabel, ringkasan, dan Ekspor Excel."
            anak={
       <>
-        {t ? (
-          <div className="mb-3 rounded-sm border border-[#E4E5E8] bg-[#F8F8F8] p-3">
-            <div className="flex flex-wrap items-baseline gap-x-6 gap-y-2">
-              <div>
-                <p className="text-xs text-[#64676C]">Intake terakhir masuk</p>
-                <p className="text-lg font-semibold text-[#1D2434]">
-                  {fmtTanggal(t.tanggal)}
-                  <span className={`ml-2 rounded-sm px-2 py-0.5 text-xs font-semibold ${
-                    t.umur_hari > 7
-                      ? "bg-[#FEF2F2] text-[#B91C1C] border border-[#FECACA]"
-                      : "bg-[#ECFDF5] text-[#166534] border border-[#A7F3D0]"}`}>
-                    {umurDalamKata(t.umur_hari)}
-                  </span>
-                </p>
-              </div>
-              <div>
-                <p className="text-xs text-[#64676C]">Tiket</p>
-                <p className="text-sm font-mono text-[#1D2434]">{t.ticket_no}</p>
-              </div>
-              <div>
-                <p className="text-xs text-[#64676C]">Vendor</p>
-                <p className="text-sm text-[#1D2434]">{t.label_vendor}</p>
-              </div>
-              <div>
-                <p className="text-xs text-[#64676C]">Grade · ton kering</p>
-                <p className="text-sm text-[#1D2434]">
-                  {t.grade ?? "–"} · {fmtAngka(t.dry_ton, 3)} t
-                </p>
-              </div>
-              <div>
-                <p className="text-xs text-[#64676C]">Sehari itu</p>
-                <p className="text-sm text-[#1D2434]">
-                  {t.jumlah_tiket_hari_itu} tiket · {fmtAngka(t.dry_ton_hari_itu, 3)} t
-                </p>
-              </div>
-            </div>
-            {t.umur_hari > 7 && (
-              <p className="mt-2 text-xs text-[#B45309]">
-                Data intake terakhir sudah {t.umur_hari} hari. Bila seharusnya sudah ada
-                tiket baru, unggah ekspor “Master Data” terbaru di menu Unggah Data.
-              </p>
-            )}
+        <div className="mb-3 flex flex-wrap items-end gap-2 text-xs text-[#64676C]"
+             data-uji="filter-intake-terakhir">
+          <div>
+            <label className="mb-1 block font-semibold uppercase tracking-wide text-[#64676C]">
+              Periode records
+            </label>
+            <PilihRentangTanggal dari={dari} sampai={sampai}
+                                 setDari={setDari} setSampai={setSampai}
+                                 batasData={batasData}
+                                 aksi={<TombolRefreshKartu />} />
           </div>
-        ) : (
-          <p className="mb-3 text-sm text-[#64676C]">
-            Belum ada tiket intake sama sekali. Unggah ekspor “Master Data” di menu Unggah Data.
-          </p>
-        )}
-
-        <div className="mb-2 flex flex-wrap items-center gap-2 text-xs text-[#64676C]">
+          <label className="flex items-center gap-1.5">
+            Vendor
+            <select className={kelasInput + " max-w-64"} value={vendor}
+                    aria-label="Filter vendor"
+                    onChange={(e) => setVendor(e.target.value)}>
+              <option value="">Semua vendor</option>
+              {qOps.isLoading && <option value="" disabled>Memuat vendor…</option>}
+              {daftarVendor.map((p: any) => (
+                <option key={p.kode} value={p.kode} title={p.label}>{p.label}</option>
+              ))}
+              {vendor && !daftarVendor.some((p: any) => p.kode === vendor) &&
+                <option value={vendor}>{vendor}</option>}
+            </select>
+          </label>
           <label className="flex items-center gap-1.5">
             Tampilkan
             <select className={kelasInput + " max-w-24"} value={limit}
@@ -1391,43 +1418,160 @@ export function KartuIntakeTerakhir() {
             </select>
             tiket terakhir
           </label>
-          {q.data && (
-            <span>
-              · {q.data.baris.length} dari {q.data.jumlah_tiket_total} tiket
-              {q.data.tanggal_pertama ? ` (data sejak ${fmtTanggal(q.data.tanggal_pertama)})` : ""}
-            </span>
-          )}
         </div>
 
-        <div className="max-h-96 overflow-y-auto">
-          <table className="w-full text-xs">
-            <thead className="sticky top-0 bg-white">
-              <tr className="text-left text-[#64676C] border-b">
-                <th className="py-1">Tanggal</th>
-                <th>No tiket</th>
-                <th>Vendor</th>
-                <th>Grade</th>
-                <th className="text-right">Wet ton</th>
-                <th className="text-right">Dry ton</th>
-                <th className="text-right">Reject ton</th>
-                <th>Wilayah</th>
+        {q.error && (
+          <p className="mb-2 text-xs text-[#B91C1C]">{pesanGalat(q.error)}</p>
+        )}
+        {qOps.isError && (
+          <p className="mb-2 text-xs text-[#B45309]">
+            Gagal memuat daftar vendor: {pesanGalat(qOps.error)}
+          </p>
+        )}
+
+        {t ? (
+          <div className="mb-3 overflow-hidden rounded-sm border border-[#E4E5E8]">
+            <table className="w-full text-xs">
+              <caption className="sr-only">Ringkasan tiket intake terakhir</caption>
+              <tbody>
+                <tr className="border-b border-[#EDEFF2]">
+                  <th scope="row" className={`${selIntake} w-48 whitespace-nowrap bg-[#F8F8F8] text-left font-medium text-[#64676C]`}>
+                    Intake terakhir masuk
+                  </th>
+                  <td className={`${selIntake} font-semibold text-[#1D2434]`}>
+                    {fmtTanggal(t.tanggal)}
+                    <span className={`ml-2 rounded-sm px-2 py-0.5 text-xs font-semibold ${
+                      t.umur_hari > 7
+                        ? "bg-[#FEF2F2] text-[#B91C1C] border border-[#FECACA]"
+                        : "bg-[#ECFDF5] text-[#166534] border border-[#A7F3D0]"}`}>
+                      {umurDalamKata(t.umur_hari)}
+                    </span>
+                  </td>
+                </tr>
+                <tr className="border-b border-[#EDEFF2]">
+                  <th scope="row" className={`${selIntake} whitespace-nowrap bg-[#F8F8F8] text-left font-medium text-[#64676C]`}>No tiket</th>
+                  <td className={`${selIntake} font-mono text-[#1D2434]`}>{t.ticket_no}</td>
+                </tr>
+                <tr className="border-b border-[#EDEFF2]">
+                  <th scope="row" className={`${selIntake} whitespace-nowrap bg-[#F8F8F8] text-left font-medium text-[#64676C]`}>Vendor</th>
+                  <td className={`${selIntake} text-[#1D2434]`}>{t.label_vendor}</td>
+                </tr>
+                <tr className="border-b border-[#EDEFF2]">
+                  <th scope="row" className={`${selIntake} whitespace-nowrap bg-[#F8F8F8] text-left font-medium text-[#64676C]`}>Grade</th>
+                  <td className={`${selIntake} text-[#1D2434]`}>{t.grade ?? "–"}</td>
+                </tr>
+                <tr className="border-b border-[#EDEFF2]">
+                  <th scope="row" className={`${selIntake} whitespace-nowrap bg-[#F8F8F8] text-left font-medium text-[#64676C]`}>Provinsi</th>
+                  <td className={`${selIntake} text-[#1D2434]`}
+                      title={t.sumber_wilayah === "SCDF" ? "Ejaan resmi SCDF" : "Nilai tiket (belum ada padanan SCDF)"}>
+                    {t.provinsi ?? "–"}
+                    {t.sumber_wilayah === "SCDF" &&
+                      <span className="ml-2 rounded-sm bg-[#ECFDF5] px-1.5 py-0.5 text-[10px] font-semibold text-[#166534]">SCDF</span>}
+                  </td>
+                </tr>
+                <tr className="border-b border-[#EDEFF2]">
+                  <th scope="row" className={`${selIntake} whitespace-nowrap bg-[#F8F8F8] text-left font-medium text-[#64676C]`}>Kabupaten/Kota</th>
+                  <td className={`${selIntake} text-[#1D2434]`}
+                      title={t.sumber_wilayah === "SCDF" ? "Ejaan resmi SCDF" : "Nilai tiket (belum ada padanan SCDF)"}>
+                    {t.kabupaten ?? "–"}
+                  </td>
+                </tr>
+                <tr className="border-b border-[#EDEFF2]">
+                  <th scope="row" className={`${selIntake} whitespace-nowrap bg-[#F8F8F8] text-left font-medium text-[#64676C]`}>Kecamatan</th>
+                  <td className={`${selIntake} text-[#1D2434]`}
+                      title={t.sumber_wilayah === "SCDF" ? "Ejaan resmi SCDF" : "Nilai tiket (belum ada padanan SCDF)"}>
+                    {t.kecamatan ?? "–"}
+                  </td>
+                </tr>
+                <tr className="border-b border-[#EDEFF2]">
+                  <th scope="row" className={`${selIntake} whitespace-nowrap bg-[#F8F8F8] text-left font-medium text-[#64676C]`}>Desa</th>
+                  <td className={`${selIntake} text-[#1D2434]`}
+                      title={t.sumber_wilayah === "SCDF" ? "Ejaan resmi SCDF" : "Nilai tiket (belum ada padanan SCDF)"}>
+                    {t.desa ?? "–"}
+                  </td>
+                </tr>
+                <tr className="border-b border-[#EDEFF2]">
+                  <th scope="row" className={`${selIntake} whitespace-nowrap bg-[#F8F8F8] text-left font-medium text-[#64676C]`}>Ton kering</th>
+                  <td className={`${selIntake} font-mono tabular-nums text-[#1D2434]`}>{fmtAngka(t.dry_ton, 3)} t</td>
+                </tr>
+                <tr>
+                  <th scope="row" className={`${selIntake} whitespace-nowrap bg-[#F8F8F8] text-left font-medium text-[#64676C]`}>Sehari itu</th>
+                  <td className={`${selIntake} font-mono tabular-nums text-[#1D2434]`}>
+                    {t.jumlah_tiket_hari_itu} tiket · {fmtAngka(t.dry_ton_hari_itu, 3)} t
+                  </td>
+                </tr>
+                {t.umur_hari > 7 && (
+                  <tr className="border-t border-[#FECDCA] bg-[#FFFAEB]">
+                    <td colSpan={2} className="px-3 py-2 text-xs text-[#B45309]">
+                      Data intake terakhir sudah {t.umur_hari} hari. Bila seharusnya sudah ada
+                      tiket baru, unggah ekspor “Master Data” terbaru di menu Unggah Data.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <p className="mb-3 text-sm text-[#64676C]">
+            {q.data
+              ? "Belum ada tiket intake pada filter ini. Ubah vendor atau rentang tanggal, atau unggah ekspor “Master Data” di menu Unggah Data."
+              : "Tekan Refresh periode ini untuk memuat daftar tiket."}
+          </p>
+        )}
+
+        {q.data && (
+          <div className="mb-2 text-xs text-[#64676C]">
+            Periode records {labelPeriode} · {q.data.baris.length} dari {q.data.jumlah_tiket_total} tiket
+            {q.data.tanggal_pertama ? ` (data sejak ${fmtTanggal(q.data.tanggal_pertama)})` : ""}
+          </div>
+        )}
+
+        <div className="max-h-96 overflow-auto rounded-sm border border-[#E4E5E8]">
+          <table className="w-full min-w-[1500px] text-xs" data-uji="tabel-intake-terakhir">
+            <thead className="sticky top-0 z-10">
+              <tr className="border-b border-[#E4E5E8]">
+                <th scope="col" className={selKepala}>Tanggal</th>
+                <th scope="col" className={selKepala}>No tiket</th>
+                <th scope="col" className={selKepala}>Vendor</th>
+                <th scope="col" className={selKepala}>Grade</th>
+                <th scope="col" className={`${selKepala} text-right`}>Wet (t)</th>
+                <th scope="col" className={`${selKepala} text-right`}>Dry (t)</th>
+                <th scope="col" className={`${selKepala} text-right`}>Reject (t)</th>
+                <th scope="col" className={selKepala}>Provinsi</th>
+                <th scope="col" className={selKepala}>Kabupaten/Kota</th>
+                <th scope="col" className={selKepala}>Kecamatan</th>
+                <th scope="col" className={selKepala}>Desa</th>
               </tr>
             </thead>
             <tbody>
-              {q.data?.baris.map((b: any) => (
-                <tr key={`${b.tanggal}-${b.ticket_no}`} className="border-b border-[#EDEFF2]">
-                  <td className="py-1 whitespace-nowrap">{fmtTanggal(b.tanggal)}</td>
-                  <td className="font-mono">{b.ticket_no}</td>
-                  <td>{b.label_vendor}</td>
-                  <td>{b.grade ?? "–"}</td>
-                  <td className="text-right font-mono">{fmtAngka(b.wet_ton, 3)}</td>
-                  <td className="text-right font-mono">{fmtAngka(b.dry_ton, 3)}</td>
-                  <td className="text-right font-mono">{fmtAngka(b.reject_ton, 3)}</td>
-                  <td>{[b.kabupaten, b.provinsi].filter(Boolean).join(", ") || "–"}</td>
-                </tr>
-              ))}
+              {q.data?.baris.map((b: any) => {
+                const catatanWilayah = b.sumber_wilayah === "SCDF"
+                  ? "Ejaan resmi SCDF"
+                  : "Nilai tiket (belum ada padanan SCDF)";
+                return (
+                  <tr key={`${b.tanggal}-${b.ticket_no}`}
+                      className="border-b border-[#EDEFF2] even:bg-[#FAFAFA] hover:bg-[#FFFAEB]">
+                    <td className={`${selIntake} whitespace-nowrap text-[#1D2434]`}>{fmtTanggal(b.tanggal)}</td>
+                    <td className={`${selIntake} whitespace-nowrap font-mono text-[#1D2434]`}>{b.ticket_no}</td>
+                    <td className={`${selIntake} whitespace-nowrap text-[#374151]`} title={b.label_vendor}>{b.label_vendor}</td>
+                    <td className={`${selIntake} whitespace-nowrap text-[#374151]`}>{b.grade ?? "–"}</td>
+                    <td className={`${selIntake} whitespace-nowrap text-right font-mono tabular-nums`}>{fmtAngka(b.wet_ton, 3)}</td>
+                    <td className={`${selIntake} whitespace-nowrap text-right font-mono tabular-nums`}>{fmtAngka(b.dry_ton, 3)}</td>
+                    <td className={`${selIntake} whitespace-nowrap text-right font-mono tabular-nums`}>{fmtAngka(b.reject_ton, 3)}</td>
+                    <td className={`${selIntake} whitespace-nowrap text-[#374151]`} title={catatanWilayah}>{b.provinsi ?? "–"}</td>
+                    <td className={`${selIntake} whitespace-nowrap text-[#374151]`} title={catatanWilayah}>{b.kabupaten ?? "–"}</td>
+                    <td className={`${selIntake} whitespace-nowrap text-[#374151]`} title={catatanWilayah}>{b.kecamatan ?? "–"}</td>
+                    <td className={`${selIntake} whitespace-nowrap text-[#374151]`} title={catatanWilayah}>{b.desa ?? "–"}</td>
+                  </tr>
+                );
+              })}
+              {!q.data && (
+                <tr><td colSpan={11} className="px-3 py-6 text-center text-[#9AA0A6]">
+                  Memuat daftar tiket… Tekan Refresh periode ini bila belum muncul.
+                </td></tr>
+              )}
               {q.data?.baris.length === 0 && (
-                <tr><td colSpan={8} className="py-2 text-[#64676C]">Belum ada tiket intake.</td></tr>
+                <tr><td colSpan={11} className="px-3 py-6 text-center text-[#9AA0A6]">Belum ada tiket intake pada filter ini.</td></tr>
               )}
             </tbody>
           </table>
@@ -1457,7 +1601,7 @@ export function KartuReject() {
            anak={
       <>
         <div className="flex flex-wrap items-end gap-2">
-          <PilihPeriode tahun={tahun} setTahun={setTahun} />
+          <PilihPeriode tahun={tahun} setTahun={setTahun} aksi={<TombolRefreshKartu />} />
           <label className="mb-3 flex items-center gap-1.5 text-xs text-[#64676C]">
             Tampilkan
             <select className={kelasInput + " max-w-44"}
@@ -1538,6 +1682,7 @@ function KartuMarginHarian() {
             {NAMA_BULAN.slice(1).map((n, i) => (
               <option key={n} value={i + 1}>{n}</option>))}
           </select>
+          <TombolRefreshKartu />
         </div>
         <div className="max-h-72 overflow-y-auto">
           <table className="w-full text-xs">
@@ -1614,7 +1759,8 @@ function KartuMarginPer() {
               onClick={() => setDimensi(d)}>per {d}</button>
           ))}
           <PilihRentangBulan dari={dari} sampai={sampai}
-                             setDari={setDari} setSampai={setSampai} />
+                             setDari={setDari} setSampai={setSampai}
+                             aksi={<TombolRefreshKartu />} />
           {modeBulan && (
             <label className="flex items-center gap-1.5 text-xs text-[#64676C]">
               Tampilkan
@@ -1694,6 +1840,492 @@ function KartuMarginPer() {
   );
 }
 
+/* ---------- pemilih rentang TANGGAL PERSIS (kartu konsistensi vendor) ----------
+   Berbeda dari PilihRentangBulan: daftar hari kosong harus mengikuti tanggal
+   yang benar-benar dipilih, bukan otomatis tanggal 1 / akhir bulan. */
+function PilihRentangTanggal({ dari, sampai, setDari, setSampai, aksi, batasData }: {
+  dari: string; sampai: string;
+  setDari: (v: string) => void; setSampai: (v: string) => void;
+  aksi?: any; batasData?: any;
+}) {
+  const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  const pilihCepat = (e: { currentTarget: HTMLSelectElement }) => {
+    const v = e.currentTarget.value;
+    const kini = new Date();
+    const y = kini.getFullYear(), m = kini.getMonth(), t = kini.getDate();
+    const rentang: Record<string, [string, string]> = {
+      semua: ["", ""],
+      tahun: [iso(new Date(y, 0, 1)), iso(kini)],
+      bulan: [iso(new Date(y, m, 1)), iso(kini)],
+      tigapuluh: [iso(new Date(y, m, t - 29)), iso(kini)],
+      semester1: [iso(new Date(y, 0, 1)), iso(new Date(y, 5, 30))],
+    };
+    const hasil = rentang[v];
+    if (hasil) { setDari(hasil[0]); setSampai(hasil[1]); }
+    e.currentTarget.value = "";
+  };
+  return (
+    <div className="flex flex-wrap items-end gap-2 text-xs" data-uji="rentang-tanggal-konsistensi">
+      <div>
+        <label className="mb-1 block text-[#64676C]">Rentang cepat</label>
+        <select className="rounded-sm border border-[#E4E5E8] bg-white px-2 py-1.5 text-[#1D2434]"
+                defaultValue="" aria-label="Pilih rentang tanggal cepat" onChange={pilihCepat}>
+          <option value="" disabled>Pilih rentang…</option>
+          <option value="semua">Seluruh rentang tiket</option>
+          <option value="tahun">Tahun berjalan s.d. hari ini</option>
+          <option value="bulan">Bulan berjalan s.d. hari ini</option>
+          <option value="tigapuluh">30 hari terakhir</option>
+          <option value="semester1">Semester 1 tahun berjalan</option>
+        </select>
+      </div>
+      <div>
+        <label className="mb-1 block text-[#64676C]">Dari tanggal</label>
+        <input type="date" className={kelasInput} value={dari}
+               aria-label="Dari tanggal" onChange={(e) => setDari(e.target.value)} />
+      </div>
+      <div>
+        <label className="mb-1 block text-[#64676C]">Sampai tanggal</label>
+        <input type="date" className={kelasInput} value={sampai}
+               aria-label="Sampai tanggal" onChange={(e) => setSampai(e.target.value)} />
+      </div>
+      {(dari || sampai) && (
+        <button className={kelasTombolKecil}
+                onClick={() => { setDari(""); setSampai(""); }}>
+          hapus filter
+        </button>
+      )}
+      {batasData?.tersedia && (
+        <button className={kelasTombolKecil}
+                title={`Tiket tersedia ${batasData.dari} s.d. ${batasData.sampai}`}
+                onClick={() => {
+                  setDari(batasData.dari); setSampai(batasData.sampai);
+                }}>
+          pakai batas tiket
+        </button>
+      )}
+      {aksi}
+    </div>
+  );
+}
+
+/* ---------- kartu baru: konsistensi intake harian/bulanan per vendor ---------- */
+function KartuKonsistensiIntake() {
+  const [dari, setDari] = useState("");
+  const [sampai, setSampai] = useState("");
+  const [tampilSemuaHari, setTampilSemuaHari] = useState(false);
+  const [tampilSemuaRentang, setTampilSemuaRentang] = useState(false);
+
+  const params = new URLSearchParams();
+  if (dari) params.set("dari", dari);
+  if (sampai) params.set("sampai", sampai);
+  const url = `/api/kartu/konsistensi-intake-vendor${params.size ? "?" + params.toString() : ""}`;
+  const urlRinci = `${url}${url.includes("?") ? "&" : "?"}rinci=1`;
+  useEffect(() => {
+    setTampilSemuaHari(false);
+    setTampilSemuaRentang(false);
+  }, [url]);
+  const q = useQueryKartu({
+    queryKey: ["konsistensi-intake-vendor", url],
+    queryFn: () => ambilJson(url),
+  });
+  const d: any = q.data;
+  const modeRingkas = d?.periode?.mode_rincian === "ringkas";
+  const mintaRinci = modeRingkas && tampilSemuaHari;
+  const qRinci = useQuery({
+    queryKey: ["konsistensi-intake-vendor-rinci", urlRinci],
+    queryFn: () => ambilJson(urlRinci),
+    enabled: mintaRinci,
+  });
+  // Pada mode ringkas JSON awal sengaja tidak membawa matriks harian.
+  // Saat pengguna memilih "tampilkan semua baris", `rinci=1` diambil.
+  const sumberHarian: any = mintaRinci ? (qRinci.data ?? null) : d;
+  const baris: any[] = d?.baris ?? [];
+  const bulan: any[] = d?.bulan ?? [];
+  const vendorPerBulan: any[] = d?.vendor_per_bulan ?? [];
+  const vendorHarian: any[] = sumberHarian?.vendor_harian ?? [];
+  const hari: any[] = sumberHarian?.hari ?? [];
+  const totalPerBulan: any[] = d?.total_per_bulan ?? [];
+  const vendorUtamaBulan: any[] = d?.vendor_utama_bulan ?? [];
+  const tripUtamaBulan: any[] = d?.trip_utama_bulan ?? [];
+  const shareUtamaBulan: any[] = d?.share_utama_bulan ?? [];
+  const totalPerHari: any[] = sumberHarian?.total_per_hari ?? [];
+  const vendorUtamaHarian: any[] = sumberHarian?.vendor_utama_harian ?? [];
+  const tripUtamaHarian: any[] = sumberHarian?.trip_utama_harian ?? [];
+  const rataVendorPerHari: any[] = sumberHarian?.rata_vendor_per_hari ?? [];
+  const rataTotalPerHari: any = sumberHarian?.rata_total_per_hari ?? 0;
+  const rentangHari: any[] = d?.rentang_hari ?? [];
+  const rekapBulan: any[] = d?.rekap_per_bulan ?? [];
+  const top: any = d?.paling_sering;
+  const ringkas: any = d?.ringkasan ?? {};
+
+  // Rentang harian memakai YYYY-MM-DD; rentang bulanan memakai YYYY-MM.
+  const fmtRentang = (nilai: string) =>
+    nilai?.length === 7 ? nilai : fmtTanggal(nilai);
+  const fmtTrip = (n: any) => fmtAngka(n ?? 0, 0);
+  const fmtPct = (n: any) => `${fmtAngka((n ?? 0) * 100, 1)}%`;
+  const fmtRate = (n: any) => fmtAngka(n ?? 0, 1);
+  const fmtKg = (n: any) => fmtAngka(n ?? 0, 0);
+  const satuTahun = new Set(bulan.map((b: any) => b.tahun)).size <= 1;
+  const labelBulan = (b: any) => satuTahun ? (b.label ?? "–") : (b.label_ym ?? "–");
+  const teksRentang = (g: any) => g.teks ??
+    (g.dari === g.sampai ? g.dari : `${g.dari} s.d. ${g.sampai}`);
+  const namaKategori = (k: string) =>
+    k === "di_luar_data" ? "Di luar data"
+      : k === "sepi_pabrik" ? "pabrik tutup" : "Ada intake";
+  const kelasKategori = (k: string) =>
+    k === "di_luar_data" ? "border-[#E5E7EB] bg-[#F3F4F6] text-[#4B5563]"
+      : k === "sepi_pabrik" ? "border-[#FECACA] bg-[#FEF2F2] text-[#B91C1C]"
+        : "border-[#BBF7D0] bg-[#F0FDF4] text-[#15803D]";
+  const rentangTampil = tampilSemuaRentang ? rentangHari : rentangHari.slice(0, 60);
+  const tampilTabelHarian = !modeRingkas || (mintaRinci && Boolean(sumberHarian));
+
+  return (
+    <Kartu idMetrik="konsistensi_intake_vendor"
+           judul="Konsistensi intake harian vendor"
+           urlEkspor={url}
+           anak={
+      <>
+        <div className="mb-3 flex flex-wrap items-end gap-3 rounded-sm border border-[#E4E5E8] bg-[#F8F8F8] px-3 py-2">
+          <PilihRentangTanggal dari={dari} sampai={sampai}
+                               setDari={setDari} setSampai={setSampai}
+                               aksi={<TombolRefreshKartu />}
+                               batasData={d?.batas_data} />
+        </div>
+        {d?.batas_data?.tersedia && (
+          <p className="-mt-2 mb-3 text-[11px] text-[#64676C]">
+            Rentang tiket tersedia:{" "}
+            <b className="text-[#1D2434]">{d.batas_data.dari} → {d.batas_data.sampai}</b>
+            {" "}({d.batas_data.jumlah_hari} hari). Kosongkan kedua kolom tanggal atau
+            tekan <b>pakai batas tiket</b> bila ingin memakai hanya masa dengan data.
+          </p>
+        )}
+
+        {q.isLoading && <p className="text-xs text-[#64676C]">Menghitung Ringkasan Vendor…</p>}
+        {q.error && <p className="text-xs text-[#B91C1C]">{pesanGalat(q.error)}</p>}
+        {mintaRinci && qRinci.isLoading && (
+          <p className="text-xs text-[#64676C]">Memuat seluruh baris harian…</p>
+        )}
+        {mintaRinci && qRinci.error && (
+          <p className="text-xs text-[#B91C1C]">{pesanGalat(qRinci.error)}</p>
+        )}
+
+        {d && (
+          <>
+            <p className="mb-2 text-[11px] text-[#64676C]">
+              Periode <b className="text-[#1D2434]">{d.periode.dari} → {d.periode.sampai}</b>
+              {" · "}{d.periode.jumlah_hari} hari kalender · {d.periode.jumlah_bulan} bulan
+              {(d.periode.dari_otomatis || d.periode.sampai_otomatis) && " · batas otomatis dari data tiket"}
+              {" · dasar: "}<b className="text-[#1D2434]">semua hari kalender</b>
+              {" · urutan: "}<b className="text-[#1D2434]">jumlah Trip</b>
+            </p>
+
+            {d.peringatan?.length > 0 && (
+              <div className="mb-3 rounded-sm border border-[#FDE68A] bg-[#FFFBEB] px-3 py-2">
+                <ul className="list-disc pl-4 text-xs text-[#92400E]">
+                  {d.peringatan.map((t: string, i: number) => (
+                    <li key={i} className="mb-0.5">{t}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {baris.length === 0 ? (
+              <p className="rounded-sm bg-[#F8F8F8] border border-[#E4E5E8] px-3 py-4 text-sm text-[#64676C]">
+                Belum ada vendor pada rentang ini. Unggah data tiket / Master Vendor,
+                atau ubah rentang tanggal.
+              </p>
+            ) : (
+              <>
+                {/* ---- angka kunci ---- */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  {[
+                    ["Total Trip", fmtTrip(ringkas.total_trip),
+                      `${ringkas.total_vendor} vendor detail`],
+                    ["Dry (kg)", fmtKg(ringkas.total_dry_kg), "semua baris tiket"],
+                    ["Hari Operasional", fmtTrip(ringkas.hari_operasional),
+                      `dari ${ringkas.hari_kalender} hari kalender`],
+                    ["Rata² Trip/Bulan",
+                      fmtRate(ringkas.jumlah_bulan
+                        ? ringkas.total_trip / ringkas.jumlah_bulan : 0),
+                      `${ringkas.jumlah_bulan} bulan terpilih`],
+                  ].map(([judul, nilai, bawah]) => (
+                    <div key={judul as string}
+                         className="rounded-sm border border-[#E4E5E8] bg-[#F8F8F8] p-2.5">
+                      <p className="text-[11px] text-[#64676C]">{judul}</p>
+                      <p className="text-sm font-semibold text-[#1D2434] truncate"
+                         title={nilai as string}>{nilai}</p>
+                      <p className="text-[11px] text-[#64676C]">{bawah}</p>
+                    </div>
+                  ))}
+                </div>
+                {top && (
+                  <p className="mt-2 rounded-sm border border-[#D7E7FF] bg-[#EFF6FF] px-3 py-2 text-xs text-[#1D4ED8]">
+                    <b>Vendor #1: {top.label}</b> — {fmtTrip(top.total_trip)} Trip
+                    ({fmtPct(top.porsi_trip)}), {fmtTrip(top.hari_aktif)} hari aktif,
+                    {" "}{fmtRate(top.rata_trip_per_hari_operasional)} Trip/hari operasional,
+                    {" "}{fmtRate(top.rata_trip_per_bulan)} Trip/bulan, {fmtKg(top.dry_kg)} kg.
+                    {d.seri_paling_sering?.length > 1 &&
+                      ` ${d.seri_paling_sering.length} vendor berbagi peringkat pertama.`}
+                  </p>
+                )}
+
+                {/* ---- TABEL 1: Ringkasan Vendor ---- */}
+                <h4 className="mt-4 mb-1 text-xs font-semibold text-[#1D2434]">
+                  1. Ringkasan Vendor — semua vendor, tanpa pengelompokan sisa
+                </h4>
+                <div className="max-h-96 overflow-auto rounded-sm border border-[#E4E5E8]">
+                  <table className="w-full text-xs" data-uji="tabel-ringkasan-vendor">
+                    <thead className="sticky top-0 bg-white">
+                      <tr className="text-left text-[#64676C] border-b">
+                        <th className="py-1 px-2">Rank</th>
+                        <th className="py-1 px-2">Vendor</th>
+                        <th className="py-1 px-2 text-right">Total Trip</th>
+                        <th className="py-1 px-2 text-right">% Trip</th>
+                        <th className="py-1 px-2 text-right">Hari Aktif</th>
+                        <th className="py-1 px-2 text-right">Rata² Trip/Hari Operasional</th>
+                        <th className="py-1 px-2 text-right">Rata² Trip/Bulan</th>
+                        <th className="py-1 px-2 text-right">Dry (kg)</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {baris.map((b: any) => (
+                        <tr key={b.kode} className="border-b border-[#EDEFF2] hover:bg-[#F8F8F8]"
+                            title={`${b.kode} — ${b.nama}`}>
+                          <td className="py-1 px-2 font-mono">{b.peringkat}</td>
+                          <td className="py-1 px-2">{b.label}</td>
+                          <td className="py-1 px-2 text-right font-mono font-semibold">{fmtTrip(b.total_trip)}</td>
+                          <td className="py-1 px-2 text-right font-mono">{fmtPct(b.porsi_trip)}</td>
+                          <td className="py-1 px-2 text-right font-mono">{fmtTrip(b.hari_aktif)}</td>
+                          <td className="py-1 px-2 text-right font-mono">{fmtRate(b.rata_trip_per_hari_operasional)}</td>
+                          <td className="py-1 px-2 text-right font-mono">{fmtRate(b.rata_trip_per_bulan)}</td>
+                          <td className="py-1 px-2 text-right font-mono">{fmtKg(b.dry_kg)}</td>
+                        </tr>
+                      ))}
+                      <tr className="bg-[#F8F8F8] font-semibold">
+                        <td className="py-1 px-2" />
+                        <td className="py-1 px-2">TOTAL</td>
+                        <td className="py-1 px-2 text-right font-mono">{fmtTrip(ringkas.total_trip)}</td>
+                        <td className="py-1 px-2 text-right font-mono">100,0%</td>
+                        <td className="py-1 px-2 text-right font-mono">{fmtTrip(ringkas.hari_operasional)}</td>
+                        <td className="py-1 px-2" />
+                        <td className="py-1 px-2" />
+                        <td className="py-1 px-2 text-right font-mono">{fmtKg(ringkas.total_dry_kg)}</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* ---- TABEL 2: Vendor per Bulan ---- */}
+                <h4 className="mt-4 mb-1 text-xs font-semibold text-[#1D2434]">
+                  2. Vendor per Bulan — kolom bulan mengikuti Dari/Sampai
+                </h4>
+                <div className="max-h-96 overflow-auto rounded-sm border border-[#E4E5E8]">
+                  <table className="w-full text-xs" data-uji="tabel-vendor-per-bulan">
+                    <thead className="sticky top-0 bg-white">
+                      <tr className="text-left text-[#64676C] border-b">
+                        <th className="sticky left-0 z-10 bg-white py-1 px-2">Vendor</th>
+                        {bulan.map((b: any) => (
+                          <th key={b.ym} className="py-1 px-2 text-right whitespace-nowrap">
+                            {labelBulan(b)}
+                          </th>
+                        ))}
+                        <th className="py-1 px-2 text-right font-semibold">Total</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {vendorPerBulan.map((v: any) => (
+                        <tr key={v.kode} className="border-b border-[#EDEFF2] hover:bg-[#F8F8F8]">
+                          <td className="sticky left-0 z-10 bg-white py-1 px-2">{v.label}</td>
+                          {v.trip_per_bulan.map((n: number, i: number) => (
+                            <td key={i} className="py-1 px-2 text-right font-mono">{fmtTrip(n)}</td>
+                          ))}
+                          <td className="py-1 px-2 text-right font-mono font-semibold">{fmtTrip(v.total_trip)}</td>
+                        </tr>
+                      ))}
+                      <tr className="bg-[#F8F8F8] font-semibold">
+                        <td className="sticky left-0 z-10 bg-[#F8F8F8] py-1 px-2">TOTAL</td>
+                        {totalPerBulan.map((n: number, i: number) => (
+                          <td key={i} className="py-1 px-2 text-right font-mono">{fmtTrip(n)}</td>
+                        ))}
+                        <td className="py-1 px-2 text-right font-mono">{fmtTrip(ringkas.total_trip)}</td>
+                      </tr>
+                      <tr className="border-t border-[#E4E5E8] text-[11px] text-[#64676C]">
+                        <td className="sticky left-0 z-10 bg-white py-1 px-2 font-semibold">Vendor #1</td>
+                        {vendorUtamaBulan.map((n: string, i: number) => (
+                          <td key={i} className="py-1 px-2 text-right" title={n}>{n}</td>
+                        ))}
+                        <td className="py-1 px-2" />
+                      </tr>
+                      <tr className="text-[11px] text-[#64676C]">
+                        <td className="sticky left-0 z-10 bg-white py-1 px-2 font-semibold">Trip #1</td>
+                        {tripUtamaBulan.map((n: number, i: number) => (
+                          <td key={i} className="py-1 px-2 text-right font-mono">{fmtTrip(n)}</td>
+                        ))}
+                        <td className="py-1 px-2" />
+                      </tr>
+                      <tr className="text-[11px] text-[#64676C]">
+                        <td className="sticky left-0 z-10 bg-white py-1 px-2 font-semibold">Share #1</td>
+                        {shareUtamaBulan.map((n: number, i: number) => (
+                          <td key={i} className="py-1 px-2 text-right font-mono">{fmtPct(n)}</td>
+                        ))}
+                        <td className="py-1 px-2" />
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* ---- TABEL 3: Vendor Harian ---- */}
+                <h4 className="mt-4 mb-1 text-xs font-semibold text-[#1D2434]">
+                  3. Vendor Harian — semua tanggal {d.periode.dari} s.d. {d.periode.sampai}
+                </h4>
+                {modeRingkas && (
+                  <p className="mb-3 rounded-sm border border-[#D7E7FF] bg-[#EFF6FF] px-3 py-2 text-[11px] text-[#1D4ED8]"
+                     data-uji="mode-ringkas-konsistensi">
+                    Periode panjang ({d.periode.jumlah_hari} hari) tetap dihitung penuh.
+                    Rincian harian <b>otomatis diminimalisir</b> menjadi rekap per bulan
+                    dan rentang tanggal berurutan <b>YYYY-MM-DD</b>; ekspor Excel tetap
+                    memuat satu baris untuk setiap tanggal, termasuk hari bernilai 0 Trip.
+                  </p>
+                )}
+
+                {!tampilTabelHarian && !mintaRinci && (
+                  <>
+                    <div className="mb-2 max-h-60 overflow-auto rounded-sm border border-[#E4E5E8]">
+                      <table className="w-full text-[11px]" data-uji="rekap-bulan-konsistensi">
+                        <thead className="sticky top-0 bg-[#F8F8F8]">
+                          <tr className="text-left text-[#64676C] border-b">
+                            <th className="px-2 py-1">Bulan</th>
+                            <th className="px-2 py-1 text-right">Hari kalender</th>
+                            <th className="px-2 py-1 text-right">Hari ber-intake</th>
+                            <th className="px-2 py-1 text-right">Total Trip</th>
+                            <th className="px-2 py-1 text-right">Rata²/hari</th>
+                            <th className="px-2 py-1">Nomor tanggal ber-intake</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {rekapBulan.map((m: any) => (
+                            <tr key={m.ym} className="border-t border-[#EDEFF2]">
+                              <td className="px-2 py-1 font-mono">{m.label}</td>
+                              <td className="px-2 py-1 text-right font-mono">{fmtTrip(m.jumlah_hari_kalender)}</td>
+                              <td className="px-2 py-1 text-right font-mono">{fmtTrip(m.hari_ber_intake)}</td>
+                              <td className="px-2 py-1 text-right font-mono">{fmtTrip(m.total_trip)}</td>
+                              <td className="px-2 py-1 text-right font-mono">{fmtRate(m.rata_trip_per_hari)}</td>
+                              <td className="px-2 py-1 font-mono" title={m.ym}>{m.ringkasan}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                    <div className="mb-2 flex flex-wrap gap-1" data-uji="rentang-hari-kosong">
+                      {rentangTampil.map((g: any) => (
+                        <span key={`${g.dari}-${g.sampai}`}
+                              title={`${fmtRentang(g.dari)} → ${fmtRentang(g.sampai)}`}
+                              className={`rounded-sm border px-1.5 py-0.5 text-[10px] ${kelasKategori(g.kategori)}`}>
+                          <b className="font-mono">{teksRentang(g)}</b>
+                          {" · "}{g.jumlah_hari} hari · {namaKategori(g.kategori)}
+                        </span>
+                      ))}
+                      {(rentangHari.length > rentangTampil.length) && (
+                        <span className="text-[10px] text-[#64676C]">
+                          … seluruhnya ada di Excel
+                        </span>
+                      )}
+                    </div>
+                    {rentangHari.length > 60 && (
+                      <button className={kelasTombolKecil}
+                              onClick={() => setTampilSemuaRentang(!tampilSemuaRentang)}>
+                        {tampilSemuaRentang ? "ringkas rentang" : `tampilkan ${rentangHari.length} rentang`}
+                      </button>
+                    )}
+                    <button className={`${kelasTombolKecil} ml-2`}
+                            onClick={() => setTampilSemuaHari(true)}>
+                      tampilkan semua {d.periode.jumlah_hari} baris harian
+                    </button>
+                    <p className="mt-1 text-[10px] text-[#64676C]">
+                      Tanggal pasti tetap terbaca pada kolom rentang dan rekap per bulan;
+                      ekspor Excel memuat seluruh baris tanpa potongan.
+                    </p>
+                  </>
+                )}
+
+                {tampilTabelHarian && (
+                  <>
+                    {modeRingkas && (
+                      <button className={`${kelasTombolKecil} mb-2`}
+                              onClick={() => setTampilSemuaHari(false)}>
+                        kembali ke tampilan ringkas
+                      </button>
+                    )}
+                    <div className="max-h-96 overflow-auto rounded-sm border border-[#E4E5E8]">
+                      <table className="w-full text-xs" data-uji="tabel-vendor-harian">
+                        <thead className="sticky top-0 bg-white">
+                          <tr className="text-left text-[#64676C] border-b">
+                            <th className="sticky left-0 z-10 bg-white py-1 px-2">Tanggal (YYYY-MM-DD)</th>
+                            <th className="py-1 px-2 text-right">Total Trip</th>
+                            {vendorHarian.map((v: any) => (
+                              <th key={v.kode} className="py-1 px-2 text-right whitespace-nowrap"
+                                  title={v.label}>{v.label}</th>
+                            ))}
+                            <th className="py-1 px-2">Vendor #1</th>
+                            <th className="py-1 px-2 text-right">Trip #1</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {hari.map((h: any, i: number) => (
+                            <tr key={h.tanggal}
+                                className={`border-b border-[#EDEFF2] ${h.di_luar_data ? "bg-[#F3F4F6]" : ""}`}>
+                              <td className="sticky left-0 z-10 bg-inherit py-1 px-2 font-mono">
+                                {h.tanggal}
+                                {h.di_luar_data && (
+                                  <span className="ml-1 rounded-sm bg-[#E5E7EB] px-1 py-0.5 text-[9px] font-semibold text-[#4B5563]">
+                                    Di luar data
+                                  </span>
+                                )}
+                                {h.sepi_pabrik && (
+                                  <span className="ml-1 rounded-sm bg-[#FEE2E2] px-1 py-0.5 text-[9px] font-semibold text-[#B91C1C]">
+                                    pabrik tutup
+                                  </span>
+                                )}
+                              </td>
+                              <td className="py-1 px-2 text-right font-mono font-semibold">
+                                {fmtTrip(totalPerHari[i])}
+                              </td>
+                              {vendorHarian.map((v: any) => (
+                                <td key={v.kode} className="py-1 px-2 text-right font-mono">
+                                  {fmtTrip(v.trip_per_hari[i])}
+                                </td>
+                              ))}
+                              <td className="py-1 px-2">{vendorUtamaHarian[i]}</td>
+                              <td className="py-1 px-2 text-right font-mono">
+                                {fmtTrip(tripUtamaHarian[i])}
+                              </td>
+                            </tr>
+                          ))}
+                          <tr className="bg-[#F8F8F8] font-semibold">
+                            <td className="sticky left-0 z-10 bg-[#F8F8F8] py-1 px-2">Rata² / hari</td>
+                            <td className="py-1 px-2 text-right font-mono">
+                              {fmtRate(rataTotalPerHari)}
+                            </td>
+                            {rataVendorPerHari.map((n: number, i: number) => (
+                              <td key={i} className="py-1 px-2 text-right font-mono">{fmtRate(n)}</td>
+                            ))}
+                            <td className="py-1 px-2" />
+                            <td className="py-1 px-2" />
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
+                  </>
+                )}
+
+              </>
+            )}
+          </>
+        )}
+      </>
+    } />);
+  }
+
 export default function Analisis() {
   const [bukaAnalisa, setBukaAnalisa] = useState(false);
   const [dariA, setDariA] = useState("");
@@ -1708,8 +2340,9 @@ export default function Analisis() {
         <div className="mr-auto">
           <h2 className="text-base font-semibold text-[#1D2434]">Analisa halaman ini (5W1H)</h2>
           <p className="text-xs text-[#64676C]">
-            Merangkum seluruh data di halaman ini: penerimaan, konsentrasi vendor,
-            bauran grade & EUDR, reject%, dan margin — pada periode terpilih.
+            Merangkum seluruh data di halaman ini: penerimaan, konsistensi intake
+            harian vendor, konsentrasi vendor, bauran grade & EUDR, reject%, dan
+            margin — pada periode terpilih.
           </p>
         </div>
         <PilihRentangBulan dari={dariA} sampai={sampaiA}
@@ -1724,24 +2357,33 @@ export default function Analisis() {
                    tutup={() => setBukaAnalisa(false)} />
       )}
       <div className="lg:col-span-2"><KartuMuatSaatDiminta
+        letakRefresh="filter"
         judul="Penerimaan Karet"
         keterangan="Memuat grafik dan rincian penerimaan hanya setelah Anda meminta."
         anak={<KartuPenerimaan />}
       /></div>
       <div className="lg:col-span-2"><KartuMuatSaatDiminta
+        letakRefresh="filter"
         judul="Sebaran Intake per Provinsi Indonesia"
-        keterangan="Peta intake Dry per provinsi atau lapisan sentra produksi karet kering; rata-rata intake wilayah dihitung dari tiket internal. Data penjualan pasar per provinsi belum tersedia pada sumber resmi."
+        keterangan="Peta intake Dry per provinsi atau lapisan sentra produksi karet kering; opsi centang 'Pakai grafik bar' menampilkan bar oranye pada provinsi yang punya intake dan bisa dimatikan, rata-rata intake wilayah dihitung dari tiket internal. Data penjualan pasar per provinsi belum tersedia pada sumber resmi."
         anak={<PetaIntake />}
       /></div>
-      <KartuMuatSaatDiminta judul="Tonase (drill-down)" keterangan="Memuat rincian tonase hanya setelah Anda meminta." anak={<KartuTonase />} />
-      <KartuMuatSaatDiminta judul="Konsentrasi vendor" keterangan="Memuat konsentrasi pemasok hanya setelah Anda meminta." anak={<KartuKonsentrasi />} />
-      <KartuMuatSaatDiminta judul="Bauran grade & porsi EUDR" keterangan="Memuat komposisi grade hanya setelah Anda meminta." anak={<KartuGrade />} />
-      <KartuMuatSaatDiminta judul="KPI Reject %" keterangan="Memuat indikator reject hanya setelah Anda meminta." anak={<KartuReject />} />
-      <KartuMuatSaatDiminta judul="Margin harian" keterangan="Memuat margin harian hanya setelah Anda meminta." anak={<KartuMarginHarian />} />
-      <KartuMuatSaatDiminta judul="Margin per grade / vendor" keterangan="Memuat perincian margin hanya setelah Anda meminta." anak={<KartuMarginPer />} />
       <div className="lg:col-span-2"><KartuMuatSaatDiminta
+        letakRefresh="filter"
+        judul="Konsistensi intake harian vendor"
+        keterangan="Memuat rekap kedisiplinan intake per vendor hanya setelah Anda meminta. Pilih rentang tanggal, lalu tekan Refresh di sampingnya."
+        anak={<KartuKonsistensiIntake />}
+      /></div>
+      <KartuMuatSaatDiminta letakRefresh="filter" judul="Tonase (drill-down)" keterangan="Memuat rincian tonase hanya setelah Anda meminta." anak={<KartuTonase />} />
+      <KartuMuatSaatDiminta letakRefresh="filter" judul="Konsentrasi vendor" keterangan="Memuat konsentrasi pemasok hanya setelah Anda meminta." anak={<KartuKonsentrasi />} />
+      <KartuMuatSaatDiminta letakRefresh="filter" judul="Bauran grade & porsi EUDR" keterangan="Memuat komposisi grade hanya setelah Anda meminta." anak={<KartuGrade />} />
+      <KartuMuatSaatDiminta letakRefresh="filter" judul="KPI Reject %" keterangan="Memuat indikator reject hanya setelah Anda meminta." anak={<KartuReject />} />
+      <KartuMuatSaatDiminta letakRefresh="filter" judul="Margin harian" keterangan="Memuat margin harian hanya setelah Anda meminta." anak={<KartuMarginHarian />} />
+      <KartuMuatSaatDiminta letakRefresh="filter" judul="Margin per grade / vendor" keterangan="Memuat perincian margin hanya setelah Anda meminta." anak={<KartuMarginPer />} />
+      <div className="lg:col-span-2"><KartuMuatSaatDiminta
+        letakRefresh="filter"
         judul="Daftar intake terakhir"
-        keterangan="Memuat daftar tiket terakhir hanya setelah Anda meminta."
+        keterangan="Memuat daftar tiket terakhir hanya setelah Anda meminta. Pilih vendor dan rentang tanggal, lalu tekan Refresh di sampingnya."
         anak={<KartuIntakeTerakhir />}
       /></div>
       <p className="lg:col-span-2 text-xs text-[#64676C]">

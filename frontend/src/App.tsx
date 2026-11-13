@@ -11,12 +11,14 @@ import Perencanaan from "./pages/Perencanaan";
 import AlarmPage from "./pages/AlarmPage";
 import Rekonsiliasi from "./pages/Rekonsiliasi";
 import Kualitas from "./pages/Kualitas";
+import KepatuhanVendorSampling from "./pages/KepatuhanVendorSampling";
 import InputHarian from "./pages/InputHarian";
 import IntakeData from "./pages/IntakeData";
 import UnggahData from "./pages/UnggahData";
 import GradeHarga from "./pages/GradeHarga";
 import MasterVendor from "./pages/MasterVendor";
 import MasterCollector from "./pages/MasterCollector";
+import MasterScdf from "./pages/MasterScdf";
 import Database from "./pages/Database";
 import Pengguna from "./pages/Pengguna";
 import Login, { LayarApiLama, LayarGalat } from "./pages/Login";
@@ -50,8 +52,10 @@ const TAB = [
   { id: "alarm", label: "Alarm", ikon: "▲", grup: "pantau" },
   { id: "rekonsiliasi", label: "Rekonsiliasi", ikon: "≡", grup: "pantau" },
   { id: "kualitas", label: "Kualitas Data", ikon: "◆", grup: "pantau" },
+  { id: "kepatuhan", label: "Kepatuhan vendor sampling", ikon: "☑", grup: "pantau" },
   { id: "vendor", label: "Master Vendor", ikon: "◈", grup: "master" },
   { id: "collector", label: "Master Collector", ikon: "◎", grup: "master" },
+  { id: "scdf", label: "SCDF", ikon: "▣", grup: "master" },
   { id: "gradeharga", label: "Grade & Harga", ikon: "◇", grup: "master" },
   { id: "input", label: "Input Harian", ikon: "✎", grup: "input" },
   { id: "intakedata", label: "Data Intake Details", ikon: "▤", grup: "input" },
@@ -472,8 +476,10 @@ export default function App() {
             )}
             {tab === "rekonsiliasi" && <Rekonsiliasi />}
             {tab === "kualitas" && <Kualitas />}
+            {tab === "kepatuhan" && <KepatuhanVendorSampling />}
             {tab === "vendor" && <MasterVendor />}
             {tab === "collector" && <MasterCollector />}
+            {tab === "scdf" && <MasterScdf />}
             {tab === "gradeharga" && <GradeHarga />}
             {tab === "unggah" && <UnggahData />}
             {tab === "intakedata" && <IntakeData />}
