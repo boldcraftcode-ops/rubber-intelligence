@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import io
+import re
+import zipfile
 from pathlib import Path
 
 import openpyxl
@@ -29,6 +31,14 @@ def klien(engine):
 def _buku(resp):
     assert resp.status_code == 200, resp.text
     assert "spreadsheet" in resp.headers["content-type"]
+    with zipfile.ZipFile(io.BytesIO(resp.content)) as paket:
+        xml = paket.read("xl/worksheets/sheet1.xml")
+    tag = re.search(rb"<worksheet\b[^>]*>", xml).group(0)
+    ignorable = re.search(rb'mc:Ignorable="([^"]*)"', tag)
+    if ignorable:
+        prefixes = set(ignorable.group(1).decode().split())
+        declarations = set(re.findall(rb"xmlns:([\w.-]+)=", tag))
+        assert prefixes <= {p.decode() for p in declarations}
     return openpyxl.load_workbook(io.BytesIO(resp.content))
 
 

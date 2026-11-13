@@ -495,6 +495,46 @@ def _hapus_selection(root) -> None:
             view.remove(selection)
 
 
+def _pulihkan_namespace_ignorable(xml_bytes: bytes,
+                                  template_bytes: bytes) -> bytes:
+    """ElementTree omits xmlns prefixes used only in mc:Ignorable values.
+
+    Excel expects every listed prefix to remain declared even if the matching
+    extension namespace is otherwise unused in the rewritten worksheet.
+    Preserve those declarations from the source template.
+    """
+    root_pattern = rb"<worksheet\b[^>]*>"
+    source_match = re.search(root_pattern, template_bytes)
+    output_match = re.search(root_pattern, xml_bytes)
+    if source_match is None or output_match is None:
+        return xml_bytes
+
+    source_root = source_match.group(0)
+    output_root = output_match.group(0)
+    ignored = re.search(rb'\bmc:Ignorable="([^"]*)"', output_root)
+    if ignored is None:
+        return xml_bytes
+
+    namespace_map = {
+        prefix.decode("ascii"): uri
+        for prefix, uri in re.findall(
+            rb'\bxmlns:([A-Za-z_][\w.-]*)="([^"]*)"', source_root)
+    }
+    additions = []
+    for prefix_bytes in ignored.group(1).split():
+        prefix = prefix_bytes.decode("ascii")
+        if re.search(rb'\bxmlns:' + re.escape(prefix_bytes) + rb'=',
+                     output_root):
+            continue
+        uri = namespace_map.get(prefix)
+        if uri is not None:
+            additions.append(b' xmlns:' + prefix_bytes + b'="' + uri + b'"')
+    if not additions:
+        return xml_bytes
+    fixed_root = output_root[:-1] + b"".join(additions) + b">"
+    return xml_bytes[:output_match.start()] + fixed_root + xml_bytes[output_match.end():]
+
+
 def _buat_worksheet_xml(template_bytes: bytes, kunci_template: str,
                         periode: str, header: list, baris: list,
                         baris_total: list | None,
@@ -715,7 +755,8 @@ def _buat_worksheet_xml(template_bytes: bytes, kunci_template: str,
         dimensi.set("ref", f"A1:{get_column_letter(jumlah_kolom)}{footer_row}")
     _hapus_selection(root)
 
-    xml_bytes = ET.tostring(root)
+    xml_bytes = _pulihkan_namespace_ignorable(ET.tostring(root),
+                                               template_bytes)
     return (b'<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n' +
             xml_bytes, sheet_title)
 
