@@ -147,7 +147,7 @@ def test_ekspor_xlsx_penerimaan_vendor_mengikuti_template(klien):
     assert [ws.cell(4, i).value for i in range(1, 7)] == [
         "Vendor", "Kg biasa", "Kg EUDR", "Kg total", "Porsi", "Jumlah tiket"]
     assert "V998" in str(ws["A5"].value)
-    assert any("Created by [user login]" in str(c.value)
+    assert any("Created by dev" in str(c.value)
                for c in ws[ws.max_row])
     assert len(ws._charts) == 1
     ch = ws._charts[0]

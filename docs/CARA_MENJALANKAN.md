@@ -1045,8 +1045,9 @@ Susunan yang disamakan: A1 judul (`Rubber Intake - Total Periods - All Vendors`,
 `Rubber Intake - Monthly Details`, atau `RM Stock – Intake vs Pricing`), A2
 `Purchasing - Raw Material Section`, A3 `Periode : …` tanpa tanda `[...]`,
 header di **baris 4**, data mulai **baris 5**, baris `TOTAL` khusus laporan
-bulanan, footer `Created by [user login] Raw Material Big Data`, lebar kolom,
-serta **1 chart Excel native** yang bisa diedit. Header bulanan memakai
+bulanan, footer `Created by <username-login> Raw Material Big Data` (nama login
+pengguna yang sedang mengekspor), lebar kolom, serta **1 chart Excel native**
+yang bisa diedit. Header bulanan memakai
 `%tage`, bukan `Porsi`. Periode memakai format `January 2026 - Desember 2026`.
 
 Yang **tidak berubah**: payload JSON (termasuk kunci `*_kg` pada ringkasan

@@ -94,7 +94,7 @@ def test_ekspor_xlsx(klien):
     assert "RM Stock (kg)" not in judul and "Sumber intake" not in judul
     # Data mulai baris 5; payload JSON tetap menyediakan satuan kg.
     assert ws["A5"].value is not None and ws["B5"].value is not None
-    assert any("Created by [user login]" in str(c.value)
+    assert any("Created by dev" in str(c.value)
                for c in ws[ws.max_row])
     assert len(ws._charts) == 1
     ch = ws._charts[0]

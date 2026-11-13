@@ -254,7 +254,7 @@ def test_ekspor_xlsx_mode_bulan_format_contoh(klien):
     assert ws["A5"].border.left.style == "thin"
     assert "PT Alpha" in ws["A5"].value     # isi/agregasi tidak berubah
     assert ws["A8"].value == "TOTAL"        # 3 vendor + baris TOTAL
-    assert "Created by [user login]" in str(ws["A9"].value)
+    assert "Created by dev" in str(ws["A9"].value)
     assert "G" not in ws.column_dimensions  # mode bulan tak memakai lebar G
     assert len(ws._charts) == 1
 

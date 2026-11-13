@@ -338,6 +338,13 @@ def _daftarkan_namespace_xlsx() -> None:
 _AKAR_REPO = pathlib.Path(__file__).resolve().parents[2]
 
 
+def _nama_pengguna_export(request: Request) -> str:
+    """Login username untuk footer ekspor, atau ``dev`` tanpa autentikasi."""
+    klaim = info_pengguna(request) or {}
+    nama = klaim.get("sub") or "dev"
+    return str(nama).strip() or "dev"
+
+
 def _template_path(kunci_template: str) -> pathlib.Path:
     path = _AKAR_REPO / "Template Export" / TEMPLATE_EKSPOR[kunci_template]
     if not path.is_file():
@@ -538,7 +545,8 @@ def _pulihkan_namespace_ignorable(xml_bytes: bytes,
 def _buat_worksheet_xml(template_bytes: bytes, kunci_template: str,
                         periode: str, header: list, baris: list,
                         baris_total: list | None,
-                        jumlah_bulan: int) -> tuple[bytes, str]:
+                        jumlah_bulan: int,
+                        nama_pengguna: str = "dev") -> tuple[bytes, str]:
     root = ET.fromstring(template_bytes)
     sheet_data = root.find("m:sheetData", TEMPLATE_NS)
     if sheet_data is None:
@@ -744,7 +752,8 @@ def _buat_worksheet_xml(template_bytes: bytes, kunci_template: str,
     row_el = _buat_baris(sheet_data, footer_row, jumlah_kolom,
                          dy="0.25",
                          span_footer=kunci_template == "rm_stock")
-    _sel_xml(row_el, 1, "Created by [user login] Raw Material Big Data",
+    _sel_xml(row_el, 1,
+             f"Created by {nama_pengguna} Raw Material Big Data",
              gaya["footer"])
 
     if kunci_template == "penerimaan_vendor_bulanan":
@@ -1090,7 +1099,8 @@ def _bersihkan_referensi_opsional(isi: dict[str, bytes]) -> None:
 
 def _paket_xlsx_template(kunci_template: str, periode: str,
                          header, baris, baris_total,
-                         jumlah_bulan: int) -> tuple[bytes, str]:
+                         jumlah_bulan: int,
+                         nama_pengguna: str = "dev") -> tuple[bytes, str]:
     _daftarkan_namespace_xlsx()
     path = _template_path(kunci_template)
     with zipfile.ZipFile(path, "r") as zin:
@@ -1100,7 +1110,7 @@ def _paket_xlsx_template(kunci_template: str, periode: str,
     footer_lama = _baris_footer_worksheet(isi[sheet_path])
     sheet_xml, _sheet_title = _buat_worksheet_xml(
         isi[sheet_path], kunci_template, periode, header, baris,
-        baris_total, jumlah_bulan)
+        baris_total, jumlah_bulan, nama_pengguna)
     footer_baru = _baris_footer_worksheet(sheet_xml)
     isi[sheet_path] = sheet_xml
     isi[chart_path] = _ubah_chart_xml(isi[chart_path],
@@ -1125,7 +1135,8 @@ def respon_xlsx_template(kunci_template: str, periode: str,
                          tipe_kolom: list[str], mode_chart: str,
                          baris_total: list | None = None,
                          jumlah_bulan: int = 0,
-                         kolom_tengah: int | None = None) -> StreamingResponse:
+                         kolom_tengah: int | None = None,
+                         nama_pengguna: str = "dev") -> StreamingResponse:
     """Ekspor 3 laporan memakai workbook `Template Export` sebagai dasar.
 
     Permintaan pemilik: format unduhan harus mengikuti berkas template yang
@@ -1136,7 +1147,7 @@ def respon_xlsx_template(kunci_template: str, periode: str,
     del tipe_kolom, mode_chart, kolom_tengah  # gaya ditentukan template.
     isi, nama_file = _paket_xlsx_template(
         kunci_template, periode, header, baris, baris_total,
-        jumlah_bulan or max(0, len(header) - 3))
+        jumlah_bulan or max(0, len(header) - 3), nama_pengguna)
     return StreamingResponse(
         io.BytesIO(isi),
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -1461,7 +1472,8 @@ def _penerimaan_per_bulan(potongan: list[tuple], dimensi: str,
                           top: int, format: str | None,
                           session: Session,
                           label_peta: dict[str, str] | None = None,
-                          info_ekspor: tuple[str, str] | None = None) -> dict:
+                          info_ekspor: tuple[str, str] | None = None,
+                          nama_pengguna: str = "dev") -> dict:
     """Bentuk jawaban `per=bulan`: bulan x dimensi.
 
     Dipakai saat filter periode mencakup lebih dari satu bulan, supaya
@@ -1626,7 +1638,8 @@ def _penerimaan_per_bulan(potongan: list[tuple], dimensi: str,
                 + ["kg", "persen"],
                 mode_chart="vendor_bulanan",
                 baris_total=baris_total_xlsx,
-                jumlah_bulan=len(label_bulan_xlsx))
+                jumlah_bulan=len(label_bulan_xlsx),
+                nama_pengguna=nama_pengguna)
         isi_xlsx.append(baris_total_xlsx)
         if info_ekspor is None:
             awal = (dari.year, dari.month) if dari else (
@@ -3178,7 +3191,8 @@ def pasang_router(app, ambil_session):
                                judul, isi)
         return hasil
     @router.get("/ringkasan-elemen")
-    def ringkasan_elemen(dari: str | None = None, sampai: str | None = None,
+    def ringkasan_elemen(request: Request, dari: str | None = None,
+                         sampai: str | None = None,
                          format: str | None = None, session: Session = dep):
         """Elemen pemengaruh OP Margin per bulan, meniru sheet Excel
         'RM Stock-Intake VS Pricing': RM Stock (akhir bulan), Intake,
@@ -3297,24 +3311,27 @@ def pasang_router(app, ambil_session):
                   b["safety_ton"], b["sicom"], b["op_price"], b["op_margin"]]
                  for b in baris],
                 ["teks", "angka", "angka", "angka", "angka", "angka", "angka"],
-                mode_chart="rm_stock")
+                mode_chart="rm_stock",
+                nama_pengguna=_nama_pengguna_export(request))
         return hasil
 
     @router.get("/ringkasan-elemen/analisa")
-    def analisa_elemen(dari: str | None = None, sampai: str | None = None,
-                       session: Session = dep):
+    def analisa_elemen(request: Request, dari: str | None = None,
+                       sampai: str | None = None, session: Session = dep):
         """Analisa 5W1H otomatis atas grafik RM Stock - Intake vs Pricing,
         dihitung dari data pada periode terfilter."""
         from .core.analisa import analisa_5w1h
-        data = ringkasan_elemen(dari=dari, sampai=sampai, session=session)
+        data = ringkasan_elemen(request=request, dari=dari, sampai=sampai,
+                                session=session)
         return analisa_5w1h(data["baris"], session)
 
     @router.get("/ringkasan-elemen/rca")
-    def analisa_rca_elemen(dari: str | None = None, sampai: str | None = None,
-                           session: Session = dep):
+    def analisa_rca_elemen(request: Request, dari: str | None = None,
+                           sampai: str | None = None, session: Session = dep):
         """RCA 5 Why berbasis angka kartu, memakai filter periode yang sama."""
         from .core.analisa_rca import analisa_rca
-        data = ringkasan_elemen(dari=dari, sampai=sampai, session=session)
+        data = ringkasan_elemen(request=request, dari=dari, sampai=sampai,
+                                session=session)
         return analisa_rca(data["baris"])
 
     @router.get("/analisis/analisa")
@@ -3586,7 +3603,7 @@ def pasang_router(app, ambil_session):
 
     # ------------------------------------------------------------ kartu: penerimaan biasa vs EUDR
     @router.get("/kartu/penerimaan")
-    def kartu_penerimaan(dimensi: str = "vendor",
+    def kartu_penerimaan(request: Request, dimensi: str = "vendor",
                          dari: dt.date | None = None, sampai: dt.date | None = None,
                          eudr: bool | None = None, vendor: str | None = None,
                          provinsi: str | None = None, kabupaten: str | None = None,
@@ -3667,9 +3684,10 @@ def pasang_router(app, ambil_session):
                 potongan, session)
 
         if per == "bulan":
-            hasil = _penerimaan_per_bulan(potongan, dimensi, dari, sampai,
-                                          top, format, session, label_peta,
-                                          info_ekspor)
+            hasil = _penerimaan_per_bulan(
+                potongan, dimensi, dari, sampai, top, format, session,
+                label_peta, info_ekspor,
+                nama_pengguna=_nama_pengguna_export(request))
             if isinstance(hasil, dict) and laporan_wilayah:
                 hasil["wilayah"] = laporan_wilayah
             return hasil
@@ -3716,7 +3734,8 @@ def pasang_router(app, ambil_session):
                     [[b["label"], b["kg_biasa"], b["kg_eudr"], b["kg_total"],
                       b["porsi"], b["jumlah_tiket"]] for b in baris],
                     ["teks", "kg", "kg", "kg", "persen", "teks"],
-                    mode_chart="vendor_total", kolom_tengah=5)
+                    mode_chart="vendor_total", kolom_tengah=5,
+                    nama_pengguna=_nama_pengguna_export(request))
             judul_xlsx, periode_xlsx = info_ekspor or (
                 "Penerimaan Karet", "Tidak ada data")
             return respon_xlsx_penerimaan(

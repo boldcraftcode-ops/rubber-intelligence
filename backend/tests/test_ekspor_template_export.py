@@ -11,7 +11,9 @@ import pytest
 import yaml
 from fastapi.testclient import TestClient
 from openpyxl.drawing.spreadsheet_drawing import TwoCellAnchor
+from starlette.requests import Request
 
+from app.api_analisis import _nama_pengguna_export
 from app.main import buat_app
 
 AKAR = Path(__file__).resolve().parents[2]
@@ -77,6 +79,24 @@ def test_template_dan_konfigurasi_terdaftar():
     assert "Template Export" in data["kartu"]["ekspor_template_export"]["cara_dihitung"]
 
 
+def test_footer_export_memakai_username_login():
+    request = Request({"type": "http", "state": {"pengguna": {"sub": "Admin"}}})
+    assert _nama_pengguna_export(request) == "Admin"
+
+
+def test_ketiga_ekspor_memakai_username_sesi(monkeypatch, klien):
+    monkeypatch.setattr("app.api_analisis.info_pengguna",
+                        lambda request: {"sub": "Admin"})
+    urls = (
+        "/api/kartu/penerimaan?dimensi=vendor&format=xlsx",
+        "/api/kartu/penerimaan?dimensi=vendor&per=bulan&format=xlsx&dari=2026-01-01&sampai=2026-12-31",
+        "/api/ringkasan-elemen?format=xlsx",
+    )
+    for url in urls:
+        ws = _buku(klien.get(url)).active
+        assert "Created by Admin Raw Material Big Data" in _footer(ws)
+
+
 def test_health_dan_jelaskan(klien):
     assert "ekspor-template-export" in klien.get("/api/health").json()["fitur"]
     j = klien.get("/api/jelaskan/ekspor_template_export")
@@ -100,7 +120,7 @@ def test_penerimaan_vendor_total_sesuai_template(klien):
     assert [ws.cell(4, i).value for i in range(1, 7)] == [
         "Vendor", "Kg biasa", "Kg EUDR", "Kg total", "Porsi", "Jumlah tiket"]
     assert ws["A5"].value is not None
-    assert "Created by [user login] Raw Material Big Data" in _footer(ws)
+    assert "Created by dev Raw Material Big Data" in _footer(ws)
     assert len(ws._charts) == 1
     ch = ws._charts[0]
     assert _judul_chart(ws) == "Rubber Intake - Total Periods - All Vendors"
@@ -132,7 +152,7 @@ def test_penerimaan_vendor_per_bulan_sesuai_template(klien):
     assert "Porsi" not in header
     assert ws["A5"].value is not None
     assert any(str(c.value) == "TOTAL" for c in ws[ws.max_row - 1])
-    assert "Created by [user login] Raw Material Big Data" in _footer(ws)
+    assert "Created by dev Raw Material Big Data" in _footer(ws)
     assert len(ws._charts) == 1
     ch = ws._charts[0]
     assert _judul_chart(ws) == "Rubber Intake - Monthly Details"
@@ -163,7 +183,7 @@ def test_rm_stock_intake_vs_pricing_sesuai_template(klien):
         "SICOM (US¢/kg)", "OP Price (US¢/kg)", "OP Margin (US¢/kg)"]
     assert "Sumber intake" not in header and "RM Stock (kg)" not in header
     assert ws["A5"].value is not None
-    assert "Created by [user login] Raw Material Big Data" in _footer(ws)
+    assert "Created by dev Raw Material Big Data" in _footer(ws)
     assert len(ws._charts) == 1
     ch = ws._charts[0]
     assert _judul_chart(ws) == "RM Stock – Intake vs Pricing"
