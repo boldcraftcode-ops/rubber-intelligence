@@ -23,6 +23,7 @@ Mengosongkan sel di Excel berarti "jangan ubah", sama seperti Kategori.
 """
 from __future__ import annotations
 
+import datetime as dt
 import io
 import re
 
@@ -172,6 +173,48 @@ def pasang_router_vendor(app, ambil_session):
         """
         baris = [_baris_vendor(session, v) for v in session.scalars(
             select(Vendor).order_by(Vendor.kode))]
+
+        # Class memakai rata-rata Dry per bulan pada enam bulan kalender
+        # terakhir dengan data, sama untuk semua vendor agar dapat dibandingkan.
+        tanggal_terakhir = session.scalar(select(func.max(TiketBaris.ticket_date)))
+        periode_vendor_class = None
+        dry_per_vendor: dict[str, float] = {}
+        if tanggal_terakhir:
+            indeks_bulan_akhir = tanggal_terakhir.year * 12 + tanggal_terakhir.month - 1
+            indeks_bulan_awal = indeks_bulan_akhir - 5
+            awal_bulan = dt.date(indeks_bulan_awal // 12,
+                                 indeks_bulan_awal % 12 + 1, 1)
+            akhir_bulan = dt.date(tanggal_terakhir.year,
+                                  tanggal_terakhir.month, 1)
+            awal_bulan_berikut = (dt.date(akhir_bulan.year + 1, 1, 1)
+                                  if akhir_bulan.month == 12 else
+                                  dt.date(akhir_bulan.year, akhir_bulan.month + 1, 1))
+            periode_vendor_class = (
+                f"{awal_bulan.strftime('%Y-%m')} s.d. "
+                f"{akhir_bulan.strftime('%Y-%m')}"
+            )
+            dry_per_vendor = {
+                kode: float(kg or 0)
+                for kode, kg in session.execute(
+                    select(TiketBaris.kode_vendor, func.sum(TiketBaris.dry_kg))
+                    .where(TiketBaris.ticket_date >= awal_bulan,
+                           TiketBaris.ticket_date < awal_bulan_berikut)
+                    .group_by(TiketBaris.kode_vendor)
+                )
+            }
+        for b in baris:
+            dry_total_6bulan_mt = dry_per_vendor.get(b["kode"], 0) / 1_000
+            dry_rata_bulanan_mt = dry_total_6bulan_mt / 6
+            b["dry_total_6bulan_mt"] = round(dry_total_6bulan_mt, 3)
+            b["dry_rata_bulanan_mt"] = round(dry_rata_bulanan_mt, 3)
+            b["vendor_class"] = (
+                "–" if periode_vendor_class is None else
+                "SS" if dry_total_6bulan_mt >= 1500 else
+                "S" if dry_total_6bulan_mt >= 1000 else
+                "A" if dry_total_6bulan_mt >= 500 else
+                "B" if dry_total_6bulan_mt >= 250 else "D"
+            )
+
         cari = (q or "").strip().lower()
         if cari:
             baris = [b for b in baris
@@ -207,6 +250,7 @@ def pasang_router_vendor(app, ambil_session):
                         else None, 0) + 1
         return {
             "baris": baris,
+            "periode_vendor_class": periode_vendor_class,
             "jumlah": len(baris),
             "jumlah_total": session.scalar(
                 select(func.count()).select_from(Vendor)) or 0,

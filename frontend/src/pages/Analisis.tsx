@@ -1920,65 +1920,18 @@ function KartuKonsistensiIntake() {
   if (dari) params.set("dari", dari);
   if (sampai) params.set("sampai", sampai);
   const url = `/api/kartu/konsistensi-intake-vendor${params.size ? "?" + params.toString() : ""}`;
-  const urlRinci = `${url}${url.includes("?") ? "&" : "?"}rinci=1`;
-  useEffect(() => {
-    setTampilSemuaHari(false);
-    setTampilSemuaRentang(false);
-  }, [url]);
   const q = useQueryKartu({
     queryKey: ["konsistensi-intake-vendor", url],
     queryFn: () => ambilJson(url),
   });
   const d: any = q.data;
-  const modeRingkas = d?.periode?.mode_rincian === "ringkas";
-  const mintaRinci = modeRingkas && tampilSemuaHari;
-  const qRinci = useQuery({
-    queryKey: ["konsistensi-intake-vendor-rinci", urlRinci],
-    queryFn: () => ambilJson(urlRinci),
-    enabled: mintaRinci,
-  });
-  // Pada mode ringkas JSON awal sengaja tidak membawa matriks harian.
-  // Saat pengguna memilih "tampilkan semua baris", `rinci=1` diambil.
-  const sumberHarian: any = mintaRinci ? (qRinci.data ?? null) : d;
   const baris: any[] = d?.baris ?? [];
-  const bulan: any[] = d?.bulan ?? [];
-  const vendorPerBulan: any[] = d?.vendor_per_bulan ?? [];
-  const vendorHarian: any[] = sumberHarian?.vendor_harian ?? [];
-  const hari: any[] = sumberHarian?.hari ?? [];
-  const totalPerBulan: any[] = d?.total_per_bulan ?? [];
-  const vendorUtamaBulan: any[] = d?.vendor_utama_bulan ?? [];
-  const tripUtamaBulan: any[] = d?.trip_utama_bulan ?? [];
-  const shareUtamaBulan: any[] = d?.share_utama_bulan ?? [];
-  const totalPerHari: any[] = sumberHarian?.total_per_hari ?? [];
-  const vendorUtamaHarian: any[] = sumberHarian?.vendor_utama_harian ?? [];
-  const tripUtamaHarian: any[] = sumberHarian?.trip_utama_harian ?? [];
-  const rataVendorPerHari: any[] = sumberHarian?.rata_vendor_per_hari ?? [];
-  const rataTotalPerHari: any = sumberHarian?.rata_total_per_hari ?? 0;
-  const rentangHari: any[] = d?.rentang_hari ?? [];
-  const rekapBulan: any[] = d?.rekap_per_bulan ?? [];
-  const top: any = d?.paling_sering;
   const ringkas: any = d?.ringkasan ?? {};
 
-  // Rentang harian memakai YYYY-MM-DD; rentang bulanan memakai YYYY-MM.
-  const fmtRentang = (nilai: string) =>
-    nilai?.length === 7 ? nilai : fmtTanggal(nilai);
   const fmtTrip = (n: any) => fmtAngka(n ?? 0, 0);
   const fmtPct = (n: any) => `${fmtAngka((n ?? 0) * 100, 1)}%`;
   const fmtRate = (n: any) => fmtAngka(n ?? 0, 1);
   const fmtKg = (n: any) => fmtAngka(n ?? 0, 0);
-  const satuTahun = new Set(bulan.map((b: any) => b.tahun)).size <= 1;
-  const labelBulan = (b: any) => satuTahun ? (b.label ?? "–") : (b.label_ym ?? "–");
-  const teksRentang = (g: any) => g.teks ??
-    (g.dari === g.sampai ? g.dari : `${g.dari} s.d. ${g.sampai}`);
-  const namaKategori = (k: string) =>
-    k === "di_luar_data" ? "Di luar data"
-      : k === "sepi_pabrik" ? "pabrik tutup" : "Ada intake";
-  const kelasKategori = (k: string) =>
-    k === "di_luar_data" ? "border-[#E5E7EB] bg-[#F3F4F6] text-[#4B5563]"
-      : k === "sepi_pabrik" ? "border-[#FECACA] bg-[#FEF2F2] text-[#B91C1C]"
-        : "border-[#BBF7D0] bg-[#F0FDF4] text-[#15803D]";
-  const rentangTampil = tampilSemuaRentang ? rentangHari : rentangHari.slice(0, 60);
-  const tampilTabelHarian = !modeRingkas || (mintaRinci && Boolean(sumberHarian));
 
   return (
     <Kartu idMetrik="konsistensi_intake_vendor"
@@ -2003,12 +1956,6 @@ function KartuKonsistensiIntake() {
 
         {q.isLoading && <p className="text-xs text-[#64676C]">Menghitung Ringkasan Vendor…</p>}
         {q.error && <p className="text-xs text-[#B91C1C]">{pesanGalat(q.error)}</p>}
-        {mintaRinci && qRinci.isLoading && (
-          <p className="text-xs text-[#64676C]">Memuat seluruh baris harian…</p>
-        )}
-        {mintaRinci && qRinci.error && (
-          <p className="text-xs text-[#B91C1C]">{pesanGalat(qRinci.error)}</p>
-        )}
 
         {d && (
           <>
@@ -2037,39 +1984,6 @@ function KartuKonsistensiIntake() {
               </p>
             ) : (
               <>
-                {/* ---- angka kunci ---- */}
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                  {[
-                    ["Total Trip", fmtTrip(ringkas.total_trip),
-                      `${ringkas.total_vendor} vendor detail`],
-                    ["Dry (kg)", fmtKg(ringkas.total_dry_kg), "semua baris tiket"],
-                    ["Hari Operasional", fmtTrip(ringkas.hari_operasional),
-                      `dari ${ringkas.hari_kalender} hari kalender`],
-                    ["Rata² Trip/Bulan",
-                      fmtRate(ringkas.jumlah_bulan
-                        ? ringkas.total_trip / ringkas.jumlah_bulan : 0),
-                      `${ringkas.jumlah_bulan} bulan terpilih`],
-                  ].map(([judul, nilai, bawah]) => (
-                    <div key={judul as string}
-                         className="rounded-sm border border-[#E4E5E8] bg-[#F8F8F8] p-2.5">
-                      <p className="text-[11px] text-[#64676C]">{judul}</p>
-                      <p className="text-sm font-semibold text-[#1D2434] truncate"
-                         title={nilai as string}>{nilai}</p>
-                      <p className="text-[11px] text-[#64676C]">{bawah}</p>
-                    </div>
-                  ))}
-                </div>
-                {top && (
-                  <p className="mt-2 rounded-sm border border-[#D7E7FF] bg-[#EFF6FF] px-3 py-2 text-xs text-[#1D4ED8]">
-                    <b>Vendor #1: {top.label}</b> — {fmtTrip(top.total_trip)} Trip
-                    ({fmtPct(top.porsi_trip)}), {fmtTrip(top.hari_aktif)} hari aktif,
-                    {" "}{fmtRate(top.rata_trip_per_hari_operasional)} Trip/hari operasional,
-                    {" "}{fmtRate(top.rata_trip_per_bulan)} Trip/bulan, {fmtKg(top.dry_kg)} kg.
-                    {d.seri_paling_sering?.length > 1 &&
-                      ` ${d.seri_paling_sering.length} vendor berbagi peringkat pertama.`}
-                  </p>
-                )}
-
                 {/* ---- TABEL 1: Ringkasan Vendor ---- */}
                 <h4 className="mt-4 mb-1 text-xs font-semibold text-[#1D2434]">
                   1. Ringkasan Vendor — semua vendor, tanpa pengelompokan sisa
@@ -2116,208 +2030,6 @@ function KartuKonsistensiIntake() {
                   </table>
                 </div>
 
-                {/* ---- TABEL 2: Vendor per Bulan ---- */}
-                <h4 className="mt-4 mb-1 text-xs font-semibold text-[#1D2434]">
-                  2. Vendor per Bulan — kolom bulan mengikuti Dari/Sampai
-                </h4>
-                <div className="max-h-96 overflow-auto rounded-sm border border-[#E4E5E8]">
-                  <table className="w-full text-xs" data-uji="tabel-vendor-per-bulan">
-                    <thead className="sticky top-0 bg-white">
-                      <tr className="text-left text-[#64676C] border-b">
-                        <th className="sticky left-0 z-10 bg-white py-1 px-2">Vendor</th>
-                        {bulan.map((b: any) => (
-                          <th key={b.ym} className="py-1 px-2 text-right whitespace-nowrap">
-                            {labelBulan(b)}
-                          </th>
-                        ))}
-                        <th className="py-1 px-2 text-right font-semibold">Total</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {vendorPerBulan.map((v: any) => (
-                        <tr key={v.kode} className="border-b border-[#EDEFF2] hover:bg-[#F8F8F8]">
-                          <td className="sticky left-0 z-10 bg-white py-1 px-2">{v.label}</td>
-                          {v.trip_per_bulan.map((n: number, i: number) => (
-                            <td key={i} className="py-1 px-2 text-right font-mono">{fmtTrip(n)}</td>
-                          ))}
-                          <td className="py-1 px-2 text-right font-mono font-semibold">{fmtTrip(v.total_trip)}</td>
-                        </tr>
-                      ))}
-                      <tr className="bg-[#F8F8F8] font-semibold">
-                        <td className="sticky left-0 z-10 bg-[#F8F8F8] py-1 px-2">TOTAL</td>
-                        {totalPerBulan.map((n: number, i: number) => (
-                          <td key={i} className="py-1 px-2 text-right font-mono">{fmtTrip(n)}</td>
-                        ))}
-                        <td className="py-1 px-2 text-right font-mono">{fmtTrip(ringkas.total_trip)}</td>
-                      </tr>
-                      <tr className="border-t border-[#E4E5E8] text-[11px] text-[#64676C]">
-                        <td className="sticky left-0 z-10 bg-white py-1 px-2 font-semibold">Vendor #1</td>
-                        {vendorUtamaBulan.map((n: string, i: number) => (
-                          <td key={i} className="py-1 px-2 text-right" title={n}>{n}</td>
-                        ))}
-                        <td className="py-1 px-2" />
-                      </tr>
-                      <tr className="text-[11px] text-[#64676C]">
-                        <td className="sticky left-0 z-10 bg-white py-1 px-2 font-semibold">Trip #1</td>
-                        {tripUtamaBulan.map((n: number, i: number) => (
-                          <td key={i} className="py-1 px-2 text-right font-mono">{fmtTrip(n)}</td>
-                        ))}
-                        <td className="py-1 px-2" />
-                      </tr>
-                      <tr className="text-[11px] text-[#64676C]">
-                        <td className="sticky left-0 z-10 bg-white py-1 px-2 font-semibold">Share #1</td>
-                        {shareUtamaBulan.map((n: number, i: number) => (
-                          <td key={i} className="py-1 px-2 text-right font-mono">{fmtPct(n)}</td>
-                        ))}
-                        <td className="py-1 px-2" />
-                      </tr>
-                    </tbody>
-                  </table>
-                </div>
-
-                {/* ---- TABEL 3: Vendor Harian ---- */}
-                <h4 className="mt-4 mb-1 text-xs font-semibold text-[#1D2434]">
-                  3. Vendor Harian — semua tanggal {d.periode.dari} s.d. {d.periode.sampai}
-                </h4>
-                {modeRingkas && (
-                  <p className="mb-3 rounded-sm border border-[#D7E7FF] bg-[#EFF6FF] px-3 py-2 text-[11px] text-[#1D4ED8]"
-                     data-uji="mode-ringkas-konsistensi">
-                    Periode panjang ({d.periode.jumlah_hari} hari) tetap dihitung penuh.
-                    Rincian harian <b>otomatis diminimalisir</b> menjadi rekap per bulan
-                    dan rentang tanggal berurutan <b>YYYY-MM-DD</b>; ekspor Excel tetap
-                    memuat satu baris untuk setiap tanggal, termasuk hari bernilai 0 Trip.
-                  </p>
-                )}
-
-                {!tampilTabelHarian && !mintaRinci && (
-                  <>
-                    <div className="mb-2 max-h-60 overflow-auto rounded-sm border border-[#E4E5E8]">
-                      <table className="w-full text-[11px]" data-uji="rekap-bulan-konsistensi">
-                        <thead className="sticky top-0 bg-[#F8F8F8]">
-                          <tr className="text-left text-[#64676C] border-b">
-                            <th className="px-2 py-1">Bulan</th>
-                            <th className="px-2 py-1 text-right">Hari kalender</th>
-                            <th className="px-2 py-1 text-right">Hari ber-intake</th>
-                            <th className="px-2 py-1 text-right">Total Trip</th>
-                            <th className="px-2 py-1 text-right">Rata²/hari</th>
-                            <th className="px-2 py-1">Nomor tanggal ber-intake</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {rekapBulan.map((m: any) => (
-                            <tr key={m.ym} className="border-t border-[#EDEFF2]">
-                              <td className="px-2 py-1 font-mono">{m.label}</td>
-                              <td className="px-2 py-1 text-right font-mono">{fmtTrip(m.jumlah_hari_kalender)}</td>
-                              <td className="px-2 py-1 text-right font-mono">{fmtTrip(m.hari_ber_intake)}</td>
-                              <td className="px-2 py-1 text-right font-mono">{fmtTrip(m.total_trip)}</td>
-                              <td className="px-2 py-1 text-right font-mono">{fmtRate(m.rata_trip_per_hari)}</td>
-                              <td className="px-2 py-1 font-mono" title={m.ym}>{m.ringkasan}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                    <div className="mb-2 flex flex-wrap gap-1" data-uji="rentang-hari-kosong">
-                      {rentangTampil.map((g: any) => (
-                        <span key={`${g.dari}-${g.sampai}`}
-                              title={`${fmtRentang(g.dari)} → ${fmtRentang(g.sampai)}`}
-                              className={`rounded-sm border px-1.5 py-0.5 text-[10px] ${kelasKategori(g.kategori)}`}>
-                          <b className="font-mono">{teksRentang(g)}</b>
-                          {" · "}{g.jumlah_hari} hari · {namaKategori(g.kategori)}
-                        </span>
-                      ))}
-                      {(rentangHari.length > rentangTampil.length) && (
-                        <span className="text-[10px] text-[#64676C]">
-                          … seluruhnya ada di Excel
-                        </span>
-                      )}
-                    </div>
-                    {rentangHari.length > 60 && (
-                      <button className={kelasTombolKecil}
-                              onClick={() => setTampilSemuaRentang(!tampilSemuaRentang)}>
-                        {tampilSemuaRentang ? "ringkas rentang" : `tampilkan ${rentangHari.length} rentang`}
-                      </button>
-                    )}
-                    <button className={`${kelasTombolKecil} ml-2`}
-                            onClick={() => setTampilSemuaHari(true)}>
-                      tampilkan semua {d.periode.jumlah_hari} baris harian
-                    </button>
-                    <p className="mt-1 text-[10px] text-[#64676C]">
-                      Tanggal pasti tetap terbaca pada kolom rentang dan rekap per bulan;
-                      ekspor Excel memuat seluruh baris tanpa potongan.
-                    </p>
-                  </>
-                )}
-
-                {tampilTabelHarian && (
-                  <>
-                    {modeRingkas && (
-                      <button className={`${kelasTombolKecil} mb-2`}
-                              onClick={() => setTampilSemuaHari(false)}>
-                        kembali ke tampilan ringkas
-                      </button>
-                    )}
-                    <div className="max-h-96 overflow-auto rounded-sm border border-[#E4E5E8]">
-                      <table className="w-full text-xs" data-uji="tabel-vendor-harian">
-                        <thead className="sticky top-0 bg-white">
-                          <tr className="text-left text-[#64676C] border-b">
-                            <th className="sticky left-0 z-10 bg-white py-1 px-2">Tanggal (YYYY-MM-DD)</th>
-                            <th className="py-1 px-2 text-right">Total Trip</th>
-                            {vendorHarian.map((v: any) => (
-                              <th key={v.kode} className="py-1 px-2 text-right whitespace-nowrap"
-                                  title={v.label}>{v.label}</th>
-                            ))}
-                            <th className="py-1 px-2">Vendor #1</th>
-                            <th className="py-1 px-2 text-right">Trip #1</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {hari.map((h: any, i: number) => (
-                            <tr key={h.tanggal}
-                                className={`border-b border-[#EDEFF2] ${h.di_luar_data ? "bg-[#F3F4F6]" : ""}`}>
-                              <td className="sticky left-0 z-10 bg-inherit py-1 px-2 font-mono">
-                                {h.tanggal}
-                                {h.di_luar_data && (
-                                  <span className="ml-1 rounded-sm bg-[#E5E7EB] px-1 py-0.5 text-[9px] font-semibold text-[#4B5563]">
-                                    Di luar data
-                                  </span>
-                                )}
-                                {h.sepi_pabrik && (
-                                  <span className="ml-1 rounded-sm bg-[#FEE2E2] px-1 py-0.5 text-[9px] font-semibold text-[#B91C1C]">
-                                    pabrik tutup
-                                  </span>
-                                )}
-                              </td>
-                              <td className="py-1 px-2 text-right font-mono font-semibold">
-                                {fmtTrip(totalPerHari[i])}
-                              </td>
-                              {vendorHarian.map((v: any) => (
-                                <td key={v.kode} className="py-1 px-2 text-right font-mono">
-                                  {fmtTrip(v.trip_per_hari[i])}
-                                </td>
-                              ))}
-                              <td className="py-1 px-2">{vendorUtamaHarian[i]}</td>
-                              <td className="py-1 px-2 text-right font-mono">
-                                {fmtTrip(tripUtamaHarian[i])}
-                              </td>
-                            </tr>
-                          ))}
-                          <tr className="bg-[#F8F8F8] font-semibold">
-                            <td className="sticky left-0 z-10 bg-[#F8F8F8] py-1 px-2">Rata² / hari</td>
-                            <td className="py-1 px-2 text-right font-mono">
-                              {fmtRate(rataTotalPerHari)}
-                            </td>
-                            {rataVendorPerHari.map((n: number, i: number) => (
-                              <td key={i} className="py-1 px-2 text-right font-mono">{fmtRate(n)}</td>
-                            ))}
-                            <td className="py-1 px-2" />
-                            <td className="py-1 px-2" />
-                          </tr>
-                        </tbody>
-                      </table>
-                    </div>
-                  </>
-                )}
 
               </>
             )}

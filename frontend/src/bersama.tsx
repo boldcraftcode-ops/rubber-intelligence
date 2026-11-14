@@ -665,8 +665,8 @@ export function Kartu({ idMetrik, judul, keterangan, urlEkspor, qsJelaskan, anak
                        border border-[#E4E5E8]">
       <div className="flex items-start justify-between gap-3 mb-1">
         <div>
-          <h2 className="text-lg font-semibold text-[#1D2434]">{judul}</h2>
-          {keterangan && <p className="text-sm text-[#64676C]">{keterangan}</p>}
+          <h2 className="text-lg font-semibold text-[#1D2434]">{t(judul)}</h2>
+          {keterangan && <p className="text-sm text-[#64676C]">{t(keterangan)}</p>}
         </div>
         <div className="flex gap-2 shrink-0">
           <button className={`${kelasTombolKecil} border-[#FF1313]`} onClick={() => setBuka(true)}>

@@ -129,6 +129,10 @@ def test_daftar_vendor_dan_pemakaian(klien_terpakai):
     assert b["ton_kering"] == pytest.approx(12.0)
     assert b["baris_pembelian"] == 1
     assert b["intake_terakhir"] == "2026-01-05"
+    assert d["periode_vendor_class"] == "2025-08 s.d. 2026-01"
+    assert b["dry_total_6bulan_mt"] == pytest.approx(12.0)
+    assert b["dry_rata_bulanan_mt"] == pytest.approx(2.0)
+    assert b["vendor_class"] == "D"
     assert b["terpakai"] is True
 
 

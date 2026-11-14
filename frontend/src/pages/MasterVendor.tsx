@@ -1,4 +1,5 @@
-import { useRef, useState } from "react";
+import { Fragment, useRef, useState } from "react";
+import { useBahasa } from "../i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   Kartu, Pesan, ambilJson, fmtAngka, fmtTanggal,
@@ -31,6 +32,16 @@ const WARNA_KLASIFIKASI: Record<string, string> = {
 const labelKlasifikasi = (kode: string | null) =>
   KLASIFIKASI.find((k) => k.kode === kode)?.label ?? null;
 
+const URUTAN_VENDOR_CLASS: Record<string, number> = { SS: 0, S: 1, A: 2, B: 3, D: 4, "–": 5 };
+
+const WARNA_VENDOR_CLASS: Record<string, string> = {
+  SS: "bg-[#1D2434] text-white",
+  S: "bg-[#2E4A7D] text-white",
+  A: "bg-[#4F73B3] text-white",
+  B: "bg-[#8FADD9] text-[#1D2434]",
+  D: "bg-[#D5DEEE] text-[#1D2434]",
+};
+
 const WARNA_STATUS: Record<string, string> = {
   aktif: "bg-[#ECFDF5] text-[#166534] border-[#A7F3D0]",
   nonaktif: "bg-[#F3F4F6] text-[#4B5563] border-[#E5E7EB]",
@@ -39,6 +50,7 @@ const WARNA_STATUS: Record<string, string> = {
 
 /* ================= daftar + form (CRUD) ================= */
 export function KartuDaftarVendor() {
+  const { t } = useBahasa();
   const qc = useQueryClient();
   const [cari, setCari] = useState("");
   const [saring, setSaring] = useState("");
@@ -53,6 +65,10 @@ export function KartuDaftarVendor() {
   if (saringKlasifikasi) params.set("klasifikasi", saringKlasifikasi);
   const url = `/api/vendor${params.toString() ? `?${params.toString()}` : ""}`;
   const q = useQuery({ queryKey: ["vendor", url], queryFn: () => ambilJson(url) });
+  const barisVendor = [...(q.data?.baris ?? [])].sort((a: any, b: any) =>
+    (URUTAN_VENDOR_CLASS[a.vendor_class] ?? 5) - (URUTAN_VENDOR_CLASS[b.vendor_class] ?? 5)
+    || a.nama_baku.localeCompare(b.nama_baku, "id")
+    || a.kode.localeCompare(b.kode, "id"));
 
   const segarkan = () => {
     qc.invalidateQueries({ queryKey: ["vendor"] });
@@ -100,9 +116,10 @@ export function KartuDaftarVendor() {
     setInfo(null);
   };
 
-  /* Hapus dua langkah: klik Hapus -> tombol konfirmasi. Vendor yang sudah
+  /* {t("Hapus")} dua langkah: klik {t("Hapus")} -> tombol konfirmasi. Vendor yang sudah
      dipakai tiket tetap ditolak server; tombol kedua dinamai jelas. */
   const [konfirmasi, setKonfirmasi] = useState<string | null>(null);
+  const [detailTerbuka, setDetailTerbuka] = useState<string | null>(null);
 
   return (
     <Kartu idMetrik="master_vendor" judul="Daftar vendor"
@@ -111,138 +128,127 @@ export function KartuDaftarVendor() {
       <>
         <div className="mb-3 flex flex-wrap items-end gap-2">
           <div className="flex-1 min-w-48">
-            <label className={kelasLabel}>Cari</label>
-            <input className={kelasInput} placeholder="kode, nama, klasifikasi, kontak, alamat"
+            <label className={kelasLabel}>{t("Cari")}</label>
+            <input className={kelasInput} placeholder={t("kode, nama, klasifikasi, kontak, alamat")}
                    value={cari} onChange={(e) => setCari(e.target.value)} />
           </div>
           <div>
-            <label className={kelasLabel}>Status</label>
+            <label className={kelasLabel}>{t("Status")}</label>
             <select className={kelasInput + " min-w-36"} value={saring}
                     onChange={(e) => setSaring(e.target.value)}>
-              <option value="">Semua status</option>
+              <option value="">{t("Semua status")}</option>
               {(q.data?.status_baku ?? ["aktif", "nonaktif", "diblokir"]).map((s: string) => (
-                <option key={s} value={s}>{s}</option>
+                <option key={s} value={s}>{t(s)}</option>
               ))}
             </select>
           </div>
           <div>
-            <label className={kelasLabel}>Klasifikasi</label>
+            <label className={kelasLabel}>{t("Klasifikasi")}</label>
             <select className={kelasInput + " min-w-40"} value={saringKlasifikasi}
                     onChange={(e) => setSaringKlasifikasi(e.target.value)}>
-              <option value="">Semua klasifikasi</option>
+              <option value="">{t("Semua klasifikasi")}</option>
               {KLASIFIKASI.map((k) => (
-                <option key={k.kode} value={k.kode}>{k.label}</option>
+                <option key={k.kode} value={k.kode}>{t(k.label)}</option>
               ))}
-              <option value="-">Belum diisi</option>
+              <option value="-">{t("Belum diisi")}</option>
             </select>
           </div>
           <p className="pb-2 text-xs text-[#64676C]">
-            {q.data ? `${q.data.jumlah} dari ${q.data.jumlah_total} vendor` : "memuat…"}
+            {q.data ? `${fmtAngka(q.data.jumlah, 0)} ${t("dari")} ${fmtAngka(q.data.jumlah_total, 0)} ${t("vendor")}` : t("memuat…")}
           </p>
         </div>
 
-        {q.data?.ringkasan_klasifikasi && (
-          <p className="mb-2 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-[#64676C]">
-            <span className="font-semibold text-[#1D2434]">Komposisi:</span>
-            {KLASIFIKASI.map((k) => (
-              <span key={k.kode}>
-                {k.label}{" "}
-                <b className="text-[#1D2434]">
-                  {fmtAngka(q.data.ringkasan_klasifikasi[k.kode] ?? 0, 0)}
-                </b>
-              </span>
-            ))}
-            <span>
-              belum diisi{" "}
-              <b className="text-[#1D2434]">
-                {fmtAngka(q.data.ringkasan_klasifikasi.belum_diisi ?? 0, 0)}
-              </b>
-            </span>
-          </p>
-        )}
-
+        <p className="mb-2 text-[11px] text-[#64676C]">
+          {t("Vendor Class dihitung dari total Dry per supplier selama enam bulan data terakhir")}
+          {q.data?.periode_vendor_class ? ` (${q.data.periode_vendor_class})` : ` ${t("yang tersedia")}`}.
+          {" "}{t("Ambang total 6 bulan: SS ≥ 1.500 MT · S ≥ 1.000 MT · A ≥ 500 MT · B ≥ 250 MT · D di bawahnya.")}
+        </p>
         <div className="max-h-96 overflow-y-auto">
           <table className="w-full text-xs">
             <thead className="sticky top-0 bg-white">
               <tr className="text-left text-[#64676C] border-b">
-                <th className="py-1">Kode</th><th>Nama baku</th><th>Klasifikasi</th>
-                <th>Produsen langsung*</th><th>Kontak</th><th>Alamat</th><th>Kategori</th><th>Status</th>
-                <th className="text-right">Tiket</th>
-                <th className="text-right">Ton kering</th>
-                <th>Intake terakhir</th><th></th>
+                <th className="py-2 pr-3">{t("Kode")}</th>
+                <th className="py-2 pr-3">{t("Nama Vendor")}</th>
+                <th className="py-2 pr-3">{t("Vendor Class")}</th>
+                <th className="py-2 pr-3">{t("Klasifikasi")}</th>
+                <th className="py-2 pr-3">{t("Status")}</th>
+                <th className="py-2 text-right">{t("Detail")}</th>
               </tr>
             </thead>
             <tbody>
-              {q.data?.baris.map((b: any) => (
-                <tr key={b.kode} className="border-b border-[#EDEFF2]">
-                  <td className="py-1.5 font-mono text-[#1D2434]">{b.kode}</td>
-                  <td className="text-[#1D2434]">
-                    {b.nama_baku}
-                    {b.varian_nama && (
-                      <span className="block max-w-40 truncate text-[10px] text-[#64676C]"
-                            title={b.varian_nama}>
-                        {b.varian_nama}
+              {barisVendor.map((b: any) => (
+                <Fragment key={b.kode}>
+                  <tr key={b.kode} className="border-b border-[#EDEFF2]">
+                    <td className="py-2 pr-3 font-mono font-semibold text-[#1D2434]">{b.kode}</td>
+                    <td className="py-2 pr-3 text-[#1D2434]">{b.nama_baku}</td>
+                    <td className="py-2 pr-3">
+                      <span title={`${fmtAngka(b.dry_total_6bulan_mt, 3)} MT Dry total 6 bulan · ${q.data?.periode_vendor_class ?? "belum ada data"}`}
+                            className={`inline-flex min-w-8 justify-center rounded-sm px-2 py-1 text-[11px] font-bold ${WARNA_VENDOR_CLASS[b.vendor_class] ?? "bg-[#F3F4F6] text-[#64676C]"}`}>
+                        {b.vendor_class}
                       </span>
-                    )}
-                  </td>
-                  <td>
-                    {b.klasifikasi_label ? (
-                      <span className={`rounded-sm border px-1.5 py-0.5 text-[10px] whitespace-nowrap ${WARNA_KLASIFIKASI[b.klasifikasi] ?? WARNA_STATUS.nonaktif}`}>
-                        {b.klasifikasi_label}
+                    </td>
+                    <td className="py-2 pr-3">
+                      {b.klasifikasi_label ? (
+                        <span className={`rounded-sm border px-1.5 py-0.5 text-[10px] whitespace-nowrap ${WARNA_KLASIFIKASI[b.klasifikasi] ?? WARNA_STATUS.nonaktif}`}>
+                          {b.klasifikasi_label}
+                        </span>
+                      ) : <span className="text-[10px] text-[#9AA0A6]">belum diisi</span>}
+                    </td>
+                    <td className="py-2 pr-3">
+                      <span className={`rounded-sm border px-1.5 py-0.5 text-[10px] ${WARNA_STATUS[b.status] ?? WARNA_STATUS.nonaktif}`}>
+                        {t(b.status)}
                       </span>
-                    ) : (
-                      <span className="text-[10px] text-[#9AA0A6]">belum diisi</span>
-                    )}
-                  </td>
-                  <td>
-                    <span className={`rounded-sm border px-1.5 py-0.5 text-[10px] whitespace-nowrap ${b.is_direct_producer ? "bg-[#ECFDF5] text-[#166534] border-[#A7F3D0]" : "bg-[#F3F4F6] text-[#64676C] border-[#E5E7EB]"}`}>
-                      {b.is_direct_producer ? "Ya" : "Tidak"}
-                    </span>
-                  </td>
-                  <td className="max-w-32 truncate text-[#64676C]" title={b.kontak_person ?? ""}>
-                    {b.kontak_person ?? "–"}
-                  </td>
-                  <td className="max-w-48 truncate text-[#64676C]" title={b.alamat ?? ""}>
-                    {b.alamat ?? "–"}
-                  </td>
-                  <td className="text-[#64676C]">{b.kategori ?? "–"}</td>
-                  <td>
-                    <span className={`rounded-sm border px-1.5 py-0.5 text-[10px] ${WARNA_STATUS[b.status] ?? WARNA_STATUS.nonaktif}`}>
-                      {b.status}
-                    </span>
-                  </td>
-                  <td className="text-right font-mono">{fmtAngka(b.jumlah_tiket, 0)}</td>
-                  <td className="text-right font-mono">{fmtAngka(b.ton_kering, 3)}</td>
-                  <td className="text-[#64676C]">
-                    {b.intake_terakhir ? fmtTanggal(b.intake_terakhir) : "belum pernah"}
-                  </td>
-                  <td className="whitespace-nowrap text-right">
-                    <button className={`${kelasTombolKecil} mr-1`} onClick={() => mulaiUbah(b)}>
-                      ubah
-                    </button>
-                    {konfirmasi === b.kode ? (
-                      <>
-                        <button className={`${kelasTombolKecil} mr-1 border-[#DC2626] text-[#B91C1C]`}
-                                disabled={hapus.isPending}
-                                onClick={() => { hapus.mutate(b.kode); setKonfirmasi(null); }}>
-                          ya, hapus
-                        </button>
-                        <button className={kelasTombolKecil}
-                                onClick={() => setKonfirmasi(null)}>batal</button>
-                      </>
-                    ) : (
-                      <button className={`${kelasTombolKecil} border-[#FECACA] text-[#B91C1C]`}
-                              onClick={() => { setInfo(null); setKonfirmasi(b.kode); }}>
-                        hapus
+                    </td>
+                    <td className="py-2 text-right">
+                      <button type="button" className={kelasTombolKecil}
+                              aria-expanded={detailTerbuka === b.kode}
+                              onClick={() => setDetailTerbuka(detailTerbuka === b.kode ? null : b.kode)}>
+                        {detailTerbuka === b.kode ? t("Tutup") : t("Details")}
                       </button>
-                    )}
-                  </td>
-                </tr>
+                    </td>
+                  </tr>
+                  {detailTerbuka === b.kode && (
+                    <tr key={`${b.kode}-detail`} className="border-b border-[#E4E5E8] bg-[#F8F8F8]">
+                      <td colSpan={6} className="px-3 py-3">
+                        <div className="grid gap-x-5 gap-y-2 sm:grid-cols-2 lg:grid-cols-4 text-xs">
+                          <div><span className="text-[#64676C]">{t("Varian nama")}</span><p className="text-[#1D2434]">{b.varian_nama || "–"}</p></div>
+                          <div><span className="text-[#64676C]">{t("Produsen langsung")}</span><p className="text-[#1D2434]">{b.is_direct_producer ? "Ya" : "Tidak"}</p></div>
+                          <div><span className="text-[#64676C]">{t("Kategori")}</span><p className="text-[#1D2434]">{b.kategori || "–"}</p></div>
+                          <div><span className="text-[#64676C]">{t("Contact person")}</span><p className="text-[#1D2434]">{b.kontak_person || "–"}</p></div>
+                          <div className="sm:col-span-2"><span className="text-[#64676C]">{t("Alamat")}</span><p className="text-[#1D2434]">{b.alamat || "–"}</p></div>
+                          <div><span className="text-[#64676C]">{t("Jumlah tiket")}</span><p className="font-mono text-[#1D2434]">{fmtAngka(b.jumlah_tiket, 0)}</p></div>
+                          <div><span className="text-[#64676C]">{t("Dry historis")}</span><p className="font-mono text-[#1D2434]">{fmtAngka(b.ton_kering, 3)} MT</p></div>
+                          <div><span className="text-[#64676C]">{t("Total Dry 6 bulan")}</span><p className="font-mono text-[#1D2434]">{fmtAngka(b.dry_total_6bulan_mt, 3)} MT</p></div>
+                          <div><span className="text-[#64676C]">{t("Rata-rata Dry per bulan")}</span><p className="font-mono text-[#1D2434]">{fmtAngka(b.dry_rata_bulanan_mt, 3)} MT/bulan</p></div>
+                          <div><span className="text-[#64676C]">{t("Intake terakhir")}</span><p className="text-[#1D2434]">{b.intake_terakhir ? fmtTanggal(b.intake_terakhir) : "belum pernah"}</p></div>
+                        </div>
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          <button className={kelasTombolKecil} onClick={() => mulaiUbah(b)}>{t("Ubah")}</button>
+                          {konfirmasi === b.kode ? (
+                            <>
+                              <button className={`${kelasTombolKecil} border-[#DC2626] text-[#B91C1C]`}
+                                      disabled={hapus.isPending}
+                                      onClick={() => { hapus.mutate(b.kode); setKonfirmasi(null); }}>
+                                {t("Ya, hapus")}
+                              </button>
+                              <button className={kelasTombolKecil} onClick={() => setKonfirmasi(null)}>{t("Batal")}</button>
+                            </>
+                          ) : (
+                            <button className={`${kelasTombolKecil} border-[#FECACA] text-[#B91C1C]`}
+                                    onClick={() => { setInfo(null); setKonfirmasi(b.kode); }}>
+                              {t("Hapus")}
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                </Fragment>
               ))}
               {q.data?.baris.length === 0 && (
-                <tr><td colSpan={12} className="py-3 text-[#64676C]">
-                  Tidak ada vendor yang cocok. Kosongkan pencarian, atau tambahkan
-                  vendor baru di bawah.
+                <tr><td colSpan={6} className="py-3 text-[#64676C]">
+                  {t("Tidak ada vendor yang cocok. Kosongkan pencarian, atau tambahkan")}
+                  {t("vendor baru di bawah.")}
                 </td></tr>
               )}
             </tbody>
@@ -250,76 +256,73 @@ export function KartuDaftarVendor() {
         </div>
 
         <p className="mt-2 text-[11px] text-[#64676C]">
-          Vendor yang sudah dipakai tiket tidak bisa dihapus begitu saja — server
-          menolak agar tonase tidak kehilangan pemiliknya. Jalankan lewat status
-          <b> nonaktif</b>. Tombol “ya, hapus” mengirim hapus paksa dan tetap
-          tercatat di audit.
+          {t("Vendor yang sudah dipakai tiket tidak bisa dihapus begitu saja — server menolak agar tonase tidak kehilangan pemiliknya. Jalankan lewat status nonaktif. Tombol ya, hapus mengirim hapus paksa dan tetap tercatat di audit.")}
         </p>
 
         <h3 className="mt-5 mb-2 text-sm font-semibold text-[#1D2434]">
-          {ubahKode ? `Ubah vendor ${ubahKode}` : "Tambah vendor baru"}
+          {ubahKode ? `${t("Ubah vendor")} ${ubahKode}` : t("Tambah vendor baru")}
         </h3>
         <div className="grid grid-cols-1 sm:grid-cols-6 gap-2 items-end">
           <div>
-            <label className={kelasLabel}>Kode vendor</label>
+            <label className={kelasLabel}>{t("Kode vendor")}</label>
             <input className={`${kelasInput} font-mono ${ubahKode ? "bg-[#F8F8F8] text-[#64676C]" : ""}`}
-                   placeholder="mis. V005" value={form.kode} disabled={Boolean(ubahKode)}
+                   placeholder={t("mis. V005")} value={form.kode} disabled={Boolean(ubahKode)}
                    onChange={(e) => setForm({ ...form, kode: e.target.value.toUpperCase() })} />
           </div>
           <div className="sm:col-span-2">
-            <label className={kelasLabel}>Nama baku</label>
-            <input className={kelasInput} placeholder="mis. PT Karet Nusantara"
+            <label className={kelasLabel}>{t("Nama baku")}</label>
+            <input className={kelasInput} placeholder={t("mis. PT Karet Nusantara")}
                    value={form.nama_baku}
                    onChange={(e) => setForm({ ...form, nama_baku: e.target.value })} />
           </div>
           <div>
-            <label className={kelasLabel}>Klasifikasi</label>
+            <label className={kelasLabel}>{t("Klasifikasi")}</label>
             <select className={kelasInput} value={form.klasifikasi}
                     onChange={(e) => setForm({ ...form, klasifikasi: e.target.value })}>
-              <option value="">belum diisi</option>
+              <option value="">{t("belum diisi")}</option>
               {KLASIFIKASI.map((k) => (
-                <option key={k.kode} value={k.kode}>{k.label}</option>
+                <option key={k.kode} value={k.kode}>{t(k.label)}</option>
               ))}
             </select>
           </div>
           <div>
-            <label className={kelasLabel}>Status</label>
+            <label className={kelasLabel}>{t("Status")}</label>
             <select className={kelasInput} value={form.status}
                     onChange={(e) => setForm({ ...form, status: e.target.value })}>
               {["aktif", "nonaktif", "diblokir"].map((s) => (
-                <option key={s} value={s}>{s}</option>))}
+                <option key={s} value={s}>{t(s)}</option>))}
             </select>
           </div>
           <button className={kelasTombol} disabled={simpan.isPending
                     || !form.kode.trim() || !form.nama_baku.trim()}
                   onClick={() => { setInfo(null); simpan.mutate(); }}>
-            {ubahKode ? "Simpan perubahan" : "Tambah vendor"}
+            {ubahKode ? t("Simpan perubahan") : t("Tambah vendor")}
           </button>
         </div>
         <div className="mt-2 grid grid-cols-1 sm:grid-cols-6 gap-2">
           <div className="sm:col-span-3">
-            <label className={kelasLabel}>Varian nama (nama lain di tiket, pisahkan dengan |)</label>
-            <input className={kelasInput} placeholder="mis. PT Karet Nusantara|CV Karet Nusantara"
+            <label className={kelasLabel}>{t("Varian nama (nama lain di tiket, pisahkan dengan |)")}</label>
+            <input className={kelasInput} placeholder={t("mis. PT Karet Nusantara|CV Karet Nusantara")}
                    value={form.varian_nama}
                    onChange={(e) => setForm({ ...form, varian_nama: e.target.value })} />
           </div>
           <div className="sm:col-span-1">
-            <label className={kelasLabel}>Kategori</label>
-            <input className={kelasInput} placeholder="nasional / lokal"
+            <label className={kelasLabel}>{t("Kategori")}</label>
+            <input className={kelasInput} placeholder={t("nasional / lokal")}
                    value={form.kategori}
                    onChange={(e) => setForm({ ...form, kategori: e.target.value })} />
           </div>
           <div className="sm:col-span-2">
-            <label className={kelasLabel}>Contact person</label>
-            <input className={kelasInput} placeholder="nama — nomor HP"
+            <label className={kelasLabel}>{t("Contact person")}</label>
+            <input className={kelasInput} placeholder={t("nama — nomor HP")}
                    value={form.kontak_person}
                    onChange={(e) => setForm({ ...form, kontak_person: e.target.value })} />
           </div>
         </div>
         <div className="mt-2">
-          <label className={kelasLabel}>Alamat</label>
+          <label className={kelasLabel}>{t("Alamat")}</label>
           <textarea className={`${kelasInput} min-h-16`} rows={2}
-                    placeholder="mis. Jl. Gatot Subroto No. 12, Medan, Sumatera Utara"
+                    placeholder={t("mis. Jl. Gatot Subroto No. 12, Medan, Sumatera Utara")}
                     value={form.alamat}
                     onChange={(e) => setForm({ ...form, alamat: e.target.value })} />
         </div>
@@ -327,12 +330,12 @@ export function KartuDaftarVendor() {
           <input type="checkbox" className="mt-0.5"
                  checked={Boolean(form.is_direct_producer)}
                  onChange={(e) => setForm({ ...form, is_direct_producer: e.target.checked })} />
-          <span><b>Produsen langsung</b> <span className="text-[#64676C]">(penanda sementara; default tidak)</span></span>
+          <span><b>{t("Produsen langsung")}</b> <span className="text-[#64676C]">{t("(penanda sementara; default tidak)")}</span></span>
         </label>
         {ubahKode && (
           <button className={`${kelasTombolKecil} mt-2`}
                   onClick={() => { setUbahKode(null); setForm({ ...KOSONG }); setInfo(null); }}>
-            batal ubah — kembali ke tambah baru
+            {t("batal ubah — kembali ke tambah baru")}
           </button>
         )}
         {info && <Pesan jenis={info.jenis} teks={info.teks} />}
@@ -343,6 +346,7 @@ export function KartuDaftarVendor() {
 
 /* ================= bulk import ================= */
 export function KartuBulkVendor() {
+  const { t } = useBahasa();
   const qc = useQueryClient();
   const inputRef = useRef<HTMLInputElement>(null);
   const [hasil, setHasil] = useState<any>(null);
@@ -379,17 +383,17 @@ export function KartuBulkVendor() {
       <>
         <div className="flex flex-wrap items-center gap-2">
           <a className={kelasTombol} href={urlApi("/api/vendor/template")}>
-            ⬇ Unduh template
+            ⬇ {t("Unduh template")}
           </a>
           <button className={kelasTombolKecil} disabled={unggah.isPending}
                   onClick={() => inputRef.current?.click()}>
-            {unggah.isPending ? "Mengimpor…" : "Pilih file .xlsx untuk diimpor"}
+            {unggah.isPending ? t("Mengimpor…") : t("Pilih file .xlsx untuk diimpor")}
           </button>
           <input ref={inputRef} type="file" accept=".xlsx" className="hidden"
                  onChange={(e) => { pilih(e.target.files?.[0]); e.target.value = ""; }} />
           <span className="text-xs text-[#64676C]">
-            Template berisi sheet <b>Master_Vendor</b> + sheet Petunjuk. Bisa juga
-            diunggah lewat tab <b>Unggah Data</b>.
+            {t("Template berisi sheet")} <b>Master_Vendor</b> + {t("sheet Petunjuk. Bisa juga")}
+            {t("diunggah lewat tab")} <b>{t("Unggah Data")}</b>.
           </span>
         </div>
 
@@ -402,11 +406,10 @@ export function KartuBulkVendor() {
           onDragOver={(e) => e.preventDefault()}
           onDrop={(e) => { e.preventDefault(); pilih(e.dataTransfer.files?.[0]); }}>
           <p className="text-sm text-[#1D2434] font-medium">
-            Tarik & lepas file .xlsx ke sini, atau klik untuk memilih
+            {t("Tarik & lepas file .xlsx ke sini, atau klik untuk memilih")}
           </p>
           <p className="mt-1 text-[#64676C]">
-            Hanya file bersheet Master_Vendor. Baris rusak dilaporkan per baris dan
-            tidak membatalkan baris lain.
+            {t("Hanya file bersheet Master_Vendor. Baris rusak dilaporkan per baris dan tidak membatalkan baris lain.")}
           </p>
         </div>
 
@@ -416,15 +419,15 @@ export function KartuBulkVendor() {
           <>
             <Pesan jenis="sukses" teks={`${hasil.nama_file} — ${hasil.pesan}`} />
             <div className="mt-3 grid grid-cols-3 gap-2">
-              {[["Vendor baru", hasil.ditambah, "#15803D"],
-                ["Diperbarui", hasil.diperbarui, "#1D2434"],
-                ["Ditolak", hasil.ditolak, hasil.ditolak ? "#B91C1C" : "#64676C"]].map(
+              {[[t("Vendor baru"), hasil.ditambah, "#15803D"],
+                [t("Diperbarui"), hasil.diperbarui, "#1D2434"],
+                [t("Ditolak"), hasil.ditolak, hasil.ditolak ? "#B91C1C" : "#64676C"]].map(
                 ([label, nilai, warna]) => (
                   <div key={label as string}
                        className="rounded-sm border border-[#E4E5E8] bg-[#F8F8F8] p-2.5">
                     <p className="text-xs text-[#64676C]">{label}</p>
                     <p className="font-semibold" style={{ color: warna as string }}>
-                      {fmtAngka(nilai as number, 0)} baris
+                      {fmtAngka(nilai as number, 0)} {t("baris")}
                     </p>
                   </div>
                 ))}
@@ -432,13 +435,13 @@ export function KartuBulkVendor() {
             {hasil.peringatan?.length > 0 && (
               <div className="mt-3 max-h-52 overflow-y-auto rounded-sm border border-[#FECACA] bg-[#FEF2F2] p-2">
                 <p className="mb-1 text-xs font-semibold text-[#B91C1C]">
-                  Baris yang tidak diimpor:
+                  {t("Baris yang tidak diimpor:")}
                 </p>
                 <table className="w-full text-xs">
                   <tbody>
                     {hasil.peringatan.map((p: any, i: number) => (
                       <tr key={i} className="border-b border-[#FECACA]">
-                        <td className="py-0.5 pr-2 text-[#B91C1C]">baris {p.baris}</td>
+                        <td className="py-0.5 pr-2 text-[#B91C1C]">{t("baris")} {p.baris}</td>
                         <td className="pr-2 font-mono text-[#1D2434]">{p.kode ?? "(kosong)"}</td>
                         <td className="text-[#64676C]">{p.alasan}</td>
                       </tr>
@@ -465,6 +468,7 @@ const WARNA_KELAS_INTAKE: Record<string, string> = {
 };
 
 export function KartuKelasIntake() {
+  const { t } = useBahasa();
   /* Tanpa parameter `tahun`, backend otomatis memakai tahun intake terbaru. */
   const ki = useQuery({
     queryKey: ["master-vendor-kelas-intake"],
@@ -486,8 +490,8 @@ export function KartuKelasIntake() {
             const bulan: string[] = d.bulan_tersedia ?? [];
             return <>
               <div className="mb-2 flex flex-wrap items-end justify-between gap-2 text-[11px] text-[#64676C]">
-                <span><b className="text-[#1D2434]">{fmtAngka(d.total_supplier_bulan, 0)} supplier-bulan</b> · tahun {d.filters?.year ?? "—"} · {bulan.length} bulan ({bulan[0] || "—"} s.d. {bulan[bulan.length - 1] || "—"}) · total {fmtAngka(d.total_dry_mt, 3)} MT</span>
-                <span>Tanda ≥ di setiap batas</span>
+                <span><b className="text-[#1D2434]">{fmtAngka(d.total_supplier_bulan, 0)} supplier-bulan</b> · {t("tahun")} {d.filters?.year ?? "—"} · {bulan.length} {t("bulan")} ({bulan[0] || "—"} s.d. {bulan[bulan.length - 1] || "—"}) · total {fmtAngka(d.total_dry_mt, 3)} MT</span>
+                <span>{t("Tanda ≥ di setiap batas")}</span>
               </div>
               <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
                 {dist.map((x: any) => {
@@ -497,7 +501,7 @@ export function KartuKelasIntake() {
                       <span className={`rounded-sm px-1.5 py-0.5 font-mono text-[11px] font-bold ${WARNA_KELAS_INTAKE[x.kelas] ?? WARNA_KELAS_INTAKE.D}`}>{x.kelas}</span>
                       <span className="font-mono text-lg font-bold tabular-nums text-[#1D2434]">{fmtAngka(x.jumlah, 0)}</span>
                     </div>
-                    <p className="mt-1 text-[10px] text-[#64676C]">{b ? (b.batas_mt === null ? "< 100 MT" : `≥ ${fmtAngka(b.batas_mt, 0)} MT`) : "—"}</p>
+                    <p className="mt-1 text-[10px] text-[#64676C]">{b ? (b.batas_mt === null ? t("< 100 MT") : `≥ ${fmtAngka(b.batas_mt, 0)} MT`) : "—"}</p>
                     <div className="mt-1.5 h-1.5 rounded bg-[#EDEFF2]"><div className="h-1.5 rounded bg-[#FF1313]" style={{ width: `${Math.max(2, x.jumlah / maks * 100)}%` }} /></div>
                   </div>;
                 })}
