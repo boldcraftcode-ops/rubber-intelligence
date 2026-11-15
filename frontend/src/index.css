@@ -235,10 +235,11 @@ body {
   *::before,
   *::after {
     scroll-behavior: auto !important;
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
+    animation: none !important;
+    transition: none !important;
   }
+
+  .login-garis-tren { stroke-dashoffset: 0; }
 }
 
 /* Pola titik merah: aksen dekoratif seperti materi korporat */
@@ -247,50 +248,46 @@ body {
   background-size: 10px 10px;
 }
 
-/* Latar grid data statis pada panel login. */
-@keyframes TumbuhData {
-  from {
-    transform: scaleY(0);
-    opacity: 0;
-  }
-  to {
-    transform: scaleY(1);
-    opacity: 1;
-  }
-}
-
-@keyframes SiklusKolom {
-  0% {
-    transform: scaleY(0);
-    opacity: 0;
-  }
-  25% {
-    transform: scaleY(1);
-    opacity: 1;
-  }
-  75% {
-    transform: scaleY(1);
-    opacity: 1;
-  }
-  100% {
-    transform: scaleY(0);
-    opacity: 0;
-  }
+/* Gerak panel login hanya mengubah transform dan opacity. */
+@keyframes RinjangData {
+  to { transform: translateY(48px); }
 }
 
 @keyframes SelimutData {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 0.9;
-  }
+  from { opacity: 0; }
+  to { opacity: 0.9; }
 }
 
-@layer utilities {
-  .login-bar {
-    will-change: transform, opacity;
-  }
+@keyframes MasukKartu {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes MasukItem {
+  from { transform: translateY(8px); }
+  to { transform: translateY(0); }
+}
+
+@keyframes Putar {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes Goyang {
+  0%, 100% { transform: translateX(0); }
+  20% { transform: translateX(-6px); }
+  40% { transform: translateX(5px); }
+  60% { transform: translateX(-3px); }
+  80% { transform: translateX(2px); }
+}
+
+@keyframes GambarGarisTren {
+  from { stroke-dashoffset: 1; }
+  to { stroke-dashoffset: 0; }
+}
+
+@keyframes DenyutTitikTren {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.4); opacity: 0.6; }
 }
 
 @layer components {
@@ -299,6 +296,7 @@ body {
       linear-gradient(rgba(255, 255, 255, 0.05) 1px, transparent 1px),
       linear-gradient(90deg, rgba(255, 255, 255, 0.05) 1px, transparent 1px);
     background-size: 48px 48px;
+    animation: RinjangData 18s linear infinite;
   }
 
   .login-selimut {
@@ -308,9 +306,28 @@ body {
     animation: SelimutData 1.2s ease-out both;
   }
 
-  .login-kolom {
-    transform-origin: bottom;
-    animation: SiklusKolom 3s cubic-bezier(0.22, 1, 0.36, 1) infinite;
+  .login-kartu {
+    animation: MasukKartu .5s cubic-bezier(.22,1,.36,1) both;
+  }
+
+  .login-item {
+    animation: MasukItem .45s cubic-bezier(.22,1,.36,1) both;
+    animation-delay: calc(var(--i, 0) * 80ms + 200ms);
+  }
+
+  .login-putar { display: inline-block; animation: Putar .7s linear infinite; }
+  .login-goyang { animation: Goyang .4s ease-in-out; }
+
+  .login-garis-tren {
+    stroke-dasharray: 1;
+    stroke-dashoffset: 1;
+    animation: GambarGarisTren 2.2s ease-out both;
+  }
+
+  .login-titik-tren {
+    transform-box: fill-box;
+    transform-origin: center;
+    animation: DenyutTitikTren 2s ease-in-out 2.2s infinite;
   }
 }
 

@@ -1,4 +1,5 @@
 import { FormEvent, useState } from "react";
+import type { CSSProperties } from "react";
 import { kelasInput, kelasLabel, kelasTombol, kirimJson, simpanToken } from "../bersama";
 import { VERSI_UI } from "../versi";
 
@@ -33,27 +34,36 @@ export default function Login({ onSukses }: { onSukses: () => void }) {
   const [sandi, setSandi] = useState("");
   const [galat, setGalat] = useState<string | null>(null);
   const [sibuk, setSibuk] = useState(false);
+  const [tampilSandi, setTampilSandi] = useState(false);
+  const [capsLock, setCapsLock] = useState(false);
+  const [hitungGalat, setHitungGalat] = useState(0);
+  const [berhasil, setBerhasil] = useState(false);
 
   const kirim = async (e: FormEvent) => {
     e.preventDefault();
+    if (sibuk || berhasil || !username || !sandi) return;
     setGalat(null);
     setSibuk(true);
+    let sukses = false;
     try {
       const j = await kirimJson("/api/auth/login", { username, sandi });
       simpanToken(j.token);          // cadangan bila cookie diblokir
       localStorage.setItem("op-margin.pengisi", j.nama ?? username);
+      setBerhasil(true);
+      sukses = true;
+      await new Promise((r) => setTimeout(r, 350));
       onSukses();
     } catch (err) {
       setGalat((err as Error).message);
+      setHitungGalat((n) => n + 1);
     } finally {
-      setSibuk(false);
+      if (!sukses) setSibuk(false);
     }
   };
 
   return (
     <div className="galaxy min-h-screen flex items-center justify-center p-4 text-[#1D2434]">
-      <div className="w-full max-w-3xl overflow-hidden rounded-sm bg-white shadow-xl
-                      shadow-[#1D2434]/10 border border-[#E4E5E8] grid md:grid-cols-[42%_58%]">
+      <div className={`login-kartu transition duration-300 w-full max-w-3xl overflow-hidden rounded-sm bg-white border border-[#E4E5E8] grid md:grid-cols-[42%_58%] ${berhasil ? "opacity-0 scale-[.98]" : ""}`}>
 
         {/* ===== panel kiri: identitas (navy) ===== */}
         <aside className="relative bg-[#1D2434] px-8 py-10 text-white flex flex-col justify-between overflow-hidden">
@@ -61,7 +71,8 @@ export default function Login({ onSukses }: { onSukses: () => void }) {
           <span className="hidden md:block absolute top-8 bottom-8 right-0 w-[3px] bg-[#FF1313]" />
 
           {/* latar grid data yang bergerak perlahan + lapisan aksen */}
-          <div aria-hidden className="login-grid login-selimut pointer-events-none absolute inset-0" />
+          <div aria-hidden className="login-grid pointer-events-none absolute -top-12 bottom-0 inset-x-0" />
+          <div aria-hidden className="login-selimut pointer-events-none absolute inset-0" />
 
           <div className="relative flex flex-col items-start">
             <p className="text-[11px] uppercase tracking-[0.18em] text-white/60">
@@ -74,57 +85,59 @@ export default function Login({ onSukses }: { onSukses: () => void }) {
                  className="mt-6 h-16 w-16 bg-white rounded-sm p-1.5" />
           </div>
 
-          {/* animasi kolom data yang tumbuh ke atas — berulang setiap 3 detik */}
-          <div aria-hidden className="relative mt-10 flex items-end gap-1.5 h-24">
-            <div className="login-bar login-kolom w-1.5 rounded-t-sm bg-white/30"
-                 style={{ height: "38%", animationDelay: "0ms" }} />
-            <div className="login-bar login-kolom w-1.5 rounded-t-sm bg-white/50"
-                 style={{ height: "62%", animationDelay: "150ms" }} />
-            <div className="login-bar login-kolom w-1.5 rounded-t-sm bg-white/50"
-                 style={{ height: "50%", animationDelay: "300ms" }} />
-            <div className="login-bar login-kolom w-1.5 rounded-t-sm bg-[#FF1313]/85"
-                 style={{ height: "86%", animationDelay: "450ms" }} />
-            <div className="login-bar login-kolom w-1.5 rounded-t-sm bg-white/50"
-                 style={{ height: "68%", animationDelay: "600ms" }} />
-            <div className="login-bar login-kolom w-1.5 rounded-t-sm bg-white/30"
-                 style={{ height: "42%", animationDelay: "750ms" }} />
-          </div>
+          {/* Garis tren merangkum gerak data tanpa kolom dekoratif. */}
+          <svg aria-hidden="true" viewBox="0 0 240 96" className="relative mt-10 w-full h-24">
+            <line x1="0" y1="88" x2="240" y2="88" stroke="rgba(255,255,255,0.15)" strokeWidth="1" />
+            <path d="M8 72 C28 68 32 56 52 60 S78 76 96 54 S124 28 144 42 S174 58 188 30 S218 22 232 10"
+                  pathLength={1} fill="none" stroke="rgba(255,255,255,0.6)" strokeWidth="2"
+                  className="login-garis-tren" />
+            <circle cx="232" cy="10" r="3.5" fill="#FF1313" className="login-titik-tren" />
+          </svg>
         </aside>
 
         {/* ===== panel kanan: form ===== */}
-        <form onSubmit={kirim} className="px-8 py-10">
-          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#FF1313]">
-            Masuk
-          </p>
-          <h2 className="mt-1 text-xl font-bold text-[#1D2434]">
-            Silakan masuk ke akun Anda
-          </h2>
+        <form onSubmit={kirim} aria-busy={sibuk} className="px-8 py-10">
+          <div className="login-item" style={{ "--i": 0 } as CSSProperties}>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#FF1313]">Masuk</p>
+            <h2 className="mt-1 text-xl font-bold text-[#1D2434]">Silakan masuk ke akun Anda</h2>
+            <p className="mt-2 text-sm text-[#64676C]">Gunakan akun yang diberikan oleh admin aplikasi.</p>
+          </div>
 
-          <div className="mt-6">
-            <label className={kelasLabel}>Username</label>
-            <input className={kelasInput} value={username} autoFocus
-                   autoComplete="username" placeholder="username"
+          <div className="login-item mt-6" style={{ "--i": 1 } as CSSProperties}>
+            <label className={kelasLabel} htmlFor="login-username">Username</label>
+            <input id="login-username" className={kelasInput} value={username} autoFocus
+                   autoComplete="username" placeholder="username" disabled={sibuk || berhasil}
                    onChange={(e) => setUsername(e.target.value)} />
           </div>
 
-          <div className="mt-4">
-            <label className={kelasLabel}>Sandi</label>
-            <input className={kelasInput} type="password" value={sandi}
-                   autoComplete="current-password" placeholder="••••••••"
-                   onChange={(e) => setSandi(e.target.value)} />
+          <div className="login-item mt-4" style={{ "--i": 2 } as CSSProperties}>
+            <label className={kelasLabel} htmlFor="login-sandi">Sandi</label>
+            <div className="relative">
+              <input id="login-sandi" className={`${kelasInput} pr-16`} type={tampilSandi ? "text" : "password"} value={sandi}
+                     autoComplete="current-password" placeholder="••••••••" disabled={sibuk || berhasil}
+                     onChange={(e) => setSandi(e.target.value)}
+                     onKeyUp={(e) => setCapsLock(e.getModifierState("CapsLock"))} />
+              <button type="button" className="absolute inset-y-0 right-2 text-xs text-[#64676C]"
+                      aria-label={tampilSandi ? "Sembunyikan sandi" : "Lihat sandi"}
+                      aria-pressed={tampilSandi} disabled={sibuk || berhasil}
+                      onClick={() => setTampilSandi((v) => !v)}>
+                {tampilSandi ? "Sembunyi" : "Lihat"}
+              </button>
+            </div>
+            {capsLock && <p className="mt-1 text-[11px] text-[#92400E]">Caps Lock aktif</p>}
           </div>
 
           {galat && (
-            <p className="mt-4 rounded-sm bg-[#FEF2F2] border border-[#FECACA]
-                          px-3 py-2 text-sm text-[#B91C1C]">{galat}</p>
+            <p key={hitungGalat} role="alert" className="login-goyang mt-4 rounded-sm bg-[#FEF2F2] border border-[#FECACA] px-3 py-2 text-sm text-[#B91C1C]">{galat}</p>
           )}
 
-          <button type="submit" className={`${kelasTombol} w-full mt-6`}
-                  disabled={sibuk || !username || !sandi}>
-            {sibuk ? "Memeriksa…" : "Masuk"}
+          <button type="submit" className={`login-item ${kelasTombol} w-full mt-6`}
+                  style={{ "--i": 3 } as CSSProperties}
+                  disabled={sibuk || berhasil || !username || !sandi}>
+            {sibuk ? <><span aria-hidden="true" className="login-putar h-3.5 w-3.5 rounded-full border-2 border-white/40 border-t-white" />Memeriksa…</> : "Masuk"}
           </button>
 
-          <p className="mt-4 text-[11px] text-[#9AA0A6]">
+          <p className="login-item mt-4 text-[11px] text-[#9AA0A6]" style={{ "--i": 4 } as CSSProperties}>
             Lupa sandi? Hubungi admin aplikasi untuk reset.
           </p>
           <p className="mt-2 text-[11px] text-[#9AA0A6]">
