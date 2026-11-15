@@ -154,15 +154,11 @@ def buat_app(engine: Engine | None = None) -> FastAPI:
                            allow_headers=["Content-Type"])
 
     # --- login: username + sandi (satu-satunya cara masuk) -------------------
-    if cfg_auth.lokal_aktif:
-        from .auth_lokal import pasang_middleware_lokal, pastikan_admin
-        pasang_middleware_lokal(app, cfg_auth)
-        with SessionLocal() as _s:
-            if pastikan_admin(_s):
-                _s.commit()
-    else:
-        print("PERINGATAN: login DIMATIKAN (AUTH_DISABLED=true, mode "
-              "pengembangan). Jangan dipakai di produksi.")
+    from .auth_lokal import pasang_middleware_lokal, pastikan_admin
+    pasang_middleware_lokal(app, cfg_auth)
+    with SessionLocal() as _s:
+        if pastikan_admin(_s):
+            _s.commit()
 
     def ambil_session():
         with SessionLocal() as session:

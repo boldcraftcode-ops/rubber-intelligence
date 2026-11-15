@@ -132,11 +132,12 @@ def test_start_menutup_proses_lama_dan_menunggu_api():
     assert "findstr" in teks  # memastikan versi yang menjawab memang kode ini
 
 
-def test_penanda_lan_dan_tanpa_login_didukung():
+def test_penanda_lan_didukung_tanpa_bypass_login():
     teks = _teks(JALAN)
     assert "jaringan-lan.txt" in teks
     assert "0.0.0.0" in teks
-    assert "tanpa-login.txt" in teks
+    assert "tanpa-login.txt" not in teks
+    assert "AUTH_DISABLED=true" not in teks
 
 
 def test_kedua_skrip_memakai_folder_bahan_yang_sama():

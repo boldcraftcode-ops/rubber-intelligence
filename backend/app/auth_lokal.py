@@ -142,14 +142,14 @@ def pasang_middleware_lokal(app, cfg) -> None:
 
 
 def info_pengguna(request: Request) -> dict | None:
-    """Klaim pengguna dari middleware; None bila auth nonaktif (dev)."""
+    """Klaim pengguna dari middleware autentikasi."""
     return getattr(request.state, "pengguna", None)
 
 
 def wajib_admin(request: Request) -> None:
-    """403 bila pengguna login bukan admin. Mode dev (tanpa auth) diloloskan."""
+    """403 bila pengguna login bukan admin."""
     p = info_pengguna(request)
-    if p is not None and p.get("peran") != "admin":
+    if p is None or p.get("peran") != "admin":
         raise HTTPException(403, "Hanya admin yang boleh melakukan aksi ini. "
                                  "Hubungi admin aplikasi Anda.")
 
@@ -204,25 +204,14 @@ class PenggunaUbah(BaseModel):
 def pasang_router_auth(app, ambil_session, cfg):
     router = APIRouter(prefix="/api/auth")
     dep = Depends(ambil_session)
-    lokal_aktif = not cfg.auth_disabled
-
     @router.get("/mode")
     def mode_login():
-        """Cara login yang berlaku di proses ini — TANPA login, tanpa rahasia.
-
-        Dipakai tampilan web (dan diagnosa.bat) untuk memastikan proses yang
-        berjalan memang memakai login username+sandi.
-        """
+        """Cara login yang berlaku di proses ini — tanpa data sensitif."""
         from .auth import info_mode
         return info_mode(cfg)
 
     @router.post("/login")
     def login(data: LoginMasuk, response: Response, session: Session = dep):
-        if not lokal_aktif:
-            raise HTTPException(422, "Login sedang DIMATIKAN di proses API ini "
-                                     "(AUTH_DISABLED=true). Hapus baris itu "
-                                     "dari backend/.env lalu jalankan ulang "
-                                     "API.")
         p = session.get(Pengguna, data.username.strip().lower())
         if p is None or not p.aktif or not cek_sandi(data.sandi, p.hash_sandi):
             time.sleep(0.5)  # perlambat percobaan tebak sandi
@@ -251,10 +240,6 @@ def pasang_router_auth(app, ambil_session, cfg):
 
     @router.get("/saya")
     def saya(request: Request, session: Session = dep):
-        if not lokal_aktif:
-            # Login dimatikan (mode pengembangan): semua boleh, tanpa sesi.
-            return {"username": "dev", "nama": "Mode Development",
-                    "peran": "admin", "foto_profil": None, "mode": "nonaktif"}
         klaim = info_pengguna(request)
         p = session.get(Pengguna, klaim["sub"]) if klaim else None
         if p is None or not p.aktif:

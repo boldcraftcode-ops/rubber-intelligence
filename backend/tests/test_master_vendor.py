@@ -40,7 +40,9 @@ def _engine():
 def klien(monkeypatch):
     monkeypatch.setenv("APP_ENV", "development")
     monkeypatch.setenv("AUTH_DISABLED", "true")
-    return TestClient(buat_app(_engine()))
+    klien = TestClient(buat_app(_engine()))
+    assert klien.post("/api/auth/login", json={"username": "admin", "sandi": "admin123"}).status_code == 200
+    return klien
 
 
 @pytest.fixture()
@@ -60,7 +62,9 @@ def klien_terpakai(monkeypatch):
                         kode_vendor="V001", ticket_no="T001",
                         qty_kering_kg=12_000, amount_rp=100_000))
         s.commit()
-    return TestClient(buat_app(eng))
+    klien = TestClient(buat_app(eng))
+    assert klien.post("/api/auth/login", json={"username": "admin", "sandi": "admin123"}).status_code == 200
+    return klien
 
 
 def _xlsx(sheet: str = "Master_Vendor", baris: list[list] | None = None) -> bytes:

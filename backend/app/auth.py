@@ -11,7 +11,6 @@ di .env sekarang diabaikan dan boleh dihapus.
 Variabel .env yang masih dipakai:
   APP_ENV           = development | produksi
   SECRET_KEY        = kunci penanda tangan sesi, minimal 32 karakter
-  AUTH_DISABLED     = "true" hanya untuk pengembangan; DILARANG di produksi
   COOKIE_SAMESITE   = lax (bawaan) | none | strict
 
   COOKIE_SAMESITE perlu diubah menjadi "none" HANYA bila tampilan web dan API
@@ -38,10 +37,7 @@ JALUR_BEBAS = ("/api/health", "/api/sehat", "/api/auth/mode", "/api/auth/login")
 class KonfigurasiAuth:
     def __init__(self) -> None:
         self.app_env = os.environ.get("APP_ENV", "development").strip().lower()
-        self.auth_disabled = os.environ.get("AUTH_DISABLED", "").strip().lower() == "true"
-        # Hanya ada satu mode login sekarang. "nonaktif" berarti login
-        # dimatikan lewat AUTH_DISABLED=true (khusus pengembangan).
-        self.mode = "nonaktif" if self.auth_disabled else "lokal"
+        # Login username dan sandi selalu diwajibkan.
 
         self.secret = os.environ.get("SECRET_KEY", "").strip()
         # Sesi ditandatangani SECRET_KEY; kunci kosong membuat proses login
@@ -88,19 +84,10 @@ class KonfigurasiAuth:
         cookie-nya. Di produksi Secure sudah aktif karena HTTPS."""
         return self.produksi or self.cookie_samesite == "none"
 
-    @property
-    def lokal_aktif(self) -> bool:
-        """Login username+sandi dipasang bila login tidak dimatikan."""
-        return not self.auth_disabled
-
     def validasi_start(self) -> None:
         """Dipanggil saat aplikasi start. Gagal-tertutup di produksi."""
         if not self.produksi:
             return
-        if self.auth_disabled:
-            raise RuntimeError(
-                "APP_ENV=produksi tetapi AUTH_DISABLED=true. Ini DILARANG: "
-                "aplikasi menolak start. Hapus AUTH_DISABLED dari .env produksi.")
         if len(self.secret) < 32:
             raise RuntimeError(
                 "APP_ENV=produksi membutuhkan SECRET_KEY minimal 32 karakter "
@@ -117,12 +104,8 @@ class KonfigurasiAuth:
 def info_mode(cfg: KonfigurasiAuth) -> dict:
     """Ringkasan cara login yang berlaku — dipakai /api/health dan
     /api/auth/mode. TANPA data sensitif (tanpa SECRET_KEY)."""
-    if cfg.lokal_aktif:
-        mode, cara = "lokal", "username-sandi"
-    else:
-        mode, cara = "nonaktif", "tanpa-login"
-    return {"mode": mode, "cara": cara,
-            "perlu_login": mode != "nonaktif",
+    return {"mode": "lokal", "cara": "username-sandi",
+            "perlu_login": True,
             "produksi": cfg.produksi,
             "mode_otomatis": False,
             # Berguna saat deploy: bila tampilan web dan API beda situs,

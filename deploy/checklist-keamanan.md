@@ -12,9 +12,8 @@ Centang semua sebelum dan sesudah go-live; ulangi tiap ada perubahan besar.
 ## Login & otorisasi
 - [ ] Login memakai **username + sandi** aplikasi (`/api/auth/login`); tidak
       ada jalur masuk lain. Cloudflare Access sudah dihapus.
-- [ ] `.env` produksi: `APP_ENV=produksi`, TANPA `AUTH_DISABLED`
-      (aplikasi menolak start bila `AUTH_DISABLED=true` di produksi — jangan
-      dilemahkan).
+- [ ] Login selalu diwajibkan. Setelan lama `AUTH_DISABLED` tidak mengubah
+      autentikasi dan harus dihapus dari `.env`.
 - [ ] `SECRET_KEY` produksi terisi acak **minimal 32 karakter** (aplikasi
       menolak start bila kosong/pendek). Jangan pakai nilai contoh.
 - [ ] Uji: panggil API tanpa sesi → 401; header `Cf-Access-Jwt-Assertion`

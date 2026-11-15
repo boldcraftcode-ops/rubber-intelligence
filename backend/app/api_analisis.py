@@ -155,7 +155,7 @@ class RekonsiliasiKeputusanMasuk(BaseModel):
 
 
 def _boleh_revisi(request: Request) -> bool:
-    """Admin (atau mode development tanpa login) boleh menyimpan keputusan."""
+    """Hanya admin terautentikasi boleh menyimpan keputusan."""
     try:
         wajib_admin(request)
         return True

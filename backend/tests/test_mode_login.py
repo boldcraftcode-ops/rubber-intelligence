@@ -35,16 +35,16 @@ def mode_lokal(monkeypatch, tmp_path):
 
 
 # --------------------------------------------------------------- mode publik
-def test_mode_tanpa_auth(monkeypatch):
+def test_auth_disabled_diabaikan_dan_login_selalu_wajib(monkeypatch):
     monkeypatch.setenv("APP_ENV", "development")
     monkeypatch.delenv("AUTH_MODE", raising=False)
     monkeypatch.delenv("CF_ACCESS_AUD", raising=False)
     monkeypatch.setenv("AUTH_DISABLED", "true")
-    r = _klien().get("/api/auth/mode")
-    assert r.status_code == 200
-    isi = r.json()
-    assert isi["mode"] == "nonaktif" and isi["cara"] == "tanpa-login"
-    assert isi["perlu_login"] is False and isi["produksi"] is False
+    klien = _klien()
+    isi = klien.get("/api/auth/mode").json()
+    assert isi["mode"] == "lokal" and isi["cara"] == "username-sandi"
+    assert isi["perlu_login"] is True and isi["produksi"] is False
+    assert klien.get("/api/auth/saya").status_code == 401
 
 
 def test_health_melaporkan_cara_login(mode_lokal):

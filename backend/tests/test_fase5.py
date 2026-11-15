@@ -8,7 +8,7 @@ sehingga tes di sini memastikan:
 - header/cookie sisa Cloudflare (Cf-Access-Jwt-Assertion, CF_Authorization)
   TIDAK lagi bisa dipakai untuk masuk;
 - /api/health terbuka tanpa login dan tanpa data bisnis;
-- konfigurasi produksi yang salah membuat aplikasi menolak start;
+- konfigurasi produksi tanpa SECRET_KEY membuat aplikasi menolak start dan AUTH_DISABLED diabaikan;
 - prosedur backup/restore tetap utuh.
 """
 import sqlite3
@@ -26,15 +26,6 @@ def _klien(base_url: str = "http://testserver"):
                         connect_args={"check_same_thread": False},
                         poolclass=StaticPool)
     return TestClient(buat_app(eng), base_url=base_url)
-
-
-@pytest.fixture()
-def tanpa_auth(monkeypatch):
-    """Mode pengembangan: login dimatikan, seperti fixture conftest."""
-    monkeypatch.setenv("APP_ENV", "development")
-    monkeypatch.setenv("AUTH_DISABLED", "true")
-    monkeypatch.delenv("CF_ACCESS_AUD", raising=False)
-    return monkeypatch
 
 
 @pytest.fixture()
@@ -126,12 +117,13 @@ def test_health_terbuka_tanpa_login(dengan_auth):
     assert isi["login"]["cara"] == "username-sandi"
 
 
-# --------------------------------------------- menolak start bila salah setelan
-def test_produksi_auth_disabled_menolak_start(monkeypatch):
+# --------------------------------------------- login wajib di produksi
+def test_produksi_mengabaikan_auth_disabled_dan_tetap_memasang_login(monkeypatch):
     monkeypatch.setenv("APP_ENV", "produksi")
     monkeypatch.setenv("AUTH_DISABLED", "true")
-    with pytest.raises(RuntimeError, match="DILARANG"):
-        buat_app(create_engine("sqlite://", future=True))
+    monkeypatch.setenv("SECRET_KEY", "k" * 40)
+    app = buat_app(create_engine("sqlite://", future=True))
+    assert TestClient(app).get("/api/auth/saya").status_code == 401
 
 
 def test_produksi_tanpa_secret_key_menolak_start(monkeypatch):

@@ -63,7 +63,7 @@ def main() -> int:
             print("  SIMPULAN: API memakai LOGIN LOKAL (username + sandi).")
             print("  Silakan login di http://localhost:5173 (Ctrl+F5 dulu).")
         else:
-            print(f"  SIMPULAN: login nonaktif (cara={cara}).")
+            print("  SIMPULAN: API tidak melaporkan metode login yang dikenal.")
         return 0
     if status == 200 and not kode_baru:
         print("  SIMPULAN: proses di port 8000 memakai KODE LAMA")

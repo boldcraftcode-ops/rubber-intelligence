@@ -126,7 +126,7 @@ echo  [1]+[2] harus menyebut: mode login : lokal (username-sandi)
 echo  [3] harus memuat versi 0.11.2 dan "cara":"username-sandi"
 echo.
 echo  Bila [2] menulis "KODE LAMA"  -^>  jalankan perbarui-kode.bat
-echo  Bila [3] memuat "nonaktif"   -^>  hapus AUTH_DISABLED di backend\.env,
+echo  Login wajib aktif. Bila API tidak melaporkan username-sandi, restart API.
 echo                                    lalu jalankan start-web.bat lagi
 echo  Bila [3] "TIDAK ADA JAWABAN" -^>  API belum jalan: start-web.bat
 echo  Bila sandi lupa              -^>  di folder backend jalankan:

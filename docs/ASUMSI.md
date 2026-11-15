@@ -100,7 +100,7 @@ teknis yang saya pilih dan bisa diubah kapan saja.
 28. **Verifikasi Access di backend** memakai pustaka PyJWT + cryptography
     (standar industri untuk RS256/JWKS); kunci publik di-cache 1 jam dan
     diambil ulang otomatis saat Cloudflare merotasi kunci.
-29. **Gagal-tertutup di produksi**: `APP_ENV=produksi` + `AUTH_DISABLED=true`
+29. **Login wajib di semua lingkungan**; bypass tanpa login tidak tersedia.
     → aplikasi menolak start; konfigurasi Access kosong di produksi → juga
     menolak start. Halaman /docs dan /openapi.json otomatis mati di produksi.
 30. **/api/health** terbuka tanpa login untuk monitoring, hanya berisi

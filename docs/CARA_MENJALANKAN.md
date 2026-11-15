@@ -213,7 +213,7 @@ itu pemasangan di PC luring dilakukan dua tahap dengan dua skrip.
 | Hal | Cara |
 |---|---|
 | Bisa dibuka dari komputer lain di jaringan | Buat berkas kosong bernama `jaringan-lan.txt` di folder aplikasi, lalu jalankan ulang. Alamatnya `http://ALAMAT-IP-PC:8000`; izinkan port 8000 di Windows Firewall. |
-| Login dimatikan sementara | Buat berkas `tanpa-login.txt` (sama seperti mode biasa); hapus untuk mengaktifkan lagi. |
+| Login | Selalu wajib menggunakan username dan sandi; bypass tanpa login tidak tersedia. |
 | Memperbarui aplikasi | Ulangi Tahap 1 di PC berinternet, lalu salin lagi kode terbaru **beserta** `bahan-offline`. Jangan pakai `git pull` / `perbarui-kode.bat` di PC luring. |
 | Data & cadangan | Sama seperti biasa: `backend\opmargin.db` (SQLite) + folder `unggahan\`. Tidak berubah karena mode luring. |
 | Versi Python yang cocok | Paket yang sudah diuji memakai **Python 3.11, 64-bit**. Python 3.11.6 cocok; yang penting angka mayor.minor `3.11` dan arsitektur 64-bit. |
@@ -1173,13 +1173,13 @@ Bacanya:
 | Yang tertulis | Artinya | Tindakan |
 |---|---|---|
 | `mode login : lokal (username-sandi)` dan API menjawab `0.11.2` + `lokal` | sudah benar | login dengan akun Anda (Ctrl+F5 dulu) |
-| API menjawab `mode: nonaktif` | `AUTH_DISABLED=true` masih ada di `.env` | hapus baris itu, lalu jalankan `start-web.bat` lagi |
+| API tidak meminta login | Restart API dengan kode terbaru; bypass login sudah dihapus. |
 | API tidak menjawab / `404` di `/api/auth/mode` | prosesnya **kode lama** | tutup jendela API lama, jalankan `start-web.bat` lagi |
 | bagian [2] tidak ada akun, atau sandi lupa | akun belum dibuat / sandi salah | `python -m app.cli reset-sandi admin` (dari folder `backend`) |
 
 Bila `SECRET_KEY` belum diisi, di luar produksi aplikasi membuat kunci
 sementara otomatis supaya login tetap bisa dipakai (sesi berakhir saat API
-dijalankan ulang). `start-web.bat` membuang `AUTH_DISABLED` untuk jendela
+dijalankan ulang). `start-web.bat` memastikan login selalu aktif untuk jendela
 API-nya, sehingga login selalu aktif saat dijalankan dari skrip itu.
 
 ## Layar "Aplikasi dan servernya beda versi"

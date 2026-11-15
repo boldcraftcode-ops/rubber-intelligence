@@ -241,7 +241,7 @@ def _cetak_diagnosa() -> None:
         print("SIMPULAN: login lokal (username + sandi) — cocok untuk localhost.")
         print("Bila sandi lupa:  python -m app.cli reset-sandi admin")
     else:
-        print("SIMPULAN: login nonaktif; aplikasi terbuka tanpa masuk.")
+        print("SIMPULAN: metode login tidak dikenal; periksa versi aplikasi.")
     print("Setelah mengubah setelan: tutup jendela 'OP Margin - API',")
     print("jalankan start-web.bat lagi, lalu Ctrl+F5 di browser.")
 

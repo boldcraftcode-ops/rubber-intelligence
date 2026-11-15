@@ -43,8 +43,7 @@ bagian A-alternatif.)
    ADMIN_SANDI_AWAL=<sandi admin pertama, ganti setelah bisa masuk>
    ```
    PENTING:
-   - jangan tulis `AUTH_DISABLED=true` — aplikasi sengaja MENOLAK start di
-     produksi bila itu ada (pengaman);
+   - login selalu aktif; variabel lama `AUTH_DISABLED` diabaikan dan sebaiknya dihapus;
    - `SECRET_KEY` wajib minimal 32 karakter, kalau tidak aplikasi juga
      menolak start;
    - setelan lama `CF_ACCESS_*` / `AUTH_MODE` boleh dihapus (tidak dipakai

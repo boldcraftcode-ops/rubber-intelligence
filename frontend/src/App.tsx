@@ -21,7 +21,7 @@ import MasterCollector from "./pages/MasterCollector";
 import MasterScdf from "./pages/MasterScdf";
 import Database from "./pages/Database";
 import Pengguna from "./pages/Pengguna";
-import Login, { LayarApiLama, LayarGalat } from "./pages/Login";
+import Login, { LayarApiLama } from "./pages/Login";
 import { VERSI_UI } from "./versi";
 import { ambilJson, kirimJson, pesanGalat, kelasInput, kelasLabel, kelasTombol, kelasTombolKecil, simpanToken, KUNCI_CACHE_PREVIEW_KARTU } from "./bersama";
 import { useBahasa } from "./i18n";
@@ -125,9 +125,7 @@ function ModalGantiSandi({ tutup }: { tutup: () => void }) {
 export default function App() {
   const { lang, setLang, t } = useBahasa();
   const qc = useQueryClient();
-  // Mode development Vite langsung membuka antarmuka sebagai pratinjau agar
-  // sandbox dapat diperiksa tanpa API/login. Build produksi tetap memakai auth.
-  const modePratinjau = import.meta.env.DEV;
+  // Sesi dan login wajib berlaku sama di development maupun produksi.
   const [tab, setTab] = useState<TabId>("ringkasan");
   const [bukaSandi, setBukaSandi] = useState(false);
   const [grupKeluar, setGrupKeluar] = useState<Record<string, boolean>>({});
@@ -191,24 +189,13 @@ export default function App() {
     setPosisiPenanda(item.getBoundingClientRect().top - nav.getBoundingClientRect().top);
   }, [tab, grupTerbuka, grupKeluar]);
 
-  /* ---- cara login yang berlaku di proses API ini ----
-     Dipakai untuk membedakan "belum login" (tampilkan form) dari
-     "login dimatikan / API bermasalah" (tampilkan penjelasan). */
-  /* ---- versi API yang menjawab (publik, tanpa login) ---- */
+  /* ---- cara login yang berlaku di proses API ini ---- */
+  /* ---- versi API yang menjawab ---- */
   const health = useQuery({
     queryKey: ["health"],
     queryFn: () => ambilJson("/api/health"),
     retry: false,
     staleTime: 60_000,
-    enabled: !modePratinjau,
-  });
-
-  const caraLogin = useQuery({
-    queryKey: ["cara-login"],
-    queryFn: () => ambilJson("/api/auth/mode"),
-    retry: false,
-    staleTime: 5 * 60_000,
-    enabled: !modePratinjau,
   });
 
   /* ---- sesi login ---- */
@@ -217,18 +204,11 @@ export default function App() {
     queryFn: () => ambilJson("/api/auth/saya"),
     retry: false,
     staleTime: 5 * 60_000,
-    enabled: !modePratinjau,
   });
-  const dataSesi = modePratinjau
-    ? { username: "preview", nama: "Analis Pratinjau", peran: "admin", mode: "pratinjau" }
-    : saya.data;
+  const dataSesi = saya.data;
   const usernameCache = dataSesi ? String(dataSesi.username ?? "anonim") : null;
   const [previewUser, setPreviewUser] = useState<string | null>(null);
   useEffect(() => {
-    if (modePratinjau) {
-      setPreviewUser(usernameCache);
-      return;
-    }
     if (!usernameCache) {
       setPreviewUser(null);
       return;
@@ -280,17 +260,14 @@ export default function App() {
       unsubscribe();
       if (timer) clearTimeout(timer);
     };
-  }, [usernameCache, qc, modePratinjau]);
+  }, [usernameCache, qc]);
   const admin = dataSesi?.peran === "admin";
   const modeLokal = dataSesi?.mode === "lokal";
-  /* Login sedang DIMATIKAN (AUTH_DISABLED=true) — dipakai sementara saat
-     pemecahan masalah. Penanda di layar supaya tidak lupa dinyalakan lagi. */
-  const tanpaLogin = dataSesi?.mode === "nonaktif";
 
   // nama pengisi otomatis mengikuti akun login
   useEffect(() => {
-    if (!modePratinjau && dataSesi?.nama) localStorage.setItem("op-margin.pengisi", dataSesi.nama);
-  }, [dataSesi?.nama, modePratinjau]);
+    if (dataSesi?.nama) localStorage.setItem("op-margin.pengisi", dataSesi.nama);
+  }, [dataSesi?.nama]);
 
   const keluar = useMutation({
     mutationFn: () => kirimJson("/api/auth/logout", {}),
@@ -304,19 +281,19 @@ export default function App() {
     queryKey: ["alarm"],
     queryFn: () => ambilJson("/api/alarm"),
     refetchInterval: 60_000,
-    enabled: !!dataSesi && !modePratinjau,
+    enabled: !!dataSesi,
   });
   const jumlahAlarm = alarm.data?.alarm.length ?? 0;
 
   /* ---- gerbang: belum login -> form login ---- */
-  if (saya.isLoading && !modePratinjau) {
+  if (saya.isLoading) {
     return (
       <div className="galaxy min-h-screen flex items-center justify-center text-[#64676C]">
         <p className="text-sm animate-pulse tracking-wide">Memuat…</p>
       </div>
     );
   }
-  if (saya.error && !modePratinjau) {
+  if (saya.error) {
     const detail = pesanGalat(saya.error);
     const versiApi: string | undefined = health.data?.versi;
     // API yang menjawab bukan kode di folder ini -> jelaskan, jangan tampilkan
@@ -327,10 +304,6 @@ export default function App() {
     }
     if (versiApi === undefined && /cloudflare access/i.test(detail)) {
       return <LayarApiLama versiUi={VERSI_UI} detail={detail} />;
-    }
-    // Login dimatikan di API (mode pengembangan) -> penjelasan, bukan form.
-    if (caraLogin.data?.cara === "tanpa-login") {
-      return <LayarGalat detail={detail} ulangi={() => qc.invalidateQueries()} />;
     }
     return <Login onSukses={() => qc.invalidateQueries({ queryKey: ["saya"] })} />;
   }
@@ -469,27 +442,6 @@ export default function App() {
       {/* ===== Isi halaman ===== */}
       <main className="flex-1 min-w-0 px-8 py-7">
         <div className="mx-auto max-w-[1200px]">
-          {modePratinjau && (
-            <div className="mb-5 rounded-sm border border-[#E4E5E8] border-l-2 border-l-[#FF1313] bg-white px-4 py-2.5">
-              <p className="text-sm font-semibold text-[#1D2434]">{t("Mode pratinjau lokal")}</p>
-              <p className="mt-0.5 text-xs leading-snug text-[#64676C]">
-                {t("Login dilewati hanya untuk pratinjau Vite; data tetap memerlukan API.")}
-              </p>
-            </div>
-          )}
-          {tanpaLogin && (
-            <div className="mb-5 rounded-sm border border-[#FDE68A] bg-[#FFFBEB]
-                            border-l-2 border-l-[#FF1313] px-4 py-2.5">
-              <p className="text-sm font-semibold text-[#B45309]">
-                MODE TANPA LOGIN (SEMENTARA)
-              </p>
-              <p className="mt-0.5 text-xs leading-snug text-[#64676C]">
-                Login dimatikan lewat <code>AUTH_DISABLED=true</code>. Semua
-                orang bisa membuka aplikasi ini tanpa sandi. Nyalakan kembali
-                login sebelum dipakai bersama atau dipasang di internet.
-              </p>
-            </div>
-          )}
           {/* ===== kepala halaman ===== */}
           <header className="mb-6 border-b border-[#E4E5E8] pb-4">
             <div className="flex flex-wrap items-center justify-between gap-4">

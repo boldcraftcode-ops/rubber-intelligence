@@ -8,10 +8,10 @@ from __future__ import annotations
 import os
 import pathlib
 
-# Tes selalu berjalan mode development TANPA login, apa pun isi .env lokal.
-# (load_dotenv tidak menimpa variabel yang sudah ada, jadi ini aman.)
+# Tes memakai konfigurasi development, tetapi tidak menonaktifkan autentikasi.
+# Test client harus login seperti pengguna aplikasi.
 os.environ["APP_ENV"] = "development"
-os.environ["AUTH_DISABLED"] = "true"
+os.environ.pop("AUTH_DISABLED", None)
 
 import pytest
 from sqlalchemy import create_engine

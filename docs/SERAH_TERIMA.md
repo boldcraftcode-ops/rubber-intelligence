@@ -740,9 +740,7 @@ sehingga API sekaligus menyajikan tampilan web di
 `http://localhost:8000`. Vite/port 5173 tidak dipakai sama sekali, dan
 `--reload` dimatikan (tidak butuh Node maupun `watchfiles`).
 
-**Penanda berkas** (pola yang sama dengan `tanpa-login.txt`):
-- `jaringan-lan.txt` → host `0.0.0.0`, bisa dibuka dari komputer lain;
-- `tanpa-login.txt` → `AUTH_DISABLED=true` sementara.
+**Penanda berkas:** `jaringan-lan.txt` mengatur host `0.0.0.0` agar aplikasi bisa dibuka dari komputer lain. Login username + sandi selalu wajib.
 
 Kedua skrip tetap mengikuti aturan `.bat` proyek: **ASCII, CRLF, tanpa blok
 `( ... )` berlapis, tanpa `for /f`**, membaca versi dari `VERSI.txt`, dan
@@ -963,81 +961,17 @@ GET /api/health      -> "web_statistik":"...frontend/dist"   (mode satu-origin)
 
 Satu-origin menghilangkan seluruh masalah ini karena cookie selalu same-site.
 
-## 6c. Mode login: kondisi sekarang & cara mengembalikannya
+## 6c. Login wajib
 
-> Ditulis atas permintaan pemilik proyek. Sebelumnya bagian ini sengaja
-> dikosongkan; sekarang justru **wajib** dibaca sebelum menyerahkan aplikasi
-> ke orang lain.
+Semua lingkungan mewajibkan login username + sandi. Bypass login dan skrip
+pengaktifannya telah dihapus; variabel lingkungan lama `AUTH_DISABLED` diabaikan.
 
-### Kondisi saat dokumen ini dibuat
+Untuk pemeriksaan, `/api/auth/mode` harus melaporkan `cara=username-sandi` dan
+`perlu_login=true`. Jika halaman tidak menampilkan form login, hentikan API lama
+dan jalankan ulang `start-web.bat`. Pastikan API dan UI memakai versi yang sama.
 
-Login sedang **DIMATIKAN sementara** untuk keperluan pemecahan masalah, dengan
-satu penanda berkas di akar repo:
-
-```
-tanpa-login.txt        <- ADA  = login dimatikan
-                       <- TIDAK ADA = login username+sandi aktif
-```
-
-Berkas itu **tidak masuk Git** (ada di `.gitignore`), jadi penandanya hanya
-hidup di komputer pemilik. Di mesin lain, login aktif secara bawaan.
-
-Saat penanda ada, aplikasi menampilkan banner kuning di atas semua halaman:
-**"MODE TANPA LOGIN (SEMENTARA)"**. Banner itu sengaja dibuat mencolok supaya
-tidak lupa. Selama penanda ada, **siapa pun yang bisa membuka alamat aplikasi
-masuk sebagai admin tanpa sandi** — jangan biarkan kondisi ini ada saat aplikasi
-dipasang di internet.
-
-### Cara mengembalikan (Windows, cara tercepat)
-
-```
-1. Klik dua kali  tanpa-login-mati.bat
-   -> berkas tanpa-login.txt dihapus, muncul pesan "login AKTIF lagi"
-2. Tutup jendela "OP Margin - API" dan "OP Margin - Web"
-   (atau jalankan hentikan-api.bat)
-3. Jalankan start-web.bat
-4. Login dengan username + sandi
-5. Muat ulang halaman dengan Ctrl+F5
-```
-
-### Cara memastikan sudah benar (tanpa menebak)
-
-| Periksa | Hasil yang benar |
-|---|---|
-| `tanpa-login.txt` di folder aplikasi | **tidak ada** (`dir tanpa-login.txt` → File Not Found) |
-| `http://localhost:8000/api/auth/mode` | `"cara":"username-sandi"` dan `"perlu_login":true` |
-| `http://localhost:8000/api/health` → `login` | `cara` = `username-sandi` |
-| Halaman aplikasi | banner kuning **hilang**, muncul form login |
-| `diagnosa.bat` | melaporkan mode login lokal |
-
-Kalau setelah langkah di atas masih terbuka tanpa login, berarti
-**`AUTH_DISABLED=true` tertulis di `backend/.env`.** Hapus baris itu:
-
-```
-notepad backend\.env        # hapus baris AUTH_DISABLED=...
-```
-
-Lalu jalankan ulang `start-web.bat`. Perlu diketahui: `start-web.bat` sudah
-membuang `AUTH_DISABLED` sendiri, jadi masalah ini hanya muncul bila API
-dinyalakan dengan cara lain (mis. service Windows atau perintah manual).
-
-### Di server / produksi
-
-Di `APP_ENV=produksi`, aplikasi **menolak start** bila `AUTH_DISABLED=true`
-(pengaman, lihat `auth.validasi_start`). Artinya salah setelan tidak bisa
-diam-diam membuka aplikasi di internet — API langsung gagal hidup dan
-alasannya tertulis di konsol.
-
-### Hal yang harus dibereskan lebih dulu sebelum login dinyalakan lagi
-
-1. Tentukan apakah masalah "login lalu kembali ke form" sudah selesai: versi
-   0.7.6 menyimpan token di memori **juga**, bukan hanya `localStorage`, karena
-   di dalam iframe keduanya diblokir. Uji dulu di **browser biasa**, bukan
-   preview di dalam iframe.
-2. Pastikan `SECRET_KEY` di `backend/.env` terisi (minimal 32 karakter) supaya
-   sesi tidak berakhir setiap API dijalankan ulang.
-3. Ganti sandi `admin` bawaan (`admin123`) setelah bisa masuk: menu kanan atas →
-   Ganti sandi, lalu buat akun untuk setiap pemakai di menu **Pengguna**.
+Sebelum penggunaan bersama, ganti sandi awal `admin` (`admin123`) dan buat akun
+untuk setiap pemakai melalui menu **Pengguna**.
 
 ## 7. Aturan yang tidak boleh dilanggar
 
@@ -1073,10 +1007,8 @@ Semua ini lahir dari kegagalan nyata, bukan kehati-hatian berlebihan.
 10. **Jangan menyentuh setelan cookie tanpa alasan.** Bawaan `lax` sudah benar
     untuk satu domain. `none` hanya untuk halaman web & API di situs berbeda,
     dan wajib disertai `Secure` (sudah otomatis lewat `cookie_secure`).
-11. **Bypass login hanya untuk sementara.** Penandanya `tanpa-login.txt`
-    (dibuat `tanpa-login-aktif.bat`, dihapus `tanpa-login-mati.bat`). Kondisi
-    ini HARUS dikembalikan sebelum aplikasi dipakai bersama atau dipasang di
-    internet — lihat bagian 6c.
+11. **Login selalu wajib.** Jangan tambahkan kembali bypass atau jalur akses
+    data aplikasi tanpa autentikasi.
 12. **Jangan bekerja di branch lain.** Semua pekerjaan di
     `arena/18670644-rubber-intelligence`; PR #1 dari branch itu.
 
@@ -1196,7 +1128,7 @@ tidak, pengguna akan melihat layar "beda versi" (yang memang tujuannya).
 | Logo tidak muncul di login | aset eksternal/CDN | taruh di `frontend/public/`, rujuk path relatif |
 | Preview aplikasi kosong total | kode browser memanggil `localhost:8000` langsung | selalu pakai URL relatif `/api/...`; dev server memproksikan |
 | Login "berhasil" tapi langsung kembali ke form (deploy) | cookie `SameSite=lax` tidak dikirim lintas situs | `COOKIE_SAMESITE=none`, atau pakai satu-origin (`SAJIKAN_WEB=true`) |
-| Aplikasi terbuka tanpa form login | penanda `tanpa-login.txt` ada, atau `AUTH_DISABLED=true` di `backend/.env` | jalankan `tanpa-login-mati.bat`, hapus baris itu, jalankan ulang `start-web.bat` (bagian 6c) |
+| Aplikasi tidak menampilkan form login | API lama atau versi UI/API berbeda | hentikan API lama dan jalankan ulang `start-web.bat` |
 | Login 200 tetapi `/api/auth/saya` 401, kembali ke form | cookie sesi tidak terkirim (iframe / lintas situs / cookie pihak ketiga diblokir) | sejak 0.7.5 ada cadangan `Authorization: Bearer` — pastikan tampilan web versi baru; untuk deploy beda situs setel `COOKIE_SAMESITE=none` atau pakai satu-origin |
 | `uvicorn: Attribute "app" not found in module "app.main"` | baris `app = buat_app()` di akhir `main.py` ikut terhapus saat menyunting | tambahkan kembali; **tes unit tidak menangkapnya** karena tes memanggil `buat_app()` |
 
@@ -1378,7 +1310,7 @@ menjawab.
 | 2026-11-05 | **Kolom pencarian ditambahkan di modul SCDF**: input `Cari lokasi SCDF` dengan debounce, `GET /api/master/scdf/cari` (alias `/pencarian`) menerima `q`/`cari` + `limit`/`offset`, mencari case-insensitive pada 4 nama resmi, 4 normalized key, dan label status Provinsi. Hasil tampil pada tabel rincian yang sama, 50 baris per halaman; `✕` atau klik node mengembalikan rincian hierarki. Health menambah `master-scdf-pencarian`, metrik/docs §3r diperbarui | pemilik menulis **"berikan kolom searching"** setelah modul SCDF dikirim. Pencarian tetap **baca saja**: tidak ada CRUD, impor, ekspor, tabel baru, dependensi baru, endpoint tulis, atau perubahan data. `Belum dipetakan` ikut terindeks dan tidak ditebak; wildcard `%`/`_`/`\` dari pengguna di-escape |
 | 2026-11-05 | **3 ekspor Excel memakai workbook asli di folder `Template Export`**: `penerimaan_per_vendor.xlsx`, `penerimaan_per_vendor_per_bulan.xlsx`, dan `rm_stock_intake_vs_pricing.xlsx` menyalin paket `*_template.xlsx` saat runtime, lalu memperbarui lembar kerja, cache/referensi chart, dan anchor agar baris data, vendor, serta bulan tetap dinamis; nama sheet, judul/subjudul/periode, header baris 4, data baris 5, `TOTAL`, footer, lebar kolom, dan chart native dipertahankan. Health `ekspor-template-export`, metrik `ekspor_template_export`, docs §3r diperbarui | pemilik menulis **"saya sudah upload di github dalam folder Template Export, sekarang revisi file export sesuai dengan nama excel pada template export"**. Lewat `ask_user` dipilih **nama + format workbook**, yaitu memakai template sebagai dasar runtime, serta **nama unduh tanpa akhiran `_template`**. Payload JSON, kartu layar, agregasi, filter, serta ekspor dimensi selain vendor tetap tidak berubah; ketiga file template wajib tersedia saat aplikasi berjalan |
 | 2026-11-05 | **Perbaikan file Excel yang diminta Microsoft Excel untuk diperbaiki saat dibuka**: saat worksheet template diserialisasi ulang, `ElementTree` membuang deklarasi namespace `xr2`/`xr3` yang hanya dirujuk melalui `mc:Ignorable`, sehingga Excel menganggap `sheet1.xml` rusak. Ekspor kini mempertahankan deklarasi namespace ignorables yang ada pada template; tes memeriksa bahwa semua prefix `mc:Ignorable` terdeklarasi di root worksheet untuk ketiga laporan | pemilik mengirim tangkapan layar XML recovery Excel untuk `penerimaan_per_vendor_per_bulan.xlsx`. Workbook masih dapat dibaca openpyxl, tetapi Excel memerlukan seluruh prefix markup-compatibility yang disebut di `mc:Ignorable` tetap terikat; penyebab dan regresi sudah diperbaiki tanpa mengubah format/data ekspor |
-| 2026-11-05 | **Footer ekspor menampilkan username login yang mengunduh laporan**: teks `Created by [user login] Raw Material Big Data` kini diisi dengan username dari sesi terautentikasi (`sub`), bukan placeholder; mode tanpa login menampilkan `dev` | pemilik meminta agar placeholder `[user login]` diganti pengguna yang sedang mengekspor, contohnya Admin. Username diambil dari klaim sesi request, sehingga tiap unduhan mencerminkan akun aktual; gaya/footer lain tidak berubah. Uji ekspor mencakup sesi bernama Admin untuk ketiga endpoint |
+| 2026-11-05 | **Footer ekspor menampilkan username login yang mengunduh laporan**: teks `Created by [user login] Raw Material Big Data` kini diisi dengan username dari sesi terautentikasi (`sub`), bukan placeholder; ekspor selalu memerlukan sesi login | pemilik meminta agar placeholder `[user login]` diganti pengguna yang sedang mengekspor, contohnya Admin. Username diambil dari klaim sesi request, sehingga tiap unduhan mencerminkan akun aktual; gaya/footer lain tidak berubah. Uji ekspor mencakup sesi bernama Admin untuk ketiga endpoint |
 | 2026-11-05 | **Rangkuman penuntasan ekspor Template Export**: 3 workbook khusus memakai template asli, mempertahankan semua namespace `mc:Ignorable` agar Excel tidak meminta recovery, dan mencetak username eksportir di footer; data/seri/bulan tetap dinamis dan nama unduh tetap tanpa `_template`. Perubahan tercatat pada commit `4d353c8` (implementasi template), `17fbd6c` (kompatibilitas XML Excel), dan `1695d20` (username footer). Verifikasi terakhir: **636 tes backend lulus** | rangkuman serah-terima untuk seluruh revisi ekspor yang dibahas: format sumber, perbaikan error buka Excel, dan identitas pengguna pada footer. Tidak ada perubahan pada payload JSON, data sumber, atau ekspor dimensi selain vendor |
 
 ---

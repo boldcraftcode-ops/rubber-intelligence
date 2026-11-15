@@ -15,7 +15,6 @@ rem    6. Menjalankan API yang sekaligus menyajikan tampilan web:
 rem       http://localhost:8000
 rem
 rem  Berkas penanda (letakkan di folder ini bila perlu):
-rem    tanpa-login.txt     login dimatikan sementara
 rem    jaringan-lan.txt    bisa dibuka dari komputer lain di jaringan
 rem
 rem  ASCII saja, tanpa blok "( ... )" berlapis, tanpa "for /f".
@@ -173,15 +172,6 @@ call :bersihkan_port 8000 "API" "app.main:app"
 
 set "SAJIKAN_WEB=true"
 set "SAJIKAN_WEB_FOLDER=%DIST%"
-if exist "%~dp0tanpa-login.txt" goto :mode_tanpa_login
-set "AUTH_DISABLED="
-goto :cek_lan
-
-:mode_tanpa_login
-set "AUTH_DISABLED=true"
-echo     PERHATIAN: tanpa-login.txt ditemukan -> LOGIN DIMATIKAN sementara.
-echo     Semua orang yang bisa membuka alamat ini bisa memakai aplikasi.
-
 :cek_lan
 if not exist "%~dp0jaringan-lan.txt" goto :jalan
 set "HOST=0.0.0.0"
