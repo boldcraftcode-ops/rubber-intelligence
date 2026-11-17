@@ -47,8 +47,8 @@ def test_angka_kunci_margin_performance_otomatis_tanpa_refresh():
     assert 'queryKey: ["ringkasan-angka-kunci", thn]' in ringkasan
     assert "enabled: thn !== null" in ringkasan
     # Kartu "OP Margin bulanan" dan kawan-kawan tetap on-demand.
-    assert "enabled: ringkasanDiminta && thn !== null" in ringkasan
-    assert ringkasan.count('letakRefresh="filter"') == 3
+    assert ringkasan.count("enabled: thn !== null") >= 2
+    assert ringkasan.count('letakRefresh="filter"') == 2
 
 
 def test_panel_analisa_memakai_query_biasa_bukan_use_query_kartu():

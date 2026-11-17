@@ -37,7 +37,8 @@ from .auth import KonfigurasiAuth
 from .core.alarm import evaluasi_alarm
 from .core.kualitas import data_terlambat
 from .core.lookup import kurs_pada, sicom_pada
-from .core.skema import isi_kunci_traceability, pastikan_kolom_baru
+from .core.skema import (isi_kunci_traceability, pastikan_kolom_baru,
+                        pastikan_tabel_preferensi)
 from .db import buat_engine, buat_session_factory
 from .mart import bangun_mart
 from .models import (Base, Grade, Kurs, MartHarian, Pembelian, RawBaris,
@@ -132,6 +133,7 @@ def buat_app(engine: Engine | None = None) -> FastAPI:
 
     engine = engine or buat_engine()
     Base.metadata.create_all(engine)
+    pastikan_tabel_preferensi(engine)
     # Database yang sudah ada tidak ikut berubah lewat create_all: tambahkan
     # kolom baru (mis. profil vendor) tanpa menyentuh data lama.
     pastikan_kolom_baru(engine)
@@ -163,6 +165,9 @@ def buat_app(engine: Engine | None = None) -> FastAPI:
     def ambil_session():
         with SessionLocal() as session:
             yield session
+
+    from .api_preferensi import pasang_router_preferensi
+    pasang_router_preferensi(app, ambil_session)
 
     # Rute analisis Fase 3 (ringkasan, rekonsiliasi, kualitas, kartu, telusur)
     from .api_analisis import pasang_router

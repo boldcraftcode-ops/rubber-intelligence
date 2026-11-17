@@ -27,6 +27,7 @@ def _klien():
 @pytest.fixture()
 def mode_lokal(monkeypatch, tmp_path):
     """Login username+sandi aktif."""
+    monkeypatch.setenv("OP_MARGIN_TEST_LOGIN", "0")
     monkeypatch.setenv("APP_ENV", "development")
     monkeypatch.setenv("SECRET_KEY", "k" * 40)
     monkeypatch.delenv("AUTH_DISABLED", raising=False)
@@ -36,6 +37,7 @@ def mode_lokal(monkeypatch, tmp_path):
 
 # --------------------------------------------------------------- mode publik
 def test_auth_disabled_diabaikan_dan_login_selalu_wajib(monkeypatch):
+    monkeypatch.setenv("OP_MARGIN_TEST_LOGIN", "0")
     monkeypatch.setenv("APP_ENV", "development")
     monkeypatch.delenv("AUTH_MODE", raising=False)
     monkeypatch.delenv("CF_ACCESS_AUD", raising=False)

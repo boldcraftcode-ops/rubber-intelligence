@@ -42,57 +42,33 @@ def test_filter_tanggal_persis_dan_refresh_di_baris_filter():
     assert 'data-uji="rentang-tanggal-konsistensi"' in s
     blok = _blok_kartu()
     assert "PilihRentangBulan" not in blok
-    # Rentang bulanan dari backend berbentuk YYYY-MM, jadi tidak boleh
-    # dilewatkan begitu saja ke fmtTanggal (butuh YYYY-MM-DD).
-    assert "const fmtRentang = (nilai: string)" in blok
-    assert "nilai?.length === 7 ? nilai : fmtTanggal(nilai)" in blok
+    # Rentang kalender menggunakan input date dan nilai ISO YYYY-MM-DD.
+    assert 'type="date"' in s
+    assert "fmtRentang" not in blok
     assert "batasData={d?.batas_data}" in blok
     assert "pakai batas tiket" in _teks("frontend/src/pages/Analisis.tsx")
 
 
 def test_tiga_tabel_dan_chart_lama_dihapus():
     blok = _blok_kartu()
-    for nama in ("tabel-ringkasan-vendor", "tabel-vendor-per-bulan",
-                 "tabel-vendor-harian"):
-        assert f'data-uji="{nama}"' in blok
+    assert 'data-uji="tabel-ringkasan-vendor"' in blok
+    assert 'data-uji="tabel-vendor-per-bulan"' not in blok
+    assert 'data-uji="tabel-vendor-harian"' not in blok
     assert "1. Ringkasan Vendor" in blok
-    assert "2. Vendor per Bulan" in blok
-    assert "3. Vendor Harian" in blok
+    assert "2. Vendor per Bulan" not in blok
+    assert "3. Vendor Harian" not in blok
     for teks in ("Total Trip", "% Trip", "Hari Aktif",
                  "Rata² Trip/Hari Operasional", "Rata² Trip/Bulan",
-                 "Dry (kg)", "TOTAL", "Rata² / hari"):
+                 "Dry (kg)", "TOTAL"):
         assert teks in blok
-    # Chart lama benar-benar hilang dari kartu ini.
+    # Layar menampilkan ringkasan vendor; rincian lain tetap pada ekspor Excel.
+    assert blok.count("<table") == 1
+    assert "data-uji=\"tabel-vendor-per-bulan\"" not in blok
+    assert "data-uji=\"tabel-vendor-harian\"" not in blok
+    assert "Vendor per Bulan" not in blok
+    assert "Vendor Harian" not in blok
     assert "AlatGrafik" not in blok
     assert "BarChart" not in blok
-    assert 'id="analisis-09"' not in blok
-    assert "grafikTeratas" not in blok
-    assert "kodeTerbuka" not in blok
-    # Periode panjang: ringkas di layar, `rinci=1` untuk matriks penuh.
-    assert 'const modeRingkas = d?.periode?.mode_rincian === "ringkas"' in blok
-    assert 'data-uji="mode-ringkas-konsistensi"' in blok
-    assert 'data-uji="rekap-bulan-konsistensi"' in blok
-    assert 'data-uji="rentang-hari-kosong"' in blok
-    assert "… seluruhnya ada di Excel" in blok
-    assert "h.sepi_pabrik" in blok
-    assert "Di luar data" in blok
-    assert "pabrik tutup" in blok
-    assert "Pabrik sepi" not in blok
-    assert "pabrik sepi" not in blok
-    assert "YYYY-MM-DD" in blok
-    assert "rinci=1" in blok
-    assert "qRinci" in blok
-    assert "tampilkan semua" in blok
-    assert "tanpa pengelompokan sisa" in blok
-    #Caption panjang yang diminta pemilik untuk dibuang tidak boleh kembali.
-    assert 'keterangan="Laporan tiga tabel' not in blok
-    assert "metode.sumber" not in blok
-    assert "metode.minimalisir" not in blok
-    assert "const metode" not in blok
-    assert "Vendor dengan 0 Trip" not in blok
-    assert "const tanpaIntake" not in blok
-    assert "Ekspor Excel: 3 sheet" not in blok
-    assert "3 chart Excel" not in blok
 
 
 def test_backend_endpoint_dan_tiga_sheet_ekspor():

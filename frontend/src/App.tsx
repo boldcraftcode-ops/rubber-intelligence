@@ -21,6 +21,8 @@ import MasterCollector from "./pages/MasterCollector";
 import MasterScdf from "./pages/MasterScdf";
 import Database from "./pages/Database";
 import Pengguna from "./pages/Pengguna";
+import Pengaturan from "./pages/Pengaturan";
+import { PreferensiProvider } from "./Preferensi";
 import Login, { LayarApiLama } from "./pages/Login";
 import { VERSI_UI } from "./versi";
 import { ambilJson, kirimJson, pesanGalat, kelasInput, kelasLabel, kelasTombol, kelasTombolKecil, simpanToken, KUNCI_CACHE_PREVIEW_KARTU } from "./bersama";
@@ -38,6 +40,7 @@ const GRUP = [
   { id: "master", label: "Master Data", ikon: "🗂️" },
   { id: "input", label: "Input Data", ikon: "📥" },
   { id: "sistem", label: "Administrasi", ikon: "⚙️", hanyaAdmin: true },
+  { id: "pengaturan", label: "Pengaturan", ikon: "⚙" },
 ] as const;
 
 const TAB = [
@@ -62,6 +65,7 @@ const TAB = [
   { id: "unggah", label: "Unggah Data", ikon: "↑", grup: "input" },
   { id: "database", label: "Database", ikon: "▣", grup: "sistem", hanyaAdmin: true },
   { id: "pengguna", label: "Pengguna", ikon: "●", grup: "sistem", hanyaAdmin: true },
+  { id: "pengaturan", label: "Pengaturan", ikon: "⚙", grup: "pengaturan" },
 ] as const;
 
 type TabId = (typeof TAB)[number]["id"];
@@ -318,6 +322,7 @@ export default function App() {
   const tabTampil = TAB.filter((tb: any) => !tb.hanyaAdmin || admin);
 
   return (
+    <PreferensiProvider admin={admin}>
     <div className="galaxy min-h-screen flex text-[#1D2434]">
       {/* ===== Menu samping kiri (atas ke bawah) ===== */}
       <aside className="w-60 shrink-0 sticky top-0 h-screen overflow-y-auto
@@ -507,6 +512,7 @@ export default function App() {
             {tab === "input" && <InputHarian pengisi={dataSesi?.nama ?? "?"} />}
             {tab === "database" && admin && <Database />}
             {tab === "pengguna" && admin && <Pengguna saya={dataSesi?.username} />}
+            {tab === "pengaturan" && <Pengaturan />}
             </div>
           </KonteksPenggunaGrafik.Provider>
         </div>
@@ -514,5 +520,6 @@ export default function App() {
 
       {bukaSandi && <ModalGantiSandi tutup={() => setBukaSandi(false)} />}
     </div>
+    </PreferensiProvider>
   );
 }

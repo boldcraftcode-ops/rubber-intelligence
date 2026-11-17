@@ -18,6 +18,7 @@ from sqlalchemy import (
     DateTime,
     Float,
     ForeignKey,
+    JSON,
     Integer,
     Numeric,
     String,
@@ -469,3 +470,27 @@ class MartBulanan(Base):
     pencapaian: Mapped[float | None] = mapped_column(Float, nullable=True)  # margin / target
     selisih_vs_target: Mapped[float | None] = mapped_column(Float, nullable=True)
     hari_pembelian: Mapped[int] = mapped_column(Integer, default=0)
+
+
+class PreferensiPengguna(Base):
+    """Preferensi tampilan pribadi; nilai berisi kunci yang ditimpa saja."""
+
+    __tablename__ = "preferensi_pengguna"
+
+    username: Mapped[str] = mapped_column(
+        ForeignKey("pengguna.username", ondelete="CASCADE"), primary_key=True)
+    nilai: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
+    diperbarui_pada: Mapped[dt.datetime] = mapped_column(
+        DateTime, default=dt.datetime.utcnow, onupdate=dt.datetime.utcnow)
+
+
+class PreferensiBawaan(Base):
+    """Bawaan tampilan perusahaan dan penguncian per kunci preferensi."""
+
+    __tablename__ = "preferensi_bawaan"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, default=1)
+    nilai: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
+    terkunci: Mapped[dict] = mapped_column(JSON, default=dict, nullable=False)
+    diperbarui_pada: Mapped[dt.datetime] = mapped_column(
+        DateTime, default=dt.datetime.utcnow, onupdate=dt.datetime.utcnow)

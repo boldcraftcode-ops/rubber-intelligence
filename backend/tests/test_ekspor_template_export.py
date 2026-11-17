@@ -120,7 +120,7 @@ def test_penerimaan_vendor_total_sesuai_template(klien):
     assert [ws.cell(4, i).value for i in range(1, 7)] == [
         "Vendor", "Kg biasa", "Kg EUDR", "Kg total", "Porsi", "Jumlah tiket"]
     assert ws["A5"].value is not None
-    assert "Created by dev Raw Material Big Data" in _footer(ws)
+    assert "Created by admin Raw Material Big Data" in _footer(ws)
     assert len(ws._charts) == 1
     ch = ws._charts[0]
     assert _judul_chart(ws) == "Rubber Intake - Total Periods - All Vendors"
@@ -152,7 +152,7 @@ def test_penerimaan_vendor_per_bulan_sesuai_template(klien):
     assert "Porsi" not in header
     assert ws["A5"].value is not None
     assert any(str(c.value) == "TOTAL" for c in ws[ws.max_row - 1])
-    assert "Created by dev Raw Material Big Data" in _footer(ws)
+    assert "Created by admin Raw Material Big Data" in _footer(ws)
     assert len(ws._charts) == 1
     ch = ws._charts[0]
     assert _judul_chart(ws) == "Rubber Intake - Monthly Details"
@@ -183,7 +183,7 @@ def test_rm_stock_intake_vs_pricing_sesuai_template(klien):
         "SICOM (US¢/kg)", "OP Price (US¢/kg)", "OP Margin (US¢/kg)"]
     assert "Sumber intake" not in header and "RM Stock (kg)" not in header
     assert ws["A5"].value is not None
-    assert "Created by dev Raw Material Big Data" in _footer(ws)
+    assert "Created by admin Raw Material Big Data" in _footer(ws)
     assert len(ws._charts) == 1
     ch = ws._charts[0]
     assert _judul_chart(ws) == "RM Stock – Intake vs Pricing"

@@ -31,6 +31,7 @@ def _klien(base_url: str = "http://testserver"):
 @pytest.fixture()
 def dengan_auth(monkeypatch):
     """Login username+sandi aktif."""
+    monkeypatch.setenv("OP_MARGIN_TEST_LOGIN", "0")
     monkeypatch.setenv("APP_ENV", "development")
     monkeypatch.setenv("SECRET_KEY", "k" * 40)
     monkeypatch.delenv("AUTH_DISABLED", raising=False)

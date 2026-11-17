@@ -54,7 +54,7 @@ def test_margin_performance_refresh_di_samping_periode():
     """Kartu dengan rentang bulan / tombol tahun memakai slot filter."""
     ringkasan = _teks("frontend/src/pages/Ringkasan.tsx")
 
-    assert ringkasan.count('letakRefresh="filter"') == 3
+    assert ringkasan.count('letakRefresh="filter"') == 2
     assert ringkasan.count("aksi={<TombolRefreshKartu />}") == 2
     assert '<TombolRefreshKartu className="ml-auto" />' in ringkasan
     # Keadaan galat / data kosong tidak boleh membuat kartu kehilangan Refresh.

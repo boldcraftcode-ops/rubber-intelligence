@@ -114,3 +114,12 @@ def isi_kunci_traceability(engine: Engine) -> int:
         if jumlah:
             session.commit()
     return jumlah
+
+
+def pastikan_tabel_preferensi(engine: Engine) -> None:
+    """Buat tabel preferensi bila belum ada tanpa mengubah tabel operasional."""
+    from ..models import Base, PreferensiBawaan, PreferensiPengguna
+
+    Base.metadata.create_all(
+        engine, tables=[PreferensiBawaan.__table__, PreferensiPengguna.__table__],
+        checkfirst=True)

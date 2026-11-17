@@ -2,14 +2,51 @@ import { createContext, ReactNode, useContext, useEffect, useRef, useState } fro
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { bahasaSekarang, useBahasa } from "./i18n";
 
-/* ---------- format angka mengikuti bahasa aktif ---------- */
-export const fmtAngka = (n: number | null | undefined, desimal = 4) =>
-  n === null || n === undefined
+/* ---------- format tampilan mengikuti preferensi pengguna ---------- */
+export type PreferensiFormat = {
+  desimal_angka: number;
+  desimal_persen: number;
+  satuan_berat: "kg" | "ton" | "otomatis";
+};
+
+export const PREFERENSI_TAMPILAN_BAKU: PreferensiFormat = {
+  desimal_angka: 3, desimal_persen: 1, satuan_berat: "otomatis",
+};
+let preferensiFormatAktif = PREFERENSI_TAMPILAN_BAKU;
+
+export function aturPreferensiFormat(nilai?: Partial<PreferensiFormat>) {
+  preferensiFormatAktif = { ...PREFERENSI_TAMPILAN_BAKU, ...nilai };
+}
+
+const formatLokal = () => bahasaSekarang() === "id" ? "id-ID" : "en-US";
+export const fmtAngka = (n: number | null | undefined, desimal?: number) =>
+  n === null || n === undefined || !Number.isFinite(n)
     ? "–"
-    : new Intl.NumberFormat(bahasaSekarang() === "id" ? "id-ID" : "en-US", {
-        minimumFractionDigits: desimal,
-        maximumFractionDigits: desimal,
+    : new Intl.NumberFormat(formatLokal(), {
+        minimumFractionDigits: desimal ?? preferensiFormatAktif.desimal_angka,
+        maximumFractionDigits: desimal ?? preferensiFormatAktif.desimal_angka,
       }).format(n);
+
+export const fmtJumlah = (n: number | null | undefined, desimal?: number) => fmtAngka(n, desimal);
+export const fmtHarga = (n: number | null | undefined, desimal?: number) => fmtAngka(n, desimal);
+export const fmtPersen = (n: number | null | undefined) =>
+  n === null || n === undefined ? "–" : `${fmtAngka(n, preferensiFormatAktif.desimal_persen)}%`;
+export const fmtUang = (n: number | null | undefined, desimal?: number) =>
+  n === null || n === undefined || !Number.isFinite(n) ? "–" : new Intl.NumberFormat(formatLokal(), {
+    style: "currency", currency: "IDR", minimumFractionDigits: desimal ?? preferensiFormatAktif.desimal_angka,
+    maximumFractionDigits: desimal ?? preferensiFormatAktif.desimal_angka,
+  }).format(n);
+
+/** Berat masuk dalam kilogram; konversi angka dan label dilakukan bersama. */
+export const fmtBerat = (kg: number | null | undefined, desimal?: number) => {
+  if (kg === null || kg === undefined || !Number.isFinite(kg)) return "–";
+  const satuan = preferensiFormatAktif.satuan_berat === "otomatis"
+    ? kg < 1000 ? "kg" : "ton"
+    : preferensiFormatAktif.satuan_berat;
+  const nilai = satuan === "kg" ? kg : kg / 1000;
+  const label = satuan === "kg" ? "kg" : bahasaSekarang() === "id" ? "ton" : "MT";
+  return `${fmtAngka(nilai, desimal)} ${label}`;
+};
 
 export const fmtTanggal = (iso: string) => {
   const [y, m, d] = iso.split("-");

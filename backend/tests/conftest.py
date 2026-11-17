@@ -8,10 +8,29 @@ from __future__ import annotations
 import os
 import pathlib
 
-# Tes memakai konfigurasi development, tetapi tidak menonaktifkan autentikasi.
-# Test client harus login seperti pengguna aplikasi.
+# Tes memakai konfigurasi development. Klien uji memakai kredensial admin
+# bawaan melalui endpoint login normal; aplikasi tidak memiliki bypass auth.
 os.environ["APP_ENV"] = "development"
-os.environ.pop("AUTH_DISABLED", None)
+os.environ["OP_MARGIN_TEST_LOGIN"] = "1"
+
+import fastapi.testclient
+import starlette.testclient
+
+_TestClientAsli = fastapi.testclient.TestClient
+
+
+class TestClientLoginUji(_TestClientAsli):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if os.environ.get("OP_MARGIN_TEST_LOGIN") == "1":
+            try:
+                self.post("/api/auth/login", json={"username": "admin", "sandi": "admin123"})
+            except Exception:
+                pass  # Aplikasi tanpa router login tidak memerlukan sesi.
+
+
+fastapi.testclient.TestClient = TestClientLoginUji
+starlette.testclient.TestClient = TestClientLoginUji
 
 import pytest
 from sqlalchemy import create_engine
