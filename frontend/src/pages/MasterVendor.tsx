@@ -1,10 +1,9 @@
+import { fmtFieldBerat } from "../satuan";
 import { Fragment, useRef, useState } from "react";
 import { useBahasa } from "../i18n";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  Kartu, Pesan, ambilJson, fmtAngka, fmtTanggal,
-  kelasInput, kelasLabel, kelasTombol, kelasTombolKecil, kirimMetode, urlApi,
-} from "../bersama";
+  Kartu, Pesan, ambilJson, fmtTanggal, kelasInput, kelasLabel, kelasTombol, kelasTombolKecil, kirimMetode, urlApi, fmtJumlah } from "../bersama";
 
 const pengisi = () => {
   try { return localStorage.getItem("op-margin.pengisi") || "?"; } catch { return "?"; }
@@ -154,7 +153,7 @@ export function KartuDaftarVendor() {
             </select>
           </div>
           <p className="pb-2 text-xs text-[#64676C]">
-            {q.data ? `${fmtAngka(q.data.jumlah, 0)} ${t("dari")} ${fmtAngka(q.data.jumlah_total, 0)} ${t("vendor")}` : t("memuat…")}
+            {q.data ? `${fmtJumlah(q.data.jumlah)} ${t("dari")} ${fmtJumlah(q.data.jumlah_total)} ${t("vendor")}` : t("memuat…")}
           </p>
         </div>
 
@@ -182,7 +181,7 @@ export function KartuDaftarVendor() {
                     <td className="py-2 pr-3 font-mono font-semibold text-[#1D2434]">{b.kode}</td>
                     <td className="py-2 pr-3 text-[#1D2434]">{b.nama_baku}</td>
                     <td className="py-2 pr-3">
-                      <span title={`${fmtAngka(b.dry_total_6bulan_mt, 3)} MT Dry total 6 bulan · ${q.data?.periode_vendor_class ?? "belum ada data"}`}
+                      <span title={`${fmtFieldBerat(b.dry_total_6bulan_mt, "dry_total_6bulan_mt")} MT Dry total 6 bulan · ${q.data?.periode_vendor_class ?? "belum ada data"}`}
                             className={`inline-flex min-w-8 justify-center rounded-sm px-2 py-1 text-[11px] font-bold ${WARNA_VENDOR_CLASS[b.vendor_class] ?? "bg-[#F3F4F6] text-[#64676C]"}`}>
                         {b.vendor_class}
                       </span>
@@ -216,10 +215,10 @@ export function KartuDaftarVendor() {
                           <div><span className="text-[#64676C]">{t("Kategori")}</span><p className="text-[#1D2434]">{b.kategori || "–"}</p></div>
                           <div><span className="text-[#64676C]">{t("Contact person")}</span><p className="text-[#1D2434]">{b.kontak_person || "–"}</p></div>
                           <div className="sm:col-span-2"><span className="text-[#64676C]">{t("Alamat")}</span><p className="text-[#1D2434]">{b.alamat || "–"}</p></div>
-                          <div><span className="text-[#64676C]">{t("Jumlah tiket")}</span><p className="font-mono text-[#1D2434]">{fmtAngka(b.jumlah_tiket, 0)}</p></div>
-                          <div><span className="text-[#64676C]">{t("Dry historis")}</span><p className="font-mono text-[#1D2434]">{fmtAngka(b.ton_kering, 3)} MT</p></div>
-                          <div><span className="text-[#64676C]">{t("Total Dry 6 bulan")}</span><p className="font-mono text-[#1D2434]">{fmtAngka(b.dry_total_6bulan_mt, 3)} MT</p></div>
-                          <div><span className="text-[#64676C]">{t("Rata-rata Dry per bulan")}</span><p className="font-mono text-[#1D2434]">{fmtAngka(b.dry_rata_bulanan_mt, 3)} MT/bulan</p></div>
+                          <div><span className="text-[#64676C]">{t("Jumlah tiket")}</span><p className="font-mono text-[#1D2434]">{fmtJumlah(b.jumlah_tiket)}</p></div>
+                          <div><span className="text-[#64676C]">{t("Dry historis")}</span><p className="font-mono text-[#1D2434]">{fmtJumlah(b.ton_kering)} MT</p></div>
+                          <div><span className="text-[#64676C]">{t("Total Dry 6 bulan")}</span><p className="font-mono text-[#1D2434]">{fmtFieldBerat(b.dry_total_6bulan_mt, "dry_total_6bulan_mt")} MT</p></div>
+                          <div><span className="text-[#64676C]">{t("Rata-rata Dry per bulan")}</span><p className="font-mono text-[#1D2434]">{fmtFieldBerat(b.dry_rata_bulanan_mt, "dry_rata_bulanan_mt")} MT/bulan</p></div>
                           <div><span className="text-[#64676C]">{t("Intake terakhir")}</span><p className="text-[#1D2434]">{b.intake_terakhir ? fmtTanggal(b.intake_terakhir) : "belum pernah"}</p></div>
                         </div>
                         <div className="mt-3 flex flex-wrap gap-2">
@@ -427,7 +426,7 @@ export function KartuBulkVendor() {
                        className="rounded-sm border border-[#E4E5E8] bg-[#F8F8F8] p-2.5">
                     <p className="text-xs text-[#64676C]">{label}</p>
                     <p className="font-semibold" style={{ color: warna as string }}>
-                      {fmtAngka(nilai as number, 0)} {t("baris")}
+                      {fmtJumlah(nilai as number)} {t("baris")}
                     </p>
                   </div>
                 ))}
@@ -490,7 +489,7 @@ export function KartuKelasIntake() {
             const bulan: string[] = d.bulan_tersedia ?? [];
             return <>
               <div className="mb-2 flex flex-wrap items-end justify-between gap-2 text-[11px] text-[#64676C]">
-                <span><b className="text-[#1D2434]">{fmtAngka(d.total_supplier_bulan, 0)} supplier-bulan</b> · {t("tahun")} {d.filters?.year ?? "—"} · {bulan.length} {t("bulan")} ({bulan[0] || "—"} s.d. {bulan[bulan.length - 1] || "—"}) · total {fmtAngka(d.total_dry_mt, 3)} MT</span>
+                <span><b className="text-[#1D2434]">{fmtJumlah(d.total_supplier_bulan)} supplier-bulan</b> · {t("tahun")} {d.filters?.year ?? "—"} · {bulan.length} {t("bulan")} ({bulan[0] || "—"} s.d. {bulan[bulan.length - 1] || "—"}) · total {fmtFieldBerat(d.total_dry_mt, "total_dry_mt")} MT</span>
                 <span>{t("Tanda ≥ di setiap batas")}</span>
               </div>
               <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
@@ -499,9 +498,9 @@ export function KartuKelasIntake() {
                   return <div key={x.kelas} className="rounded-sm border border-[#E4E5E8] p-2.5">
                     <div className="flex items-center justify-between gap-2">
                       <span className={`rounded-sm px-1.5 py-0.5 font-mono text-[11px] font-bold ${WARNA_KELAS_INTAKE[x.kelas] ?? WARNA_KELAS_INTAKE.D}`}>{x.kelas}</span>
-                      <span className="font-mono text-lg font-bold tabular-nums text-[#1D2434]">{fmtAngka(x.jumlah, 0)}</span>
+                      <span className="font-mono text-lg font-bold tabular-nums text-[#1D2434]">{fmtJumlah(x.jumlah)}</span>
                     </div>
-                    <p className="mt-1 text-[10px] text-[#64676C]">{b ? (b.batas_mt === null ? t("< 100 MT") : `≥ ${fmtAngka(b.batas_mt, 0)} MT`) : "—"}</p>
+                    <p className="mt-1 text-[10px] text-[#64676C]">{b ? (b.batas_mt === null ? t("< 100 MT") : `≥ ${fmtFieldBerat(b.batas_mt, "batas_mt")} MT`) : "—"}</p>
                     <div className="mt-1.5 h-1.5 rounded bg-[#EDEFF2]"><div className="h-1.5 rounded bg-[#FF1313]" style={{ width: `${Math.max(2, x.jumlah / maks * 100)}%` }} /></div>
                   </div>;
                 })}

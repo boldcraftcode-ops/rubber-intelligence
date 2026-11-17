@@ -7,10 +7,18 @@ export type PreferensiFormat = {
   desimal_angka: number;
   desimal_persen: number;
   satuan_berat: "kg" | "ton" | "otomatis";
+  pemisah_desimal: "," | "."; format_tanggal: "dd/mm/yyyy" | "mm/dd/yyyy" | "yyyy-mm-dd";
+  angka_ringkas: boolean; tema: "terang" | "gelap" | "sistem"; kepadatan: "nyaman" | "ringkas";
+  ukuran_huruf: "kecil" | "normal" | "besar"; kurangi_animasi: boolean;
+  halaman_awal: "ringkasan" | "analisis" | "stok" | "traceability";
+  baris_per_halaman: 10 | 25 | 50 | 100; ingat_filter: boolean; pemisah_csv: "," | ";";
 };
 
 export const PREFERENSI_TAMPILAN_BAKU: PreferensiFormat = {
   desimal_angka: 3, desimal_persen: 1, satuan_berat: "otomatis",
+  pemisah_desimal: ",", format_tanggal: "dd/mm/yyyy", angka_ringkas: false,
+  tema: "terang", kepadatan: "nyaman", ukuran_huruf: "normal", kurangi_animasi: false,
+  halaman_awal: "ringkasan", baris_per_halaman: 25, ingat_filter: true, pemisah_csv: ",",
 };
 let preferensiFormatAktif = PREFERENSI_TAMPILAN_BAKU;
 
@@ -25,32 +33,52 @@ export const fmtAngka = (n: number | null | undefined, desimal?: number) =>
     : new Intl.NumberFormat(formatLokal(), {
         minimumFractionDigits: desimal ?? preferensiFormatAktif.desimal_angka,
         maximumFractionDigits: desimal ?? preferensiFormatAktif.desimal_angka,
-      }).format(n);
+      }).formatToParts(n).map((part) => part.type === "decimal" ? preferensiFormatAktif.pemisah_desimal : part.value).join("");
 
-export const fmtJumlah = (n: number | null | undefined, desimal?: number) => fmtAngka(n, desimal);
-export const fmtHarga = (n: number | null | undefined, desimal?: number) => fmtAngka(n, desimal);
+export const fmtJumlah = (n: number | null | undefined, _desimalLama?: number) =>
+  fmtAngka(n, preferensiFormatAktif.desimal_angka);
+export const fmtHarga = (n: number | null | undefined, _desimalLama?: number) =>
+  fmtAngka(n, preferensiFormatAktif.desimal_angka);
 export const fmtPersen = (n: number | null | undefined) =>
-  n === null || n === undefined ? "–" : `${fmtAngka(n, preferensiFormatAktif.desimal_persen)}%`;
+  n === null || n === undefined || !Number.isFinite(n)
+    ? "–" : fmtAngka(n, preferensiFormatAktif.desimal_persen);
 export const fmtUang = (n: number | null | undefined, desimal?: number) =>
   n === null || n === undefined || !Number.isFinite(n) ? "–" : new Intl.NumberFormat(formatLokal(), {
     style: "currency", currency: "IDR", minimumFractionDigits: desimal ?? preferensiFormatAktif.desimal_angka,
     maximumFractionDigits: desimal ?? preferensiFormatAktif.desimal_angka,
   }).format(n);
 
+export const labelSatuanBerat = () => {
+  const satuan = preferensiFormatAktif.satuan_berat;
+  if (satuan === "kg") return "kg";
+  return bahasaSekarang() === "id" ? "ton" : "MT";
+};
+
 /** Berat masuk dalam kilogram; konversi angka dan label dilakukan bersama. */
-export const fmtBerat = (kg: number | null | undefined, desimal?: number) => {
+export const fmtBerat = (kg: number | null | undefined, _desimalLama?: number) => {
   if (kg === null || kg === undefined || !Number.isFinite(kg)) return "–";
   const satuan = preferensiFormatAktif.satuan_berat === "otomatis"
     ? kg < 1000 ? "kg" : "ton"
     : preferensiFormatAktif.satuan_berat;
   const nilai = satuan === "kg" ? kg : kg / 1000;
   const label = satuan === "kg" ? "kg" : bahasaSekarang() === "id" ? "ton" : "MT";
-  return `${fmtAngka(nilai, desimal)} ${label}`;
+  return `${fmtAngka(nilai, preferensiFormatAktif.desimal_angka)} ${label}`;
 };
 
 export const fmtTanggal = (iso: string) => {
   const [y, m, d] = iso.split("-");
-  return `${d}/${m}/${y}`;
+  switch (preferensiFormatAktif.format_tanggal) {
+    case "mm/dd/yyyy": return `${m}/${d}/${y}`;
+    case "yyyy-mm-dd": return `${y}-${m}-${d}`;
+    default: return `${d}/${m}/${y}`;
+  }
+};
+
+export const fmtAngkaRingkas = (n: number | null | undefined) => {
+  if (n == null || !Number.isFinite(n)) return "–";
+  if (!preferensiFormatAktif.angka_ringkas || Math.abs(n) < 1_000_000) return fmtJumlah(n);
+  const juta = n / 1_000_000;
+  return `${fmtAngka(juta, Math.abs(juta) < 10 ? 1 : 0)} ${bahasaSekarang() === "id" ? "jt" : "M"}`;
 };
 
 /** Menginterpolasi angka dari nilai sebelumnya, tanpa mengubah format tampilan

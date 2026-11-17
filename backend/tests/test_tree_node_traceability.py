@@ -45,7 +45,8 @@ def test_tampilan_dan_interaksi_tetap():
     assert 'function lebarGaris' in SUMBER
     assert 'strokeWidth={lebarGaris(e.volume_kg, minVolume, maksVolume)}' in SUMBER
     assert '<circle cx={p.x} cy={p.y} r={radius}' in SUMBER
-    assert '{fmtAngka(n.volume_kg, 0)} kg' in SUMBER
+    assert '{fmtFieldBerat(n.volume_kg, "volume_kg")} kg' in SUMBER
+    assert 'import { fmtFieldBerat } from "../satuan";' in SUMBER
     assert 'fontFamily="Arial, Helvetica, sans-serif"' in SUMBER
     assert 'setArah("horizontal")' in SUMBER
     assert 'setArah("vertikal")' in SUMBER

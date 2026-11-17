@@ -1,6 +1,7 @@
+import { fmtFieldBerat } from "../satuan";
 import { type ReactNode, Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ambilJson, fmtAngka, kelasInput, kelasLabel, kelasTombol, urlApi, KerangkaMuatKartu } from "../bersama";
+import { ambilJson, kelasInput, kelasLabel, kelasTombol, urlApi, KerangkaMuatKartu, fmtJumlah, fmtPersen } from "../bersama";
 
 type Filter = { year: string; period: string; supplier: string; eudr: string; includeLatex: boolean };
 type Wilayah = {
@@ -86,7 +87,7 @@ function Kpi({ title, value, unit, note, onClick, active = false }: {
       <p className="text-[10px] font-semibold uppercase tracking-[0.1em] text-[#64676C]">{title}</p>
       <p className="mt-1 text-xl font-bold tabular-nums text-[#1D2434]">
         {value == null ? "—" : typeof value === "string" ? value
-          : fmtAngka(value, unit === "%" ? 2 : unit === "MT" ? 3 : 0)}
+          : fmtJumlah(value)}
         <span className="ml-1 text-xs font-medium text-[#64676C]">{unit}</span>
       </p>
       {note && <p className="mt-1 text-[10px] text-[#9AA0A6]">{note}</p>}
@@ -295,7 +296,7 @@ function PohonRantaiPasok({ query, aktif }: { query: string; aktif: boolean }) {
                 strokeDasharray={index < 24 ? "1" : undefined}
                 strokeDashoffset={index < 24 ? 1 : undefined}
                 className={index < 24 ? "aliran-garis-masuk" : undefined}>
-                <title>{`${e.dari} → ${e.ke}: ${fmtAngka(e.volume_kg, 0)} kg`}</title>
+                <title>{`${e.dari} → ${e.ke}: ${fmtFieldBerat(e.volume_kg, "volume_kg")} kg`}</title>
               </path>
             );
           })}
@@ -319,7 +320,7 @@ function PohonRantaiPasok({ query, aktif }: { query: string; aktif: boolean }) {
                 onKeyDown={bolehKlik ? (e) => {
                   if (e.key === "Enter" || e.key === " ") { e.preventDefault(); pilihT1(n.id); }
                 } : undefined}>
-                <title>{`${n.tier} · ${n.kode} · ${n.nama} · ${fmtAngka(n.volume_kg, 0)} kg`}</title>
+                <title>{`${n.tier} · ${n.kode} · ${n.nama} · ${fmtFieldBerat(n.volume_kg, "volume_kg")} kg`}</title>
                 {sorot && <circle cx={p.x} cy={p.y} r={radius + 7}
                   fill="none" stroke="#FF1313" strokeWidth={2.5} opacity={0.95} />}
                 <circle cx={p.x} cy={p.y} r={radius}
@@ -331,7 +332,7 @@ function PohonRantaiPasok({ query, aktif }: { query: string; aktif: boolean }) {
                 <text x={p.x} y={p.y + 11} textAnchor="middle" dominantBaseline="middle"
                   fontFamily="Arial, Helvetica, sans-serif" fontSize={padat ? 8 : 9}
                   fontWeight={600} fill="#FFFFFF" pointerEvents="none">
-                  {fmtAngka(n.volume_kg, 0)} kg
+                  {fmtFieldBerat(n.volume_kg, "volume_kg")} kg
                 </text>
               </g>
             );
@@ -345,14 +346,14 @@ function PohonRantaiPasok({ query, aktif }: { query: string; aktif: boolean }) {
           klik lagi atau tekan <b>Reset sorotan</b> untuk kembali.{" "}
           {t1Terpilih ? (
             <>Saat ini <b>{t1Terpilih}</b> ({simpulTerpilih?.nama ?? t1Terpilih}) menyorot {anak.length} node T2
-              {anak.length ? `: ${anak.join(", ")}` : ""} · volume {fmtAngka(simpulTerpilih?.volume_kg ?? 0, 0)} kg.</>
+              {anak.length ? `: ${anak.join(", ")}` : ""} · volume {fmtJumlah(simpulTerpilih?.volume_kg ?? 0)} kg.</>
           ) : "Belum ada T1 dipilih."}
         </p>
         <p className="rounded-sm bg-[#F8F8F8] p-3">
           <b className="text-[#1D2434]">Catatan data.</b> {data.catatan}{" "}
           Kode tier <b>tidak ditukar</b>: <b>T1 = vendor</b>, <b>T2 = kolektor</b>. Volume pabrik{" "}
-          {fmtAngka(data.meta.volume_pabrik_kg, 0)} kg; volume T1 tanpa kolektor tercatat{" "}
-          {fmtAngka(data.meta.volume_tanpa_kolektor_kg, 0)} kg.
+          {fmtFieldBerat(data.meta.volume_pabrik_kg, "volume_pabrik_kg")} kg; volume T1 tanpa kolektor tercatat{" "}
+          {fmtFieldBerat(data.meta.volume_tanpa_kolektor_kg, "volume_tanpa_kolektor_kg")} kg.
           {data.meta.total_t2 === 0 && " Belum ada kolektor T2 yang cocok pada filter ini."}
           {data.meta.ambiguous_lane_count > 0 && ` ${data.meta.ambiguous_lane_count} lintasan memiliki beberapa kolektor cocok; volume tetap tidak digandakan.`}
         </p>
@@ -705,10 +706,10 @@ export default function Traceability() {
           </div>
         </td>
         <td className="px-2 font-mono text-[#9AA0A6]">{node.code || "—"}</td>
-        <td className="px-2 text-right font-mono">{fmtAngka(node.dry_mt, 3)}</td>
-        <td className="px-2 text-right font-mono">{fmtAngka(node.traceable_mt, 3)}</td>
-        <td className="px-2 text-right font-mono">{node.traceability_pct == null ? "—" : `${fmtAngka(node.traceability_pct, 2)}%`}</td>
-        <td className="px-2 text-right font-mono">{fmtAngka(node.ticket_lines, 0)}</td>
+        <td className="px-2 text-right font-mono">{fmtFieldBerat(node.dry_mt, "dry_mt")}</td>
+        <td className="px-2 text-right font-mono">{fmtFieldBerat(node.traceable_mt, "traceable_mt")}</td>
+        <td className="px-2 text-right font-mono">{node.traceability_pct == null ? "—" : `${fmtPersen(node.traceability_pct)}%`}</td>
+        <td className="px-2 text-right font-mono">{fmtJumlah(node.ticket_lines)}</td>
         <td className="px-2"><span className={`rounded-sm px-1.5 py-0.5 text-[10px] ${node.traceability_status === "traceable" ? "bg-[#ECFDF3] text-[#027A48]" : node.traceability_status === "partial" ? "bg-[#FFFAEB] text-[#B54708]" : "bg-[#FEF3F2] text-[#B42318]"}`}>{node.traceability_status === "traceable" ? "Traceable" : node.traceability_status === "partial" ? "Partial" : "Unmatched"}</span></td>
       </tr>
     );
@@ -725,7 +726,7 @@ export default function Traceability() {
   const totalGapMt = gapRows.reduce((sum, row) => sum + row.untraceable_mt, 0);
   const gapNote = (traceableMt: number | null | undefined, gaps: BarisGap[]) => {
     const remaining = Math.max(0, (k.dry_mt ?? 0) - (traceableMt ?? 0));
-    return `${fmtAngka(traceableMt ?? 0, 3)} MT traceable${gaps.length ? ` · ${fmtAngka(remaining, 3)} MT belum` : ""}`;
+    return `${fmtJumlah(traceableMt ?? 0)} MT traceable${gaps.length ? ` · ${fmtJumlah(remaining)} MT belum` : ""}`;
   };
   const actorRows = actors.data?.baris ?? [];
   const maxActorDry = actorRows.reduce((max: number, row: any) => Math.max(max, Number(row.period_turnover_mt) || 0), 0);
@@ -802,7 +803,7 @@ export default function Traceability() {
         <Kpi title="Traceable · Sub-district" value={k.trace_desa_pct} unit="%"
           note={gapNote(k.trace_desa_mt, subdistrictGaps)} onClick={subdistrictGaps.length ? () => setGapLevel("Desa/Kelurahan") : undefined}
           active={gapLevel === "Desa/Kelurahan"} />
-        <Kpi title="Validated tickets" value={k.tickets} unit="tickets" note={`${fmtAngka(k.regencies ?? 0, 0)} regencies`} />
+        <Kpi title="Validated tickets" value={k.tickets} unit="tickets" note={`${fmtJumlah(k.regencies ?? 0)} regencies`} />
       </div>
 
       <div className="rounded-sm border border-[#E4E5E8] bg-white">
@@ -854,7 +855,7 @@ export default function Traceability() {
                       : <span className="text-[#9AA0A6]">—</span>}</td>
                     <td className="px-2">{a.activity_type || "—"}</td>
                     <td className="px-2 text-[#9AA0A6]">{a.terminal_status || "—"}</td>
-                    <td className="px-2"><div className="min-w-[115px]"><div className="flex justify-between gap-2 font-mono"><span>{fmtAngka(a.period_turnover_mt, 3)} MT</span><span className="text-[#9AA0A6]">{fmtAngka(a.tickets, 0)} tk</span></div><div className="mt-1 h-1.5 rounded bg-[#EDEFF2]"><div className="h-1.5 rounded bg-[#FF1313]" style={{ width: `${barWidth}%` }} /></div></div></td>
+                    <td className="px-2"><div className="min-w-[115px]"><div className="flex justify-between gap-2 font-mono"><span>{fmtFieldBerat(a.period_turnover_mt, "period_turnover_mt")} MT</span><span className="text-[#9AA0A6]">{fmtJumlah(a.tickets)} tk</span></div><div className="mt-1 h-1.5 rounded bg-[#EDEFF2]"><div className="h-1.5 rounded bg-[#FF1313]" style={{ width: `${barWidth}%` }} /></div></div></td>
                     <td className="px-2">
                       <select
                         className="w-full min-w-[160px] rounded-sm border border-[#D1D5DB] bg-white px-1.5 py-1 text-[11px] text-[#1D2434] disabled:opacity-60"
@@ -900,8 +901,8 @@ export default function Traceability() {
               {!q.isLoading && !gapTerpilih && (
                 <>
                   <div className="mb-3 flex flex-wrap gap-x-5 gap-y-1 text-xs text-[#475467]">
-                    <span>Wilayah belum traceable: <b>{fmtAngka(gapRows.length, 0)}</b></span>
-                    <span>Volume belum traceable: <b className="font-mono">{fmtAngka(totalGapMt, 3)} MT</b></span>
+                    <span>Wilayah belum traceable: <b>{fmtJumlah(gapRows.length)}</b></span>
+                    <span>Volume belum traceable: <b className="font-mono">{fmtJumlah(totalGapMt)} MT</b></span>
                     <span>Filter mengikuti tahun, periode, supplier, EUDR, dan LATEX OP di halaman.</span>
                   </div>
                   <div className="max-h-[55vh] overflow-auto rounded-sm border border-[#E4E5E8]">
@@ -914,11 +915,11 @@ export default function Traceability() {
                           <tr key={`${row.path}/${row.name}/${index}`} className="border-t border-[#EDEFF2]">
                             <td className="py-2 pl-3 font-semibold text-[#1D2434]">{row.name}</td>
                             <td className="px-2 text-[#64676C]">{row.path}</td>
-                            <td className="px-2 text-right font-mono">{fmtAngka(row.dry_mt, 3)}</td>
-                            <td className="px-2 text-right font-mono">{fmtAngka(row.traceable_mt, 3)}</td>
-                            <td className="px-2 text-right font-mono font-semibold text-[#B54708]">{fmtAngka(row.untraceable_mt, 3)}</td>
-                            <td className="px-2 text-right font-mono">{row.traceability_pct == null ? "—" : `${fmtAngka(row.traceability_pct, 2)}%`}</td>
-                            <td className="px-2 text-right font-mono">{fmtAngka(row.ticket_lines, 0)}</td>
+                            <td className="px-2 text-right font-mono">{fmtFieldBerat(row.dry_mt, "dry_mt")}</td>
+                            <td className="px-2 text-right font-mono">{fmtFieldBerat(row.traceable_mt, "traceable_mt")}</td>
+                            <td className="px-2 text-right font-mono font-semibold text-[#B54708]">{fmtFieldBerat(row.untraceable_mt, "untraceable_mt")}</td>
+                            <td className="px-2 text-right font-mono">{row.traceability_pct == null ? "—" : `${fmtPersen(row.traceability_pct)}%`}</td>
+                            <td className="px-2 text-right font-mono">{fmtJumlah(row.ticket_lines)}</td>
                             <td className="px-2 pr-3"><button type="button" data-uji="tombol-rincian-gap" className="rounded-sm border border-[#D1D5DB] bg-white px-2 py-1 text-[10px] font-semibold text-[#344054] hover:bg-[#F2F4F7]" onClick={() => bukaRincianGap(row)}>Lihat tiket & perbaiki</button></td>
                           </tr>
                         ))}
@@ -935,7 +936,7 @@ export default function Traceability() {
                     <div>
                       <button type="button" className="text-[10px] font-semibold text-[#475467] underline decoration-dotted underline-offset-2" onClick={() => { setGapTerpilih(null); tutupKoreksiGap(); }}>← Kembali ke daftar wilayah</button>
                       <h4 className="mt-1 text-sm font-bold text-[#1D2434]">{gapTerpilih.name} · {gapLevel}</h4>
-                      <p className="mt-0.5 text-[10px] text-[#64676C]">Parent: {gapTerpilih.path} · Belum traceable: <b className="font-mono">{fmtAngka(gapTerpilih.untraceable_mt, 3)} MT</b> · {fmtAngka(gapTerpilih.ticket_lines, 0)} ticket lines</p>
+                      <p className="mt-0.5 text-[10px] text-[#64676C]">Parent: {gapTerpilih.path} · Belum traceable: <b className="font-mono">{fmtFieldBerat(gapTerpilih.untraceable_mt, "untraceable_mt")} MT</b> · {fmtJumlah(gapTerpilih.ticket_lines)} ticket lines</p>
                       <p className="mt-0.5 text-[10px] text-[#64676C]">Filter mengikuti tahun, periode, supplier, EUDR, dan LATEX OP di halaman.</p>
                     </div>
                   </div>
@@ -946,9 +947,9 @@ export default function Traceability() {
                     const kelompok: any[] = detail.kelompok ?? [];
                     return <>
                       <div className="flex flex-wrap gap-x-5 gap-y-1 text-xs text-[#475467]">
-                        <span>Kombinasi sumber: <b>{fmtAngka(detail.jumlah_kelompok, 0)}</b></span>
-                        <span>Dry belum traceable: <b className="font-mono">{fmtAngka(detail.dry_kg, 3)} kg</b></span>
-                        <span>Baris tiket: <b className="font-mono">{fmtAngka(detail.ticket_lines, 0)}</b> · Ticket No: <b className="font-mono">{fmtAngka(detail.tickets, 0)}</b></span>
+                        <span>Kombinasi sumber: <b>{fmtJumlah(detail.jumlah_kelompok)}</b></span>
+                        <span>Dry belum traceable: <b className="font-mono">{fmtFieldBerat(detail.dry_kg, "dry_kg")} kg</b></span>
+                        <span>Baris tiket: <b className="font-mono">{fmtJumlah(detail.ticket_lines)}</b> · Ticket No: <b className="font-mono">{fmtJumlah(detail.tickets)}</b></span>
                       </div>
                       <div className="max-h-[58vh] overflow-auto rounded-sm border border-[#E4E5E8]">
                         <table data-uji="tabel-kelompok-gap" className="w-full min-w-[1050px] text-xs">
@@ -967,9 +968,9 @@ export default function Traceability() {
                                     <span className="block font-mono text-[9px] text-[#9AA0A6]">{group.source_key.kabupaten_norm || "—"} / {group.source_key.kecamatan_norm || "—"} / {group.source_key.desa_norm || "—"}</span>
                                   </td>
                                   <td className="px-2 text-[10px] text-[#B54708]">{group.alasan}</td>
-                                  <td className="px-2 text-right font-mono">{fmtAngka(group.dry_kg, 3)}</td>
-                                  <td className="px-2 text-right font-mono">{fmtAngka(group.ticket_lines, 0)}</td>
-                                  <td className="px-2 text-right font-mono">{fmtAngka(group.tickets, 0)}</td>
+                                  <td className="px-2 text-right font-mono">{fmtFieldBerat(group.dry_kg, "dry_kg")}</td>
+                                  <td className="px-2 text-right font-mono">{fmtJumlah(group.ticket_lines)}</td>
+                                  <td className="px-2 text-right font-mono">{fmtJumlah(group.tickets)}</td>
                                   <td className="px-2 text-[10px]">{group.manual_correction ? `${group.target_saat_ini?.kecamatan || "—"} · ${group.target_saat_ini?.desa || "—"}` : "Belum ada"}</td>
                                   <td className="px-2 pr-3"><button type="button" className="rounded-sm border border-[#D1D5DB] bg-white px-2 py-1 text-[10px] font-semibold text-[#344054] hover:bg-[#F2F4F7]" onClick={() => sedangDiperbaiki ? tutupKoreksiGap() : mulaiKoreksiGap(group)}>{sedangDiperbaiki ? "Tutup" : "Perbaiki"}</button></td>
                                 </tr>
@@ -989,14 +990,14 @@ export default function Traceability() {
                                             <td className="px-2 font-mono">{t.item_code}</td>
                                             <td className="px-2">{t.asal_getah}</td>
                                             <td className="px-2"><span className="block">{t.kabupaten}</span><span className="block text-[9px] text-[#64676C]">{t.kecamatan} · {t.desa}</span></td>
-                                            <td className="px-2 text-right font-mono">{fmtAngka(t.dry_kg, 3)}</td>
+                                            <td className="px-2 text-right font-mono">{fmtFieldBerat(t.dry_kg, "dry_kg")}</td>
                                             <td className="px-2 pr-2 text-[10px] text-[#B54708]">{t.reason}</td>
                                           </tr>)}
                                           {!(group.tiket ?? []).length && <tr><td colSpan={8} className="py-4 text-center text-[#9AA0A6]">Tidak ada baris tiket untuk ditampilkan.</td></tr>}
                                         </tbody>
                                       </table>
                                     </div>
-                                    {group.tiket_terpotong && <p className="text-[10px] text-[#B54708]">Menampilkan {fmtAngka(detail.batas_tiket ?? 200, 0)} baris tiket terbaru per kombinasi; total baris tetap {fmtAngka(group.ticket_lines, 0)}.</p>}
+                                    {group.tiket_terpotong && <p className="text-[10px] text-[#B54708]">Menampilkan {fmtJumlah(detail.batas_tiket ?? 200)} baris tiket terbaru per kombinasi; total baris tetap {fmtJumlah(group.ticket_lines)}.</p>}
                                     <div data-uji="form-koreksi-gap" className="rounded-sm border border-[#E4E5E8] bg-white p-3">
                                       <p className="text-[10px] font-semibold text-[#344054]">Koreksi SCDF untuk kombinasi sumber ini</p>
                                       <p className="mt-0.5 text-[10px] text-[#64676C]">Kabupaten/Kota sumber: <b className="font-mono">{gapKabupaten || "—"}</b>. Pilih ejaan resmi District dan Sub-district SCDF pada induk yang sama; tidak ada tebakan otomatis.</p>
@@ -1100,8 +1101,8 @@ export default function Traceability() {
                           <span className="rounded-sm border border-[#E4E5E8] bg-[#F8F8F8] px-1.5 py-0.5 font-mono font-semibold text-[#1D2434]">{detail.tier}</span>
                           <span>{rantai.lane_count} lintasan</span>
                           <span>{viaKolektor} via kolektor · {semuaLane.length - viaKolektor} langsung</span>
-                          <span className="font-mono">{fmtAngka(rantai.total_dry_mt, 3)} MT</span>
-                          <span className="font-mono">{fmtAngka(detail.tickets, 0)} tiket unik</span>
+                          <span className="font-mono">{fmtFieldBerat(rantai.total_dry_mt, "total_dry_mt")} MT</span>
+                          <span className="font-mono">{fmtJumlah(detail.tickets)} tiket unik</span>
                           {rantai.ambiguous_lane_count > 0 && <span className="rounded-sm bg-[#FFFAEB] px-1.5 py-0.5 font-semibold text-[#B54708]">⚠ {rantai.ambiguous_lane_count} perlu ditinjau</span>}
                         </div>
                       </div>
@@ -1135,9 +1136,9 @@ export default function Traceability() {
                                   </> : <span className="text-[#9AA0A6]">Langsung (T1)</span>}
                                 </td>
                                 <td className="px-2"><span className="font-mono text-[#64676C]">{detail.supplier_code}</span><span className="block text-[10px] text-[#9AA0A6]">{detail.supplier}</span></td>
-                                <td className="px-2 text-right font-mono tabular-nums">{fmtAngka(lane.dry_mt, 3)}</td>
-                                <td className="px-2 text-right font-mono tabular-nums">{fmtAngka(lane.tickets, 0)}</td>
-                                <td className="px-2 text-right font-mono tabular-nums">{fmtAngka(lane.traceable_mt, 3)}</td>
+                                <td className="px-2 text-right font-mono tabular-nums">{fmtFieldBerat(lane.dry_mt, "dry_mt")}</td>
+                                <td className="px-2 text-right font-mono tabular-nums">{fmtJumlah(lane.tickets)}</td>
+                                <td className="px-2 text-right font-mono tabular-nums">{fmtFieldBerat(lane.traceable_mt, "traceable_mt")}</td>
                                 <td className="px-2 pr-3"><span className={`rounded-sm px-1.5 py-0.5 text-[10px] ${o.matched_to_id_aux ? "bg-[#ECFDF3] text-[#027A48]" : "bg-[#FFFAEB] text-[#B54708]"}`}>{o.manual_correction ? "Manual match" : o.matched_to_id_aux ? "Matched" : "Unmatched"}</span></td>
                               </tr>;
                             })}
@@ -1180,7 +1181,7 @@ export default function Traceability() {
                                 <div className="rounded-sm border border-[#D1D5DB] bg-[#F8FAFC] p-2">
                                   <p className="text-[10px] font-semibold text-[#344054]">Rekomendasi dari intake tahun sebelumnya{historicalRecommendations.data?.history_through ? ` (s.d. ${historicalRecommendations.data.history_through})` : ""}</p>
                                   {historicalRecommendations.isLoading && <p className="mt-1 text-[10px] text-[#667085]">Menghitung pola historis…</p>}
-                                  {(historicalRecommendations.data?.recommendations ?? []).slice(0, 3).map((recommendation: any) => <div key={recommendation.sub_district_norm} className="mt-1 flex items-center justify-between gap-2 text-[10px]"><span><b>{recommendation.sub_district}</b> · Keyakinan historis {fmtAngka(recommendation.confidence_pct, 1)}% · {recommendation.historical_tickets} tiket / {recommendation.historical_years} tahun</span><button className="shrink-0 rounded-sm border border-[#D1D5DB] bg-white px-1.5 py-0.5 font-semibold text-[#344054] hover:bg-[#F2F4F7]" onClick={() => pakaiRekomendasiHistoris(recommendation)}>Pakai</button></div>)}
+                                  {(historicalRecommendations.data?.recommendations ?? []).slice(0, 3).map((recommendation: any) => <div key={recommendation.sub_district_norm} className="mt-1 flex items-center justify-between gap-2 text-[10px]"><span><b>{recommendation.sub_district}</b> · Keyakinan historis {fmtPersen(recommendation.confidence_pct)}% · {recommendation.historical_tickets} tiket / {recommendation.historical_years} tahun</span><button className="shrink-0 rounded-sm border border-[#D1D5DB] bg-white px-1.5 py-0.5 font-semibold text-[#344054] hover:bg-[#F2F4F7]" onClick={() => pakaiRekomendasiHistoris(recommendation)}>Pakai</button></div>)}
                                   {historicalRecommendations.error && <p className="mt-1 text-[10px] text-[#B42318]">Gagal memuat rekomendasi historis: {(historicalRecommendations.error as Error).message}</p>}
                                 </div>
                                 <div className="rounded-sm border border-[#FDE68A] bg-[#FFFBEB] p-2">
@@ -1190,7 +1191,7 @@ export default function Traceability() {
                                   {typoScdf.data?.status === "cocok" && <p className="mt-1 text-[10px] text-[#027A48]">{typoScdf.data.pesan}</p>}
                                   {typoScdf.data?.status === "potensi_salah_ketik" && <>
                                     <p className="mt-1 text-[10px] leading-relaxed text-[#92400E]">Nilai sumber berbeda dari ejaan resmi SCDF; periksa kandidat berikut. District: <b>{typoScdf.data?.source?.kecamatan || origin.source_district || "—"}</b> · Sub-district: <b>{typoScdf.data?.source?.desa || origin.source_sub_district || "—"}</b>.</p>
-                                    {(typoScdf.data?.candidates ?? []).slice(0, 3).map((kandidat: KandidatScdf) => <div key={kandidat.ref_id} className="mt-1 flex items-center justify-between gap-2 text-[10px]"><span><b>{kandidat.desa}</b> · {kandidat.kecamatan} · {kandidat.kabupaten} · Skor kemiripan {fmtAngka(kandidat.score_pct, 1)}%{!kandidat.same_regency && " · Induk SCDF berbeda"}<span className="block text-[9px] text-[#667085]">{kandidat.alasan}</span></span><button type="button" className="shrink-0 rounded-sm border border-[#D1D5DB] bg-white px-1.5 py-0.5 font-semibold text-[#344054] hover:bg-[#F2F4F7]" onClick={() => pakaiKandidatScdf(kandidat)}>Pakai</button></div>)}
+                                    {(typoScdf.data?.candidates ?? []).slice(0, 3).map((kandidat: KandidatScdf) => <div key={kandidat.ref_id} className="mt-1 flex items-center justify-between gap-2 text-[10px]"><span><b>{kandidat.desa}</b> · {kandidat.kecamatan} · {kandidat.kabupaten} · Skor kemiripan {fmtPersen(kandidat.score_pct)}%{!kandidat.same_regency && " · Induk SCDF berbeda"}<span className="block text-[9px] text-[#667085]">{kandidat.alasan}</span></span><button type="button" className="shrink-0 rounded-sm border border-[#D1D5DB] bg-white px-1.5 py-0.5 font-semibold text-[#344054] hover:bg-[#F2F4F7]" onClick={() => pakaiKandidatScdf(kandidat)}>Pakai</button></div>)}
                                   </>}
                                   {typoScdf.data?.status === "tidak_ada_kandidat" && <p className="mt-1 text-[10px] text-[#667085]">{typoScdf.data.pesan} Periksa ejaan secara manual pada dropdown SCDF.</p>}
                                   {typoScdf.data?.status === "referensi_kosong" && <p className="mt-1 text-[10px] text-[#B54708]">{typoScdf.data.pesan}</p>}
@@ -1211,9 +1212,9 @@ export default function Traceability() {
                                 </div>
                               </div>}
                             </td>
-                            <td className="px-2 text-right font-mono">{fmtAngka(origin.dry_mt, 3)}</td>
-                            <td className="px-2 text-right font-mono">{fmtAngka(origin.share_pct, 2)}%</td>
-                            <td className="px-2 text-right font-mono">{fmtAngka(origin.traceable_mt, 3)}</td>
+                            <td className="px-2 text-right font-mono">{fmtFieldBerat(origin.dry_mt, "dry_mt")}</td>
+                            <td className="px-2 text-right font-mono">{fmtPersen(origin.share_pct)}%</td>
+                            <td className="px-2 text-right font-mono">{fmtFieldBerat(origin.traceable_mt, "traceable_mt")}</td>
                             <td className="px-2 pr-3"><span className={`rounded-sm px-1.5 py-0.5 text-[10px] ${origin.matched_to_id_aux ? "bg-[#ECFDF3] text-[#027A48]" : "bg-[#FFFAEB] text-[#B54708]"}`}>{origin.manual_correction ? "Manual match" : origin.matched_to_id_aux ? "Matched" : "Unmatched"}</span></td>
                           </tr>;
                         })}

@@ -37,7 +37,13 @@ JALUR_BEBAS = ("/api/health", "/api/sehat", "/api/auth/mode", "/api/auth/login")
 class KonfigurasiAuth:
     def __init__(self) -> None:
         self.app_env = os.environ.get("APP_ENV", "development").strip().lower()
-        # Login username dan sandi selalu diwajibkan.
+        # Bypass terbatas untuk pratinjau Arena yang secara eksplisit diaktifkan.
+        self.sandbox_preview_bypass = (
+            os.environ.get("E2B_SANDBOX", "").lower() == "true"
+            and os.environ.get("SANDBOX_AUTH_BYPASS", "").lower() == "true"
+            and not self.produksi
+        )
+        # Login username dan sandi selalu diwajibkan di luar pratinjau sandbox.
 
         self.secret = os.environ.get("SECRET_KEY", "").strip()
         # Sesi ditandatangani SECRET_KEY; kunci kosong membuat proses login

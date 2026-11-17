@@ -111,6 +111,14 @@ export default function Pengaturan() {
       </div>
     </section>
 
+    <section className="rounded-sm border border-[#E4E5E8] bg-white p-4">
+      <h3 className="text-sm font-semibold">{t("Kenyamanan tambahan")}</h3>
+      <div className="mt-3 grid gap-3 md:grid-cols-3">
+        {([ ["pemisah_desimal", "Pemisah desimal", [",", "."]], ["format_tanggal", "Format tanggal", ["dd/mm/yyyy", "mm/dd/yyyy", "yyyy-mm-dd"]], ["tema", "Tema", ["terang", "gelap", "sistem"]], ["kepadatan", "Kepadatan tabel", ["nyaman", "ringkas"]], ["ukuran_huruf", "Ukuran huruf", ["kecil", "normal", "besar"]], ["halaman_awal", "Halaman awal", ["ringkasan", "analisis", "stok", "traceability"]], ["baris_per_halaman", "Baris per halaman", [10, 25, 50, 100]], ["pemisah_csv", "Pemisah CSV", [",", ";"]] ] as const).map(([key, label, options]) => <label key={key} className="text-sm">{t(label)}<select className={`${kelasInput} mt-1`} value={String(form[key])} disabled={!!pref.terkunci[key]} onChange={(e) => setForm((x) => ({...x, [key]: key === "baris_per_halaman" ? Number(e.target.value) : e.target.value}))}>{options.map((v) => <option key={String(v)} value={v}>{String(v)}</option>)}</select></label>)}
+        {([ ["angka_ringkas", "Angka ringkas (jt/M)"], ["kurangi_animasi", "Kurangi animasi"], ["ingat_filter", "Ingat filter terakhir"] ] as const).map(([key, label]) => <label key={key} className="flex items-center gap-2 text-sm"><input type="checkbox" checked={form[key]} disabled={!!pref.terkunci[key]} onChange={(e) => setForm((x) => ({...x, [key]: e.target.checked}))}/>{t(label)}</label>)}
+      </div>
+    </section>
+
     {pref.admin && <section className="rounded-sm border border-[#E4E5E8] bg-white p-4">
       <h3 className="text-sm font-semibold text-[#1D2434]">{t("Bawaan perusahaan (admin)")}</h3>
       <p className="mt-1 text-xs text-[#64676C]">{t("Atur nilai awal untuk pengguna dan kunci pengaturan bila perlu.")}</p>

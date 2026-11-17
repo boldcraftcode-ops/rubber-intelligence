@@ -1,13 +1,10 @@
+import { fmtFieldBerat } from "../satuan";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
-  CartesianGrid, Legend, Line, LineChart, ResponsiveContainer,
-  Tooltip, XAxis, YAxis,
-} from "recharts";
+  CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis, } from "recharts";
 import {
-  Kartu, PilihRentangBulan, akhirBulan, ambilJson,
-  awalTahunBerjalan, bulanBerjalan, fmtAngka, fmtTanggal, labelRentangBulan, PengukurAmbang,
-} from "../bersama";
+  Kartu, PilihRentangBulan, akhirBulan, ambilJson, awalTahunBerjalan, bulanBerjalan, fmtTanggal, labelRentangBulan, PengukurAmbang, fmtJumlah, fmtPersen } from "../bersama";
 
 import { AlatGrafik } from "../GrafikTools";
 
@@ -86,9 +83,9 @@ export default function Stok() {
             <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
               {[
                 ["Tanggal", fmtTanggal(t.tanggal)],
-                ["Stok (ton)", fmtAngka(t.stok_ton, 1)],
-                ["Days", fmtAngka(t.days, 3)],
-                ["Rasio vs safety", t.rasio_stok !== null ? fmtAngka(t.rasio_stok * 100, 2) + "%" : "–"],
+                ["Stok (ton)", fmtFieldBerat(t.stok_ton, "stok_ton")],
+                ["Days", fmtJumlah(t.days)],
+                ["Rasio vs safety", t.rasio_stok !== null ? fmtPersen(t.rasio_stok * 100) + "%" : "–"],
                 ["Status", t.status],
               ].map(([label, nilai]) => (
                 <div key={label as string}
@@ -101,8 +98,8 @@ export default function Stok() {
             </div>
             {t.safety_ton != null && (
               <PengukurAmbang label="Stok terhadap safety" nilai={t.stok_ton}
-                ambang={t.safety_ton} nilaiTeks={`${fmtAngka(t.stok_ton, 1)} ton`}
-                ambangTeks={`${fmtAngka(t.safety_ton, 1)} ton`} />
+                ambang={t.safety_ton} nilaiTeks={`${fmtFieldBerat(t.stok_ton, "stok_ton")} ton`}
+                ambangTeks={`${fmtFieldBerat(t.safety_ton, "safety_ton")} ton`} />
             )}
           </>
         ) : (
@@ -122,7 +119,7 @@ export default function Stok() {
               <XAxis dataKey="tanggal" fontSize={11}
                      tickFormatter={(v) => v.slice(0, 7)} minTickGap={40} />
               <YAxis fontSize={11} />
-              <Tooltip formatter={(v: any) => fmtAngka(v as number, 1) + " ton"}
+              <Tooltip formatter={(v: any) => fmtJumlah(v as number) + " ton"}
                        labelFormatter={(l) => fmtTanggal(l as string)} />
               <Legend />
               <Line dataKey="stok" name="Stok (ton)" stroke="#1D2434" dot={false} />
@@ -157,10 +154,10 @@ export default function Stok() {
                   {diBawah.slice(-60).reverse().map((b: any) => (
                     <tr key={b.tanggal} className="border-b border-[#EDEFF2] bg-[#FEF2F2]">
                       <td className="py-1">{fmtTanggal(b.tanggal)}</td>
-                      <td className="text-right font-mono">{fmtAngka(b.stok_ton, 1)}</td>
-                      <td className="text-right font-mono">{fmtAngka(b.safety_ton, 1)}</td>
-                      <td className="text-right font-mono">{fmtAngka(b.rasio_stok * 100, 1)}%</td>
-                      <td className="text-right font-mono">{fmtAngka(b.days, 2)}</td>
+                      <td className="text-right font-mono">{fmtFieldBerat(b.stok_ton, "stok_ton")}</td>
+                      <td className="text-right font-mono">{fmtFieldBerat(b.safety_ton, "safety_ton")}</td>
+                      <td className="text-right font-mono">{fmtPersen(b.rasio_stok * 100)}%</td>
+                      <td className="text-right font-mono">{fmtJumlah(b.days)}</td>
                     </tr>
                   ))}
                 </tbody>

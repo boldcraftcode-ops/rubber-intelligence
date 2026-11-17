@@ -1,5 +1,17 @@
 @import "tailwindcss";
 
+:root[data-ukuran-huruf="kecil"] { font-size: 14px; }
+:root[data-ukuran-huruf="normal"] { font-size: 16px; }
+:root[data-ukuran-huruf="besar"] { font-size: 18px; }
+:root[data-kurangi-animasi="true"] *,
+:root[data-kurangi-animasi="true"] *::before,
+:root[data-kurangi-animasi="true"] *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; scroll-behavior: auto !important; transition-duration: .01ms !important; }
+:root[data-tema="gelap"] { color-scheme: dark; }
+:root[data-tema="sistem"] { color-scheme: light dark; }
+:root[data-tema="gelap"] body { background:#111827; color:#f3f4f6; }
+:root[data-tema="ringkas"] table td, :root[data-tema="ringkas"] table th { padding-top:.25rem !important; padding-bottom:.25rem !important; }
+
+
 /* ===========================================================================
    Tema korporat — mengikuti panduan identitas:
      #FF1313  aksen (merah)      #1D2434  utama (navy)

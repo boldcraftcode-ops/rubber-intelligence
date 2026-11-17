@@ -1,14 +1,9 @@
+import { fmtFieldBerat } from "../satuan";
 import { Fragment, ReactNode, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
-  Bar, BarChart, CartesianGrid, Cell, ComposedChart, LabelList, Legend, Line,
-  LineChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis,
-} from "recharts";
-import { Kartu, KartuMuatSaatDiminta, KepalaPanel, NAMA_BULAN, Panel5W1H,
-  PilihRentangBulan, TombolRefreshKartu, ambilJson, fmtAngka, fmtTanggal,
-  awalTahunBerjalan, bulanBerjalan,
-  kelasTombolAnalisa, kelasTombolKecil, pesanGalat, urlApi, useQueryKartu,
-  KerangkaMuatKartu, KerangkaMuatTabel, PengukurAmbang, useCountUp } from "../bersama";
+  Bar, BarChart, CartesianGrid, Cell, ComposedChart, LabelList, Legend, Line, LineChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis, } from "recharts";
+import { Kartu, KartuMuatSaatDiminta, KepalaPanel, NAMA_BULAN, Panel5W1H, PilihRentangBulan, TombolRefreshKartu, ambilJson, fmtTanggal, awalTahunBerjalan, bulanBerjalan, kelasTombolAnalisa, kelasTombolKecil, pesanGalat, urlApi, useQueryKartu, KerangkaMuatKartu, KerangkaMuatTabel, PengukurAmbang, useCountUp, fmtHarga, fmtUang, fmtJumlah, fmtPersen } from "../bersama";
 import { useBahasa } from "../i18n";
 
 import { AlatGrafik } from "../GrafikTools";
@@ -41,7 +36,7 @@ function Telusur({ tahun, bulan, tutup }: { tahun: number; bulan: number; tutup:
               Telusur asal angka — {NAMA_BULAN[bulan]} {tahun}
             </h3>
             <p className="text-sm text-[#64676C]">
-              OP Margin bulan = <b>{fmtAngka(bln.data?.op_margin)}</b> US¢/kg.{" "}
+              OP Margin bulan = <b>{fmtHarga(bln.data?.op_margin)}</b> US¢/kg.{" "}
               {bln.data?.rumus}
             </p>
           </div>
@@ -68,12 +63,12 @@ function Telusur({ tahun, bulan, tutup }: { tahun: number; bulan: number; tutup:
                       tanggal === h.tanggal ? "bg-[#FFE4E4]" : ""}`}
                     onClick={() => setTanggal(h.tanggal)}>
                   <td className="py-1 text-[#FF1313] underline">{fmtTanggal(h.tanggal)}</td>
-                  <td className="text-right font-mono">{fmtAngka(h.qty_kg, 0)}</td>
-                  <td className="text-right font-mono">{fmtAngka(h.amount_rp, 0)}</td>
-                  <td className="text-right font-mono">{fmtAngka(h.harga_rp_per_kg, 2)}</td>
-                  <td className="text-right font-mono">{fmtAngka(h.kurs, 0)}</td>
-                  <td className="text-right font-mono">{fmtAngka(h.sicom, 2)}</td>
-                  <td className="text-right font-mono">{fmtAngka(h.margin)}</td>
+                  <td className="text-right font-mono">{fmtFieldBerat(h.qty_kg, "qty_kg")}</td>
+                  <td className="text-right font-mono">{fmtUang(h.amount_rp)}</td>
+                  <td className="text-right font-mono">{fmtFieldBerat(h.harga_rp_per_kg, "harga_rp_per_kg")}</td>
+                  <td className="text-right font-mono">{fmtJumlah(h.kurs)}</td>
+                  <td className="text-right font-mono">{fmtHarga(h.sicom)}</td>
+                  <td className="text-right font-mono">{fmtHarga(h.margin)}</td>
                 </tr>
               ))}
             </tbody>
@@ -89,7 +84,7 @@ function Telusur({ tahun, bulan, tutup }: { tahun: number; bulan: number; tutup:
               <div key={i} className="mb-2 rounded-sm border border-[#E4E5E8] p-2 text-xs">
                 <b>Pembelian</b>: {p.item_code}
                 {p.kode_vendor ? ` / ${p.kode_vendor}` : ""}{p.ticket_no ? ` / ${p.ticket_no}` : ""} —{" "}
-                qty {fmtAngka(p.qty_kering_kg, 0)} kg, Amount Rp {fmtAngka(p.amount_rp, 0)}
+                qty {fmtFieldBerat(p.qty_kering_kg, "qty_kering_kg")} kg, Amount Rp {fmtUang(p.amount_rp)}
                 <div className="text-[#64676C]">
                   Asal: unggahan #{p.unggahan?.id} · {p.unggahan?.nama_file} · oleh{" "}
                   {p.unggahan?.pengunggah} · {p.unggahan?.waktu?.replace("T", " ")} UTC
@@ -98,7 +93,7 @@ function Telusur({ tahun, bulan, tutup }: { tahun: number; bulan: number; tutup:
             ))}
             {hr.data?.sicom && (
               <div className="mb-2 rounded-sm border border-[#E4E5E8] p-2 text-xs">
-                <b>SICOM</b>: {fmtAngka(hr.data.sicom.usc_per_kg, 2)} US¢/kg ·{" "}
+                <b>SICOM</b>: {fmtFieldBerat(hr.data.sicom.usc_per_kg, "usc_per_kg")} US¢/kg ·{" "}
                 {hr.data.sicom.sumber ?? "-"}
                 {hr.data.sicom.unggahan &&
                   ` · unggahan #${hr.data.sicom.unggahan.id} oleh ${hr.data.sicom.unggahan.pengunggah}`}
@@ -118,9 +113,9 @@ function Telusur({ tahun, bulan, tutup }: { tahun: number; bulan: number; tutup:
                     <tr key={i} className="border-b border-[#EDEFF2]">
                       <td className="py-1">{t.ticket_no} ({t.line_seq})</td>
                       <td>{t.kode_vendor}</td><td>{t.item_code}</td>
-                      <td className="text-right font-mono">{fmtAngka(t.wet_kg, 0)}</td>
-                      <td className="text-right font-mono">{fmtAngka(t.drc_pct, 1)}</td>
-                      <td className="text-right font-mono">{fmtAngka(t.dry_kg, 0)}</td>
+                      <td className="text-right font-mono">{fmtFieldBerat(t.wet_kg, "wet_kg")}</td>
+                      <td className="text-right font-mono">{fmtPersen(t.drc_pct)}</td>
+                      <td className="text-right font-mono">{fmtFieldBerat(t.dry_kg, "dry_kg")}</td>
                       <td className="text-[#64676C]">
                         #{t.unggahan?.id} · {t.unggahan?.pengunggah}
                       </td>
@@ -143,9 +138,9 @@ function Telusur({ tahun, bulan, tutup }: { tahun: number; bulan: number; tutup:
 /* ---------- panel RCA 5 Why: angka dihitung server dari periode kartu ---------- */
 function PanelRCA({ url, tutup }: { url: string; tutup: () => void }) {
   const q = useQuery({ queryKey: ["rca-rm-stock-intake-pricing", url], queryFn: () => ambilJson(url) });
-  const fmt = (v: number | null | undefined, d = 2) => v == null ? "—" : fmtAngka(v, d);
+  const fmt = (v: number | null | undefined, d = 2) => v == null ? "—" : fmtJumlah(v);
   const delta = (v: number | null | undefined, d = 2) =>
-    v == null ? "—" : `${v > 0 ? "+" : ""}${fmtAngka(v, d)}`;
+    v == null ? "—" : `${v > 0 ? "+" : ""}${fmtJumlah(v)}`;
   const bagian = (judul: string, isi: ReactNode) => (
     <section className="rounded-sm border border-[#E4E5E8] bg-[#F8F8F8] p-3">
       <h4 className="mb-2 text-sm font-semibold text-[#FF1313]">{judul}</h4>{isi}
@@ -243,9 +238,9 @@ function SelBerat({ ton, satuan }: { ton: number | null | undefined; satuan: Sat
   const lainnya: SatuanBerat = satuan === "kg" ? "mt" : "kg";
   return (
     <td className="whitespace-nowrap border-r border-[#EDEFF2] px-3 py-2 text-right font-mono tabular-nums last:border-r-0">
-      <span>{fmtAngka(keBerat(ton, satuan), satuan === "kg" ? 0 : 3)}</span>
+      <span>{fmtJumlah(keBerat(ton, satuan))}</span>
       <span className="block text-[10px] font-normal text-[#9AA0A6]">
-        {fmtAngka(keBerat(ton, lainnya), lainnya === "kg" ? 0 : 3)} {lainnya === "kg" ? "kg" : "MT"}
+        {fmtJumlah(keBerat(ton, lainnya))} {lainnya === "kg" ? "kg" : "MT"}
       </span>
     </td>
   );
@@ -374,11 +369,11 @@ function KartuElemen() {
                 const seriBerat = ["Intake", "RM Stock", "Safety Level Stock"]
                   .includes(String(nama));
                 if (!seriBerat || v === null || v === undefined)
-                  return [fmtAngka(v as number, 4), nama];
-                const utama = `${fmtAngka(v as number, satuan === "kg" ? 0 : 2)} ${labelSatuan}`;
+                  return [fmtJumlah(v as number), nama];
+                const utama = `${fmtJumlah(v as number)} ${labelSatuan}`;
                 const pasangan = satuan === "kg"
-                  ? `${fmtAngka((v as number) / 1000, 3)} MT`
-                  : `${fmtAngka((v as number) * 1000, 0)} kg`;
+                  ? `${fmtJumlah((v as number) / 1000)} MT`
+                  : `${fmtJumlah((v as number) * 1000)} kg`;
                 return [`${utama} (${pasangan})`, nama];
               }} />
               <Legend />
@@ -420,12 +415,12 @@ function KartuElemen() {
                   <SelBerat ton={b.rm_stock_ton} satuan={satuan} />
                   <SelBerat ton={b.intake_ton} satuan={satuan} />
                   <SelBerat ton={b.safety_ton} satuan={satuan} />
-                  <td className="whitespace-nowrap border-r border-[#EDEFF2] px-3 py-2 text-right font-mono tabular-nums last:border-r-0">{fmtAngka(b.sicom, 4)}</td>
-                  <td className="whitespace-nowrap border-r border-[#EDEFF2] px-3 py-2 text-right font-mono tabular-nums last:border-r-0">{fmtAngka(b.op_price, 4)}</td>
+                  <td className="whitespace-nowrap border-r border-[#EDEFF2] px-3 py-2 text-right font-mono tabular-nums last:border-r-0">{fmtHarga(b.sicom)}</td>
+                  <td className="whitespace-nowrap border-r border-[#EDEFF2] px-3 py-2 text-right font-mono tabular-nums last:border-r-0">{fmtHarga(b.op_price)}</td>
                   <td className={`whitespace-nowrap border-r border-[#EDEFF2] px-3 py-2 text-right font-mono font-semibold tabular-nums last:border-r-0 ${
                     b.op_margin === null ? "" : b.op_margin >= 0
                       ? "text-[#15803D]" : "text-[#DC2626]"}`}>
-                    {fmtAngka(b.op_margin, 4)}
+                    {fmtHarga(b.op_margin)}
                   </td>
                   <td className="px-3 py-2 text-[#64676C]">{b.sumber_intake ?? "-"}</td>
                 </tr>
@@ -544,7 +539,7 @@ function KartuGrafikMargin() {
     usc === null || usc === undefined ? null
       : pakaiRp ? (kurs ? (usc * kurs) / 100 : null) : usc;
   const satuan = pakaiRp ? "Rp/kg" : "US¢/kg";
-  const fmtNilai = (n: number) => fmtAngka(n, pakaiRp ? 0 : 2);
+  const fmtNilai = (n: number) => fmtJumlah(n);
 
   const dataTren = (bulanan.data?.baris ?? []).map((b: any) => {
     const m = keSatuan(b.op_margin, b.kurs);
@@ -661,7 +656,7 @@ function KartuGrafikMargin() {
           {mode === "tren" && adaTarget.length > 0 && (
             <span className="ml-auto text-xs text-[#64676C]">
               <b className="text-[#0369A1]">{capai}</b> {t("dari")} {adaTarget.length}{" "}
-              {t("bulan mencapai target")} ({fmtAngka((capai / adaTarget.length) * 100, 0)}%)
+              {t("bulan mencapai target")} ({fmtPersen((capai / adaTarget.length) * 100)}%)
               {tipis > 0 && <span className="text-[#A16207]"> · {tipis} {t("tipis")}</span>}
             </span>
           )}
@@ -694,7 +689,7 @@ function KartuGrafikMargin() {
                         <span className={st.teks}>{st.ikon} {t(p.status)}</span>
                         {p.kurs && (
                           <div className="text-[#64676C] mt-0.5">
-                            {t("Kurs")}: {fmtAngka(p.kurs, 0)} Rp/USD
+                            {t("Kurs")}: {fmtJumlah(p.kurs)} Rp/USD
                           </div>
                         )}
                       </div>
@@ -779,7 +774,7 @@ function KartuGrafikMargin() {
                 {bulanan.data ? ` (${bulanan.data.jumlah_bulan} ${t("bulan")})` : ""}.
                 {" "}
                 <span className="text-[#0369A1]">■ ✓ {t("di atas target")}</span> ·{" "}
-                <span className="text-[#A16207]">■ ≈ {t("tipis")} (&lt; {fmtAngka(ambangTipis, pakaiRp ? 0 : 1)} {satuan} {t("di atas target")})</span> ·{" "}
+                <span className="text-[#A16207]">■ ≈ {t("tipis")} (&lt; {fmtJumlah(ambangTipis)} {satuan} {t("di atas target")})</span> ·{" "}
                 <span className="text-[#C2410C]">■ ! {t("di bawah target")}</span> ·{" "}
                 <span className="text-[#1D2434]">▬ {t("segmen target bulan itu")}</span>
               </p>
@@ -812,7 +807,7 @@ function KartuGrafikMargin() {
                   <YAxis fontSize={11} tick={{ fill: "#64676C" }}
                          label={{ value: "US¢/kg", angle: -90, position: "insideLeft",
                                   fontSize: 11, fill: "#1D2434" }} />
-                  <Tooltip formatter={(v: any) => `${fmtAngka(v as number)} US¢/kg`} />
+                  <Tooltip formatter={(v: any) => `${fmtJumlah(v as number)} US¢/kg`} />
                   <Legend />
                   {antar.data?.filter((th: any) => tahunDipilih.includes(th.tahun))
                     .map((th: any) => (
@@ -848,16 +843,16 @@ function TipBridge({ active, payload }: any) {
     <div className="rounded-sm border border-[#FF1313]/40 bg-white px-3 py-2 text-xs shadow-xl">
       <div className="font-semibold text-[#1D2434] mb-1">{d.label}</div>
       <div className={d.delta >= 0 ? "text-[#15803D]" : "text-[#BE123C]"}>
-        {d.delta >= 0 ? "+" : ""}{fmtAngka(d.delta, 2)} US¢/kg
+        {d.delta >= 0 ? "+" : ""}{fmtJumlah(d.delta)} US¢/kg
       </div>
       {d.langkah && (
         <>
           <div className="text-[#64676C] mt-0.5">
-            {fmtAngka(d.sebelum, 2)} → {fmtAngka(d.sesudah, 2)}
+            {fmtJumlah(d.sebelum)} → {fmtJumlah(d.sesudah)}
           </div>
           {typeof d.mentah === "number" && (
             <div className="text-[#64676C] mt-0.5">
-              {t("perubahan")}: {d.mentah >= 0 ? "+" : ""}{fmtAngka(d.mentah, 2)}
+              {t("perubahan")}: {d.mentah >= 0 ? "+" : ""}{fmtJumlah(d.mentah)}
             </div>
           )}
         </>
@@ -936,10 +931,10 @@ function PanelMarginBridge({ url, tutup, awal, akhir, ubah }: {
           <>
             <div className="mt-3 grid gap-2 sm:grid-cols-3">
               {[
-                [t("OP Margin awal"), fmtAngka(d.awal, 2), "text-[#1D2434]"],
-                [t("Perubahan margin"), `${d.delta_margin >= 0 ? "+" : ""}${fmtAngka(d.delta_margin, 2)}`,
+                [t("OP Margin awal"), fmtJumlah(d.awal), "text-[#1D2434]"],
+                [t("Perubahan margin"), `${d.delta_margin >= 0 ? "+" : ""}${fmtHarga(d.delta_margin)}`,
                  d.delta_margin >= 0 ? "text-[#15803D]" : "text-[#BE123C]"],
-                [t("OP Margin akhir"), fmtAngka(d.akhir, 2), "text-[#1D2434]"],
+                [t("OP Margin akhir"), fmtJumlah(d.akhir), "text-[#1D2434]"],
               ].map(([l, v, k]) => (
                 <div key={l as string} className="rounded-sm border border-[#E4E5E8] bg-[#F8F8F8] p-3">
                   <div className="text-[11px] text-[#64676C]">{l}</div>
@@ -968,7 +963,7 @@ function PanelMarginBridge({ url, tutup, awal, akhir, ubah }: {
                       const d = p?.payload;
                       if (!d) return null;
                       const naik = (d.delta ?? 0) >= 0;
-                      const teks = `${naik ? "+" : "−"}${fmtAngka(Math.abs(d.delta ?? 0), 2)}`;
+                      const teks = `${naik ? "+" : "−"}${fmtJumlah(Math.abs(d.delta ?? 0))}`;
                       const y = naik ? p.y - 6 : p.y + p.height + 12;
                       return (
                         <text x={p.x + p.width / 2} y={y} textAnchor="middle"
@@ -1022,7 +1017,7 @@ function PanelMarginBridge({ url, tutup, awal, akhir, ubah }: {
                       </span>
                       <span className={`font-mono font-bold ${negatif
                         ? "text-[#B91C1C]" : "text-[#15803D]"}`}>
-                        {l.nilai >= 0 ? "+" : "−"}{fmtAngka(Math.abs(l.nilai), 2)}
+                        {l.nilai >= 0 ? "+" : "−"}{fmtJumlah(Math.abs(l.nilai))}
                       </span>
                     </div>
                     <p className="mt-1 text-[11px] leading-relaxed text-[#1D2434]">
@@ -1048,16 +1043,16 @@ function PanelMarginBridge({ url, tutup, awal, akhir, ubah }: {
                       </span>
                     </span>
                     <span className={`font-mono ${l.nilai >= 0 ? "text-[#15803D]" : "text-[#BE123C]"}`}>
-                      {l.nilai >= 0 ? "+" : ""}{fmtAngka(l.nilai, 2)}
+                      {l.nilai >= 0 ? "+" : ""}{fmtJumlah(l.nilai)}
                     </span>
                   </div>
                 ))}
                 {d.passthrough && (
                   <p className="mt-2 text-[#64676C] leading-relaxed">
                     {t("OP Price hanya mengikuti")}{" "}
-                    <b className="text-[#1D2434]">{fmtAngka(Math.abs(d.passthrough.rasio) * 100, 1)}%</b>{" "}
+                    <b className="text-[#1D2434]">{fmtPersen(Math.abs(d.passthrough.rasio) * 100)}%</b>{" "}
                     {t("dari perubahan SICOM; sisa")}{" "}
-                    <b className="text-[#1D2434]">{fmtAngka(Math.abs(d.passthrough.porsi_ditanggung_margin) * 100, 1)}%</b>{" "}
+                    <b className="text-[#1D2434]">{fmtPersen(Math.abs(d.passthrough.porsi_ditanggung_margin) * 100)}%</b>{" "}
                     {t("ditanggung margin.")}
                   </p>
                 )}
@@ -1076,19 +1071,19 @@ function PanelMarginBridge({ url, tutup, awal, akhir, ubah }: {
                           <span className={`font-mono ${(d.rincian_op_price as any)[k] >= 0
                             ? "text-[#15803D]" : "text-[#BE123C]"}`}>
                             {(d.rincian_op_price as any)[k] >= 0 ? "+" : ""}
-                            {fmtAngka((d.rincian_op_price as any)[k], 2)}
+                            {fmtHarga((d.rincian_op_price as any)[k])}
                           </span>
                         </div>
                       ))}
                     <div className="flex justify-between border-t border-[#E4E5E8] mt-1 pt-1">
                       <span className="text-[#1D2434]">{t("Total = −Δ OP Price")}</span>
                       <span className="font-mono text-[#1D2434]">
-                        {fmtAngka(d.rincian_op_price.total, 2)}
+                        {fmtHarga(d.rincian_op_price.total)}
                       </span>
                     </div>
                     <p className="mt-1 text-[#64676C]">
-                      {t("Kurs efektif")}: {fmtAngka(d.rincian_op_price.kurs_a, 0)} →{" "}
-                      {fmtAngka(d.rincian_op_price.kurs_b, 0)} Rp/USD
+                      {t("Kurs efektif")}: {fmtHarga(d.rincian_op_price.kurs_a)} →{" "}
+                      {fmtHarga(d.rincian_op_price.kurs_b)} Rp/USD
                     </p>
                   </>
                 ) : (
@@ -1120,17 +1115,17 @@ function PanelMarginBridge({ url, tutup, awal, akhir, ubah }: {
                         <td className="pt-1.5 pr-2 text-[#1D2434]">{b.bulan}</td>
                         <td className={`text-right px-1 font-mono ${
                           b.kontribusi_sicom >= 0 ? "text-[#15803D]" : "text-[#BE123C]"}`}>
-                          {b.delta_sicom >= 0 ? "+" : ""}{fmtAngka(b.delta_sicom, 2)}
+                          {b.delta_sicom >= 0 ? "+" : ""}{fmtHarga(b.delta_sicom)}
                         </td>
                         <td className="text-right px-1 font-mono text-[#1D2434]">
-                          {b.delta_op_price >= 0 ? "+" : ""}{fmtAngka(b.delta_op_price, 2)}
+                          {b.delta_op_price >= 0 ? "+" : ""}{fmtHarga(b.delta_op_price)}
                         </td>
                         <td className={`text-right px-1 font-mono font-semibold ${
                           b.delta_margin >= 0 ? "text-[#15803D]" : "text-[#BE123C]"}`}>
-                          {b.delta_margin >= 0 ? "+" : ""}{fmtAngka(b.delta_margin, 2)}
+                          {b.delta_margin >= 0 ? "+" : ""}{fmtHarga(b.delta_margin)}
                         </td>
                         <td className="text-right px-1 font-mono text-[#64676C]">
-                          {b.passthrough === null ? "–" : `${fmtAngka(b.passthrough * 100, 0)}%`}
+                          {b.passthrough === null ? "–" : `${fmtPersen(b.passthrough * 100)}%`}
                         </td>
                         <td className="pl-2">
                           <span className={`rounded px-1.5 py-0.5 text-[10px] ${
@@ -1154,7 +1149,7 @@ function PanelMarginBridge({ url, tutup, awal, akhir, ubah }: {
 
             <p className="mt-2 text-xs text-[#64676C]">
               {t("Selisih penutupan (awal + komponen − akhir):")}{" "}
-              <span className="font-mono">{fmtAngka(d.penutupan_selisih, 8)}</span>{" "}
+              <span className="font-mono">{fmtJumlah(d.penutupan_selisih)}</span>{" "}
               {t("— bridge tertutup persis.")}
             </p>
             {d.catatan.map((c: string, i: number) => (
@@ -1225,31 +1220,31 @@ function PanelDaysOfCover({ url, tutup, awal, akhir, ubah }: {
             <div className="mt-3 flex flex-wrap items-end gap-6">
               <div>
                 <div className="text-4xl font-bold font-mono text-[#FF1313]">
-                  {fmtAngka(kini.doc_hari, 1)}{" "}
+                  {fmtJumlah(kini.doc_hari)}{" "}
                   <span className="text-base text-[#64676C]">{t("hari")}</span>
                 </div>
                 <div className="text-xs text-[#64676C] mt-1">
-                  {kini.bulan} · {t("stok akhir")} {fmtAngka(kini.stok_akhir_ton, 0)} ton ·{" "}
-                  {t("pemakaian")} {fmtAngka(kini.pemakaian_harian_ton, 0)} ton/{t("hari")}
+                  {kini.bulan} · {t("stok akhir")} {fmtFieldBerat(kini.stok_akhir_ton, "stok_akhir_ton")} ton ·{" "}
+                  {t("pemakaian")} {fmtFieldBerat(kini.pemakaian_harian_ton, "pemakaian_harian_ton")} ton/{t("hari")}
                 </div>
               </div>
               <span className={`rounded-sm border px-3 py-1 text-xs font-medium ${warnaStatus(kini.status)}`}>
-                {t(kini.status)} · {t("safety")} {fmtAngka(kini.safety_hari, 1)} {t("hari")}
+                {t(kini.status)} · {t("safety")} {fmtJumlah(kini.safety_hari)} {t("hari")}
               </span>
               <div className="text-xs text-[#64676C]">
                 <div>
                   {t("Rerata pemakaian:")}{" "}
-                  <b className="text-[#1D2434] font-mono">{fmtAngka(d.rerata_pemakaian_bulan_ton, 0)}</b>{" "}
-                  ton/{t("bulan")} ({fmtAngka(d.rerata_pemakaian_harian_ton, 0)} ton/{t("hari")})
+                  <b className="text-[#1D2434] font-mono">{fmtFieldBerat(d.rerata_pemakaian_bulan_ton, "rerata_pemakaian_bulan_ton")}</b>{" "}
+                  ton/{t("bulan")} ({fmtFieldBerat(d.rerata_pemakaian_harian_ton, "rerata_pemakaian_harian_ton")} ton/{t("hari")})
                 </div>
                 <div>
                   {t("Safety dinamis (21,5 hari):")} <b className="text-[#1D2434] font-mono">
-                    {fmtAngka(d.safety_dinamis_ton, 0)}</b> ton
+                    {fmtFieldBerat(d.safety_dinamis_ton, "safety_dinamis_ton")}</b> ton
                 </div>
                 <div>
-                  {t("Terendah:")} <b className="text-[#BE123C] font-mono">{fmtAngka(d.terendah?.doc_hari, 1)}</b>{" "}
+                  {t("Terendah:")} <b className="text-[#BE123C] font-mono">{fmtJumlah(d.terendah?.doc_hari)}</b>{" "}
                   ({d.terendah?.bulan}) · {t("Tertinggi:")}{" "}
-                  <b className="text-[#15803D] font-mono">{fmtAngka(d.tertinggi?.doc_hari, 1)}</b>{" "}
+                  <b className="text-[#15803D] font-mono">{fmtJumlah(d.tertinggi?.doc_hari)}</b>{" "}
                   ({d.tertinggi?.bulan}) · {t("bulan di bawah safety:")}{" "}
                   <b className="text-[#1D2434] font-mono">{d.jumlah_bulan_di_bawah_safety}</b>/{d.jumlah_bulan}
                 </div>
@@ -1268,7 +1263,7 @@ function PanelDaysOfCover({ url, tutup, awal, akhir, ubah }: {
                                            borderRadius: 8, fontSize: 12,
                                            color: "#1D2434" }}
                            formatter={(v: any, _n: any, p: any) =>
-                             [fmtAngka(v, 1), p?.dataKey === "doc" ? t("Days of cover")
+                             [fmtJumlah(v), p?.dataKey === "doc" ? t("Days of cover")
                                : t("Safety (hari)")]} />
                   <Legend wrapperStyle={{ fontSize: 12 }} />
                   <Bar dataKey="doc" name={t("Days of cover")} isAnimationActive={false}>
@@ -1304,16 +1299,16 @@ function PanelDaysOfCover({ url, tutup, awal, akhir, ubah }: {
                       <td className="py-1 pr-2 text-[#1D2434]" title={b.alasan_cek.join("; ")}>
                         {b.bulan}{b.perlu_cek ? " ⚠" : ""}
                       </td>
-                      <td className="text-right px-1 font-mono text-[#64676C]">{fmtAngka(b.stok_awal_ton, 0)}</td>
-                      <td className="text-right px-1 font-mono text-[#1D2434]">{fmtAngka(b.intake_ton, 0)}</td>
-                      <td className="text-right px-1 font-mono text-[#1D2434]">{fmtAngka(b.stok_akhir_ton, 0)}</td>
-                      <td className="text-right px-1 font-mono text-[#64676C]">{fmtAngka(b.pemakaian_ton, 0)}</td>
-                      <td className="text-right px-1 font-mono text-[#64676C]">{fmtAngka(b.pemakaian_harian_ton, 0)}</td>
+                      <td className="text-right px-1 font-mono text-[#64676C]">{fmtFieldBerat(b.stok_awal_ton, "stok_awal_ton")}</td>
+                      <td className="text-right px-1 font-mono text-[#1D2434]">{fmtFieldBerat(b.intake_ton, "intake_ton")}</td>
+                      <td className="text-right px-1 font-mono text-[#1D2434]">{fmtFieldBerat(b.stok_akhir_ton, "stok_akhir_ton")}</td>
+                      <td className="text-right px-1 font-mono text-[#64676C]">{fmtFieldBerat(b.pemakaian_ton, "pemakaian_ton")}</td>
+                      <td className="text-right px-1 font-mono text-[#64676C]">{fmtFieldBerat(b.pemakaian_harian_ton, "pemakaian_harian_ton")}</td>
                       <td className={`text-right px-1 font-mono font-semibold ${
                         b.status === "aman" ? "text-[#15803D]" : "text-[#BE123C]"}`}>
-                        {fmtAngka(b.doc_hari, 1)}
+                        {fmtJumlah(b.doc_hari)}
                       </td>
-                      <td className="text-right px-1 font-mono text-[#B45309]">{fmtAngka(b.safety_hari, 1)}</td>
+                      <td className="text-right px-1 font-mono text-[#B45309]">{fmtJumlah(b.safety_hari)}</td>
                       <td className="pl-2 text-[#64676C]">{t(b.status)}</td>
                     </tr>
                   ))}
@@ -1346,7 +1341,7 @@ function PanelDaysOfCover({ url, tutup, awal, akhir, ubah }: {
    ========================================================================== */
 
 const tandaAngka = (n: number | null | undefined, des = 2) =>
-  n === null || n === undefined ? "–" : (n > 0 ? "+" : "") + fmtAngka(n, des);
+  n === null || n === undefined ? "–" : (n > 0 ? "+" : "") + fmtJumlah(n);
 
 const potong = (s: string, n = 110) =>
   s.length > n ? `${s.slice(0, n).trimEnd()}…` : s;
@@ -1364,7 +1359,7 @@ function BlokAngka({ label, angka, nilai, desimal = 2, satuan, bawah, arah, nada
 }) {
   const hitung = useCountUp(nilai);
   const angkaTampil = nilai !== undefined
-    ? hitung.nilai === null ? "–" : fmtAngka(hitung.nilai, desimal)
+    ? hitung.nilai === null ? "–" : fmtJumlah(hitung.nilai)
     : angka ?? "–";
   const warna = nada === "buruk" ? "text-[#FF1313]" : "text-[#1D2434]";
   const warnaNilai = hitung.kilat
@@ -1459,7 +1454,7 @@ function StripAngkaKunci({ thn, data, ke }: {
           arah={statusTarget === "netral" ? null : statusTarget === "baik" ? "naik" : "turun"}
           nada={statusTarget}
           bawah={kini.target != null
-            ? `${statusTarget === "baik" ? "Kabar baik" : "Kabar buruk"}: margin ${statusTarget === "baik" ? "di atas" : "di bawah"} target ${fmtAngka(Math.abs(kini.vs_target ?? 0), 2)} US¢/kg (target ${fmtAngka(kini.target, 2)}).`
+            ? `${statusTarget === "baik" ? "Kabar baik" : "Kabar buruk"}: margin ${statusTarget === "baik" ? "di atas" : "di bawah"} target ${fmtJumlah(Math.abs(kini.vs_target ?? 0))} US¢/kg (target ${fmtJumlah(kini.target)}).`
             : "Belum ada target; status kinerja belum dapat dinilai."}
         />
         <BlokAngka
@@ -1469,8 +1464,8 @@ function StripAngkaKunci({ thn, data, ke }: {
           arah={statusMargin === "netral" ? null : statusMargin === "baik" ? "naik" : "turun"}
           nada={statusMargin}
           bawah={selisih === null ? "Belum ada bulan berdata sebelumnya sebagai pembanding."
-            : selisih > 0 ? `Kabar baik: margin naik ${fmtAngka(selisih, 2)} US¢/kg vs bulan berdata sebelumnya.`
-            : selisih < 0 ? `Kabar buruk: margin turun ${fmtAngka(Math.abs(selisih), 2)} US¢/kg vs bulan berdata sebelumnya.`
+            : selisih > 0 ? `Kabar baik: margin naik ${fmtJumlah(selisih)} US¢/kg vs bulan berdata sebelumnya.`
+            : selisih < 0 ? `Kabar buruk: margin turun ${fmtJumlah(Math.abs(selisih))} US¢/kg vs bulan berdata sebelumnya.`
             : "Margin stabil dibanding bulan berdata sebelumnya."}
         />
         <BlokAngka
@@ -1481,8 +1476,8 @@ function StripAngkaKunci({ thn, data, ke }: {
           arah={statusSicom === "netral" ? null : statusSicom === "baik" ? "naik" : "turun"}
           nada={statusSicom}
           bawah={dSicom === null ? "Belum ada perubahan historis untuk dibandingkan."
-            : dSicom > 0 ? `Kabar baik: SICOM naik ${fmtAngka(dSicom, 2)}; mendukung margin bila OP Price tidak naik sebanding.`
-            : dSicom < 0 ? `Kabar buruk: SICOM turun ${fmtAngka(Math.abs(dSicom), 2)}; menekan margin bila OP Price tidak turun mengimbangi.`
+            : dSicom > 0 ? `Kabar baik: SICOM naik ${fmtHarga(dSicom)}; mendukung margin bila OP Price tidak naik sebanding.`
+            : dSicom < 0 ? `Kabar buruk: SICOM turun ${fmtHarga(Math.abs(dSicom))}; menekan margin bila OP Price tidak turun mengimbangi.`
             : "SICOM stabil dibanding bulan berdata sebelumnya."}
         />
         <BlokAngka
@@ -1493,12 +1488,12 @@ function StripAngkaKunci({ thn, data, ke }: {
           arah={statusDoc === "netral" ? null : statusDoc === "baik" ? "naik" : "turun"}
           nada={statusDoc}
           bawah={docKini?.safety_hari != null
-            ? `${statusDoc === "baik" ? "Kabar baik" : "Kabar buruk"}: cover ${fmtAngka(docKini.doc_hari, 1)} hari; safety ${fmtAngka(docKini.safety_hari, 1)} hari.`
+            ? `${statusDoc === "baik" ? "Kabar baik" : "Kabar buruk"}: cover ${fmtJumlah(docKini.doc_hari)} hari; safety ${fmtJumlah(docKini.safety_hari)} hari.`
             : "Belum ada safety atau data yang cukup untuk menilai cover."}
           anakTambahan={docKini?.doc_hari != null && docKini?.safety_hari != null
             ? <PengukurAmbang label="Rasio terhadap safety" nilai={docKini.doc_hari}
-                ambang={docKini.safety_hari} nilaiTeks={`${fmtAngka(docKini.doc_hari, 1)} hari`}
-                ambangTeks={`${fmtAngka(docKini.safety_hari, 1)} hari`} />
+                ambang={docKini.safety_hari} nilaiTeks={`${fmtJumlah(docKini.doc_hari)} hari`}
+                ambangTeks={`${fmtJumlah(docKini.safety_hari)} hari`} />
             : null}
         />
         <BlokAngka
@@ -1509,8 +1504,8 @@ function StripAngkaKunci({ thn, data, ke }: {
           arah={statusIntake === "netral" ? null : statusIntake === "baik" ? "naik" : "turun"}
           nada={statusIntake}
           bawah={intakeChange === null ? `${kini.hari_pembelian ?? "–"} hari pembelian; belum ada pembanding.`
-            : intakeChange > 0 ? `Kabar baik: volume intake naik ${fmtAngka(intakeChange, 2)} ton dari bulan berdata sebelumnya.`
-            : intakeChange < 0 ? `Kabar buruk: volume intake turun ${fmtAngka(Math.abs(intakeChange), 2)} ton dari bulan berdata sebelumnya.`
+            : intakeChange > 0 ? `Kabar baik: volume intake naik ${fmtJumlah(intakeChange)} ton dari bulan berdata sebelumnya.`
+            : intakeChange < 0 ? `Kabar buruk: volume intake turun ${fmtJumlah(Math.abs(intakeChange))} ton dari bulan berdata sebelumnya.`
             : "Volume intake sama dengan bulan berdata sebelumnya."}
         />
         </div>
@@ -1552,8 +1547,8 @@ function PanelPerhatian({ ke }: { ke?: (tab: string) => void }) {
     if (r.status === "OK" && r.harga_beli_maks_rp_kg != null) {
       baris.push({
         kunci: "rekom",
-        judul: `${t("Harga beli maksimum hari ini")}: Rp ${fmtAngka(r.harga_beli_maks_rp_kg, 0)}/kg`,
-        isi: `${fmtAngka(r.harga_beli_maks_usc, 2)} US¢/kg · ` +
+        judul: `${t("Harga beli maksimum hari ini")}: Rp ${fmtFieldBerat(r.harga_beli_maks_rp_kg, "harga_beli_maks_rp_kg")}/kg`,
+        isi: `${fmtHarga(r.harga_beli_maks_usc)} US¢/kg · ` +
              (r.alasan?.[0] ?? t("sesuai aturan stok → harga yang berlaku")),
         tab: "aturan", tautan: t("Aturan Harga"), nada: "abu",
       });
@@ -1742,17 +1737,17 @@ export default function Ringkasan({ ke }: { ke?: (tab: string) => void }) {
                           title={kunci === "op_margin" ? (b.catatan_koreksi ?? "klik untuk telusur") : undefined}
                           onClick={() => kunci === "op_margin" && setTelusur(b.bulan)}>
                         {kunci === "pencapaian"
-                          ? (b.pencapaian !== null ? fmtAngka(b.pencapaian * 100, 2) + "%" : "–")
-                          : fmtAngka(b[kunci], 2)}
+                          ? (b.pencapaian !== null ? fmtPersen(b.pencapaian * 100) + "%" : "–")
+                          : fmtJumlah(b[kunci])}
                       </td>
                     ))}
                     <td className="text-right px-1 font-mono font-semibold">
-                      {kunci === "sicom" ? fmtAngka(ringkas.data?.avg_ytd_sicom_sederhana, 2)
-                        : kunci === "op_price" ? fmtAngka(ringkas.data?.avg_ytd_op_price_sederhana, 2)
-                        : kunci === "op_margin" ? fmtAngka(ringkas.data?.avg_ytd_sederhana, 2) : ""}
+                      {kunci === "sicom" ? fmtHarga(ringkas.data?.avg_ytd_sicom_sederhana)
+                        : kunci === "op_price" ? fmtHarga(ringkas.data?.avg_ytd_op_price_sederhana)
+                        : kunci === "op_margin" ? fmtJumlah(ringkas.data?.avg_ytd_sederhana) : ""}
                     </td>
                     <td className="text-right px-1 font-mono text-[#64676C]">
-                      {kunci === "op_margin" ? fmtAngka(ringkas.data?.avg_ytd_tertimbang, 2) : ""}
+                      {kunci === "op_margin" ? fmtJumlah(ringkas.data?.avg_ytd_tertimbang) : ""}
                     </td>
                   </tr>
                 ))}

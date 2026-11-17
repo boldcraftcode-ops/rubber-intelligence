@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 from .auth_lokal import info_pengguna, wajib_admin
 from .models import PreferensiBawaan, PreferensiPengguna
 
-BAWAAN = {"desimal_angka": 3, "desimal_persen": 1, "satuan_berat": "otomatis"}
+BAWAAN = {"desimal_angka": 3, "desimal_persen": 1, "satuan_berat": "otomatis", "pemisah_desimal": ",", "format_tanggal": "dd/mm/yyyy", "angka_ringkas": False, "tema": "terang", "kepadatan": "nyaman", "ukuran_huruf": "normal", "kurangi_animasi": False, "halaman_awal": "ringkasan", "baris_per_halaman": 25, "ingat_filter": True, "pemisah_csv": ","}
 KUNCI = frozenset(BAWAAN)
 
 
@@ -19,6 +19,17 @@ class PreferensiMasuk(BaseModel):
     desimal_angka: StrictInt | None = None
     desimal_persen: StrictInt | None = None
     satuan_berat: Literal["kg", "ton", "otomatis"] | None = None
+    pemisah_desimal: Literal[",", "."] | None = None
+    format_tanggal: Literal["dd/mm/yyyy", "mm/dd/yyyy", "yyyy-mm-dd"] | None = None
+    angka_ringkas: StrictBool | None = None
+    tema: Literal["terang", "gelap", "sistem"] | None = None
+    kepadatan: Literal["nyaman", "ringkas"] | None = None
+    ukuran_huruf: Literal["kecil", "normal", "besar"] | None = None
+    kurangi_animasi: StrictBool | None = None
+    halaman_awal: Literal["ringkasan", "analisis", "stok", "traceability"] | None = None
+    baris_per_halaman: StrictInt | None = None
+    ingat_filter: StrictBool | None = None
+    pemisah_csv: Literal[",", ";"] | None = None
 
 
 class BawaanMasuk(BaseModel):
@@ -39,6 +50,8 @@ def _validasi(nilai: dict, boleh_kosong: bool = False) -> dict:
             raise HTTPException(422, "Desimal persen harus berupa bilangan 0 sampai 2.")
         if kunci == "satuan_berat" and isi not in ("kg", "ton", "otomatis"):
             raise HTTPException(422, "Satuan berat harus kg, ton, atau otomatis.")
+        if kunci == "baris_per_halaman" and (type(isi) is not int or isi not in (10, 25, 50, 100)):
+            raise HTTPException(422, "Baris per halaman harus 10, 25, 50, atau 100.")
     return nilai
 
 

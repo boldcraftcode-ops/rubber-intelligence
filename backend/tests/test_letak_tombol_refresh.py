@@ -42,7 +42,8 @@ def test_intake_analisis_refresh_di_samping_periode():
     assert analisis.count("aksi={<TombolRefreshKartu />}") == 8
     # Pilihan tahun+bulan pada Margin harian tidak memakai komponen pemilih bersama.
     assert "</select>\n          <TombolRefreshKartu />" in analisis
-    assert "TombolRefreshKartu,\n} from \"../bersama\"" in analisis
+    assert 'import { fmtFieldBerat } from "../satuan";' in analisis
+    assert "TombolRefreshKartu" in analisis and 'from "../bersama"' in analisis
 
     # "Daftar intake terakhir" sekarang punya Periode records + filter vendor,
     # jadi Refresh miliknya ikut berada di baris filter.

@@ -39,6 +39,8 @@ def mode_lokal(monkeypatch, tmp_path):
 def test_auth_disabled_diabaikan_dan_login_selalu_wajib(monkeypatch):
     monkeypatch.setenv("OP_MARGIN_TEST_LOGIN", "0")
     monkeypatch.setenv("APP_ENV", "development")
+    monkeypatch.delenv("E2B_SANDBOX", raising=False)
+    monkeypatch.delenv("SANDBOX_AUTH_BYPASS", raising=False)
     monkeypatch.delenv("AUTH_MODE", raising=False)
     monkeypatch.delenv("CF_ACCESS_AUD", raising=False)
     monkeypatch.setenv("AUTH_DISABLED", "true")
@@ -47,6 +49,16 @@ def test_auth_disabled_diabaikan_dan_login_selalu_wajib(monkeypatch):
     assert isi["mode"] == "lokal" and isi["cara"] == "username-sandi"
     assert isi["perlu_login"] is True and isi["produksi"] is False
     assert klien.get("/api/auth/saya").status_code == 401
+
+
+def test_bypass_hanya_aktif_di_pratinjau_e2b(monkeypatch):
+    monkeypatch.setenv("OP_MARGIN_TEST_LOGIN", "0")
+    monkeypatch.setenv("APP_ENV", "development")
+    monkeypatch.setenv("E2B_SANDBOX", "true")
+    monkeypatch.setenv("SANDBOX_AUTH_BYPASS", "true")
+    klien = _klien()
+    assert klien.get("/api/auth/saya").status_code == 200
+    assert klien.get("/api/vendor").status_code == 200
 
 
 def test_health_melaporkan_cara_login(mode_lokal):

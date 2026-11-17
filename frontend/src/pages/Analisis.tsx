@@ -1,16 +1,10 @@
+import { fmtFieldBerat } from "../satuan";
 import { Fragment, useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
-  Bar, BarChart, CartesianGrid, Legend, Line, LineChart, ResponsiveContainer,
-  Tooltip, XAxis, YAxis,
-} from "recharts";
+  Bar, BarChart, CartesianGrid, Legend, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis, } from "recharts";
 import {
-  Kartu, KartuMuatSaatDiminta, NAMA_BULAN, Panel5W1H, PilihRentangBulan, akhirBulan,
-  awalTahunBerjalan, bulanBerjalan, hariIni,
-  KepalaPanel, ambilJson, fmtAngka, fmtTanggal, hitungJumlahBulan, kelasInput,
-  kelasTombolAnalisa, kelasTombolKecil, pesanGalat, useQueryKartu,
-  TombolRefreshKartu,
-} from "../bersama";
+  Kartu, KartuMuatSaatDiminta, NAMA_BULAN, Panel5W1H, PilihRentangBulan, akhirBulan, awalTahunBerjalan, bulanBerjalan, hariIni, KepalaPanel, ambilJson, fmtTanggal, hitungJumlahBulan, kelasInput, kelasTombolAnalisa, kelasTombolKecil, pesanGalat, useQueryKartu, TombolRefreshKartu, fmtJumlah, fmtPersen, fmtHarga } from "../bersama";
 import PetaIntake from "./PetaIntake";
 
 import { AlatGrafik } from "../GrafikTools";
@@ -41,7 +35,7 @@ export function TabelBulanan({ data, dimensi, nilaiKey, desimal, satuan,
 
   const sel = (v: number | null | undefined) => v === null || v === undefined
     ? "–"
-    : (v === 0 ? "0" : fmtAngka(v, desimal));
+    : (v === 0 ? "0" : fmtJumlah(v));
 
   return (
     <div className="mt-3 overflow-x-auto">
@@ -80,7 +74,7 @@ export function TabelBulanan({ data, dimensi, nilaiKey, desimal, satuan,
               </td>
               <td className="px-2 py-1 text-right font-mono">
                 {b.porsi !== null && b.porsi !== undefined
-                  ? fmtAngka(b.porsi * 100, 1) + "%" : "–"}
+                  ? fmtPersen(b.porsi * 100) + "%" : "–"}
               </td>
             </tr>
           ))}
@@ -166,9 +160,9 @@ export function RincianBulanan({ data, dimensi, drill }: {
           <BarChart data={grafik} margin={{ top: 5, right: 20, bottom: 5, left: 10 }}>
             <CartesianGrid strokeDasharray="3 3" />
             <XAxis dataKey="nama" fontSize={10} />
-            <YAxis fontSize={10} tickFormatter={(v) => fmtAngka(v as number, 0)} />
+            <YAxis fontSize={10} tickFormatter={(v) => fmtJumlah(v as number)} />
             <Tooltip formatter={(v: any, nama: any) =>
-              [fmtAngka(v as number, 0) + " kg", nama]} />
+              [fmtJumlah(v as number) + " kg", nama]} />
             <Legend wrapperStyle={{ fontSize: 11 }} />
             {seri.map((s: any, i: number) => (
               <Bar key={s.kunci} dataKey={s.label} stackId="kg"
@@ -207,14 +201,14 @@ export function RincianBulanan({ data, dimensi, drill }: {
                 {b.kg_per_bulan.map((kg: number, j: number) => (
                   <td key={j} className={`px-2 py-1 text-right font-mono ${
                     kg === 0 ? "text-[#C9CCD1]" : ""}`}>
-                    {fmtAngka(kg, 0)}
+                    {fmtJumlah(kg)}
                   </td>
                 ))}
                 <td className="px-2 py-1 text-right font-mono font-semibold">
-                  {fmtAngka(b.kg_total, 0)}
+                  {fmtJumlah(b.kg_total)}
                 </td>
                 <td className="px-2 py-1 text-right font-mono">
-                  {b.porsi !== null ? fmtAngka(b.porsi * 100, 1) + "%" : "–"}
+                  {b.porsi !== null ? fmtPersen(b.porsi * 100) + "%" : "–"}
                 </td>
               </tr>
             ))}
@@ -222,10 +216,10 @@ export function RincianBulanan({ data, dimensi, drill }: {
               <td className="sticky left-0 z-10 bg-[#F8F8F8] py-1 pr-3">Total per bulan</td>
               {data.total_per_bulan.map((kg: number, j: number) => (
                 <td key={j} className="px-2 py-1 text-right font-mono">
-                  {fmtAngka(kg, 0)}
+                  {fmtJumlah(kg)}
                 </td>
               ))}
-              <td className="px-2 py-1 text-right font-mono">{fmtAngka(data.total_kg, 0)}</td>
+              <td className="px-2 py-1 text-right font-mono">{fmtFieldBerat(data.total_kg, "total_kg")}</td>
               <td className="px-2 py-1 text-right font-mono">100%</td>
             </tr>
           </tbody>
@@ -236,11 +230,11 @@ export function RincianBulanan({ data, dimensi, drill }: {
         {data.jumlah_bulan} bulan × {seri.length} baris
         {data.jumlah_dimensi > seri.length
           ? ` (dari ${data.jumlah_dimensi} ${dimensi}, sisanya digabung)` : ""}
-        {" "}· total {fmtAngka(data.total_kg, 0)} kg — biasa{" "}
-        {fmtAngka(data.total_kg_biasa, 0)} kg · EUDR{" "}
+        {" "}· total {fmtFieldBerat(data.total_kg, "total_kg")} kg — biasa{" "}
+        {fmtJumlah(data.total_kg_biasa)} kg · EUDR{" "}
         <span className="text-[#15803D]">
-          {fmtAngka(data.total_kg_eudr, 0)} kg
-          ({data.total_kg ? fmtAngka(data.total_kg_eudr / data.total_kg * 100, 1) : 0}%)
+          {fmtJumlah(data.total_kg_eudr)} kg
+          ({data.total_kg ? fmtPersen(data.total_kg_eudr / data.total_kg * 100) : 0}%)
         </span>
         {" "}· sel kosong = tidak ada penerimaan bulan itu
       </p>
@@ -261,7 +255,7 @@ function AngkaPertumbuhan({ nilai }: { nilai: number | null | undefined }) {
   const kelas = naik ? "text-[#15803D]" : turun ? "text-[#DC2626]" : "text-[#64676C]";
   return (
     <span className={kelas}>
-      {naik ? "▲" : turun ? "▼" : "■"} {fmtAngka(Math.abs(nilai), 2)}%
+      {naik ? "▲" : turun ? "▼" : "■"} {fmtJumlah(Math.abs(nilai))}%
     </span>
   );
 }
@@ -365,9 +359,9 @@ export function AnalisisTren({ dari, sampai, modeEudr, bukaAwal = false }: {
                   <LineChart data={grafik} margin={{ top: 5, right: 15, bottom: 5, left: 0 }}>
                     <CartesianGrid strokeDasharray="3 3" />
                     <XAxis dataKey="nama" fontSize={10} minTickGap={20} />
-                    <YAxis fontSize={10} tickFormatter={(v) => fmtAngka(v as number, 0)} />
+                    <YAxis fontSize={10} tickFormatter={(v) => fmtJumlah(v as number)} />
                     <Tooltip formatter={(v: any, n: any) => [
-                      v === null ? "–" : fmtAngka(v as number, 0) + " kg", n]} />
+                      v === null ? "–" : fmtJumlah(v as number) + " kg", n]} />
                     <Legend wrapperStyle={{ fontSize: 11 }} />
                     <Line type="monotone" dataKey="Total kg" stroke="#1D2434"
                           strokeWidth={2} dot={{ r: 2 }} />
@@ -397,12 +391,12 @@ export function AnalisisTren({ dari, sampai, modeEudr, bukaAwal = false }: {
                     {(data.bulan ?? []).map((b: any, i: number) => (
                       <tr key={b.ym} className="border-b border-[#EDEFF2]">
                         <td className="py-1 whitespace-nowrap">{b.label}</td>
-                        <td className="text-right font-mono">{fmtAngka(data.total_kg[i], 0)}</td>
-                        <td className="text-right font-mono">{fmtAngka(data.biasa_kg[i], 0)}</td>
-                        <td className="text-right font-mono text-[#15803D]">{fmtAngka(data.eudr_kg[i], 0)}</td>
+                        <td className="text-right font-mono">{fmtJumlah(data.total_kg[i])}</td>
+                        <td className="text-right font-mono">{fmtJumlah(data.biasa_kg[i])}</td>
+                        <td className="text-right font-mono text-[#15803D]">{fmtJumlah(data.eudr_kg[i])}</td>
                         <td className="text-right font-mono">
                           {data.ma3[i] === null ? <span className="text-[#9AA0A6]">–</span>
-                            : fmtAngka(data.ma3[i], 0)}
+                            : fmtJumlah(data.ma3[i])}
                         </td>
                         <td className="text-right font-mono"><AngkaPertumbuhan nilai={data.mom_pct[i]} /></td>
                         <td className="text-right font-mono"><AngkaPertumbuhan nilai={data.yoy_pct[i]} /></td>
@@ -427,7 +421,7 @@ export function AnalisisTren({ dari, sampai, modeEudr, bukaAwal = false }: {
                       {dekom.metode} · {dekom.jumlah_bulan} bulan · kekuatan musiman{" "}
                       <b className={dekom.kekuatan_musiman_pct >= 15
                         ? "text-[#1D2434]" : "text-[#B45309]"}>
-                        {fmtAngka(dekom.kekuatan_musiman_pct, 1)}%
+                        {fmtPersen(dekom.kekuatan_musiman_pct)}%
                       </b>. {dekom.catatan}
                     </p>
                     <div className="h-56">
@@ -436,9 +430,9 @@ export function AnalisisTren({ dari, sampai, modeEudr, bukaAwal = false }: {
                                    margin={{ top: 5, right: 15, bottom: 5, left: 0 }}>
                           <CartesianGrid strokeDasharray="3 3" />
                           <XAxis dataKey="nama" fontSize={10} minTickGap={20} />
-                          <YAxis fontSize={10} tickFormatter={(v) => fmtAngka(v as number, 0)} />
+                          <YAxis fontSize={10} tickFormatter={(v) => fmtJumlah(v as number)} />
                           <Tooltip formatter={(v: any, n: any) => [
-                            v === null ? "–" : fmtAngka(v as number, 0) + " kg", n]} />
+                            v === null ? "–" : fmtJumlah(v as number) + " kg", n]} />
                           <Legend wrapperStyle={{ fontSize: 11 }} />
                           <Line type="monotone" dataKey="Nilai aktual" stroke="#64676C"
                                 strokeWidth={1} dot={false} />
@@ -464,10 +458,10 @@ export function AnalisisTren({ dari, sampai, modeEudr, bukaAwal = false }: {
                                    : "border-[#E4E5E8] bg-white"}`}>
                           <span className="font-semibold text-[#1D2434]">{m.label}</span>{" "}
                           <span className="font-mono">
-                            {m.kg > 0 ? "+" : ""}{fmtAngka(m.kg, 0)} kg
+                            {m.kg > 0 ? "+" : ""}{fmtJumlah(m.kg)} kg
                           </span>
                           {m.pct !== null && (
-                            <span className="text-[#64676C]"> ({m.kg > 0 ? "+" : ""}{fmtAngka(m.pct, 1)}%)</span>
+                            <span className="text-[#64676C]"> ({m.kg > 0 ? "+" : ""}{fmtPersen(m.pct)}%)</span>
                           )}
                         </div>
                       ))}
@@ -578,7 +572,7 @@ export function AnalisisKomposisi({ dari, sampai, modeEudr, dimensi,
                onClick={(e) => e.stopPropagation()}>
             <KepalaPanel judul={"Analisis deskriptif & komposisi — penerimaan karet"}
                          periode={d && baris.length
-                           ? `${fmtAngka(d.total_ton, 1)} ton · ${d.jumlah_tiket} tiket`
+                           ? `${fmtFieldBerat(d.total_ton, "total_ton")} ton · ${d.jumlah_tiket} tiket`
                            : undefined}
                          url={url} tutup={() => setBuka(false)} />
 
@@ -621,15 +615,15 @@ export function AnalisisKomposisi({ dari, sampai, modeEudr, dimensi,
                     {/* ---- KPI ringkas ---- */}
                     <div className="mt-3 grid grid-cols-2 sm:grid-cols-4 gap-2">
                       {[
-                        ["Total", fmtAngka(d.total_kg, 0) + " kg",
-                          fmtAngka(d.total_ton, 1) + " ton"],
+                        ["Total", fmtFieldBerat(d.total_kg, "total_kg") + " kg",
+                          fmtFieldBerat(d.total_ton, "total_ton") + " ton"],
                         ["Wilayah terbesar", d.konsentrasi.top1_label ?? "–",
-                          `${fmtAngka(d.konsentrasi.top1_porsi_pct, 1)}% dari total`],
+                          `${fmtPersen(d.konsentrasi.top1_porsi_pct)}% dari total`],
                         ["Mencapai 80%", `${d.pareto.jumlah_kategori_80} dari ${d.jumlah_kategori}`,
                           "kategori (Pareto)"],
                         ["Share EUDR", d.eudr.porsi_pct === null ? "–"
-                          : fmtAngka(d.eudr.porsi_pct, 2) + "%",
-                          `${fmtAngka(d.eudr.total_kg, 0)} kg dari total`],
+                          : fmtPersen(d.eudr.porsi_pct) + "%",
+                          `${fmtFieldBerat(d.eudr.total_kg, "total_kg")} kg dari total`],
                       ].map(([judul, nilai, bawah]) => (
                         <div key={judul as string}
                              className="rounded-sm border border-[#E4E5E8] bg-[#F8F8F8] p-2.5">
@@ -643,9 +637,9 @@ export function AnalisisKomposisi({ dari, sampai, modeEudr, dimensi,
                     <p className="mt-2 rounded-sm border border-[#E4E5E8] bg-white px-3 py-2 text-xs text-[#64676C]">
                       <b className="text-[#1D2434]">Ketergantungan pasokan:</b>{" "}
                       {d.konsentrasi.top1_label} menyumbang{" "}
-                      {fmtAngka(d.konsentrasi.top1_porsi_pct, 1)}%; tiga terbesar{" "}
-                      {fmtAngka(d.konsentrasi.top3_porsi_pct, 1)}%. Indeks
-                      konsentrasi (HHI) {fmtAngka(d.konsentrasi.hhi, 3)} —{" "}
+                      {fmtPersen(d.konsentrasi.top1_porsi_pct)}%; tiga terbesar{" "}
+                      {fmtPersen(d.konsentrasi.top3_porsi_pct)}%. Indeks
+                      konsentrasi (HHI) {fmtJumlah(d.konsentrasi.hhi)} —{" "}
                       {d.konsentrasi.label}.
                     </p>
 
@@ -664,8 +658,8 @@ export function AnalisisKomposisi({ dari, sampai, modeEudr, dimensi,
                             <XAxis type="category" dataKey="nama" fontSize={10}
                                    interval={0} angle={-45} textAnchor="end" height={90} />
                             <YAxis type="number" fontSize={10} unit="%"
-                                   tickFormatter={(v) => fmtAngka(v as number, 0)} />
-                            <Tooltip formatter={(v: any) => [fmtAngka(v as number, 2) + "%", "Porsi"]}
+                                   tickFormatter={(v) => fmtJumlah(v as number)} />
+                            <Tooltip formatter={(v: any) => [fmtJumlah(v as number) + "%", "Porsi"]}
                                      labelFormatter={(label: any, payload: any) =>
                                        payload?.[0]?.payload?.namaLengkap ?? label} />
                             <Bar dataKey="Porsi (%)" fill="#1D2434" maxBarSize={48} />
@@ -692,16 +686,16 @@ export function AnalisisKomposisi({ dari, sampai, modeEudr, dimensi,
                           {baris.map((b: any) => (
                             <tr key={b.kunci} className="border-b border-[#EDEFF2]">
                               <td className="py-1">{b.label}</td>
-                              <td className="text-right font-mono">{fmtAngka(b.kg, 0)}</td>
-                              <td className="text-right font-mono">{fmtAngka(b.porsi_pct, 2)}%</td>
-                              <td className="text-right font-mono">{fmtAngka(b.kumulatif_pct, 2)}%</td>
+                              <td className="text-right font-mono">{fmtJumlah(b.kg)}</td>
+                              <td className="text-right font-mono">{fmtPersen(b.porsi_pct)}%</td>
+                              <td className="text-right font-mono">{fmtPersen(b.kumulatif_pct)}%</td>
                               <td className="text-center">
                                 <span className={`rounded-sm px-1.5 py-0.5 text-[10px] font-semibold ${WARNA_KELAS[b.kelas]}`}>
                                   {b.kelas}
                                 </span>
                               </td>
                               <td className="text-right font-mono">
-                                {b.eudr_pct === null ? "–" : fmtAngka(b.eudr_pct, 2) + "%"}
+                                {b.eudr_pct === null ? "–" : fmtPersen(b.eudr_pct) + "%"}
                               </td>
                               <td className="text-right font-mono">{b.jumlah_tiket}</td>
                             </tr>
@@ -721,9 +715,9 @@ export function AnalisisKomposisi({ dari, sampai, modeEudr, dimensi,
                         Share EUDR vs biasa
                       </h4>
                       <p className="mt-1 text-xs text-[#64676C]">
-                        EUDR <b className="text-[#15803D]">{fmtAngka(d.eudr.total_kg, 0)} kg
-                        ({fmtAngka(d.eudr.porsi_pct, 2)}%)</b> · biasa{" "}
-                        {fmtAngka(d.eudr.biasa_kg, 0)} kg ({fmtAngka(d.eudr.biasa_porsi_pct, 2)}%).
+                        EUDR <b className="text-[#15803D]">{fmtFieldBerat(d.eudr.total_kg, "total_kg")} kg
+                        ({fmtPersen(d.eudr.porsi_pct)}%)</b> · biasa{" "}
+                        {fmtFieldBerat(d.eudr.biasa_kg, "biasa_kg")} kg ({fmtPersen(d.eudr.biasa_porsi_pct)}%).
                       </p>
                       {eudrBulan.length > 1 && (
                         <div className="mt-2 h-48">
@@ -733,7 +727,7 @@ export function AnalisisKomposisi({ dari, sampai, modeEudr, dimensi,
                               <CartesianGrid strokeDasharray="3 3" />
                               <XAxis dataKey="nama" fontSize={10} minTickGap={20} />
                               <YAxis fontSize={10} unit="%" domain={[0, "auto"]} />
-                              <Tooltip formatter={(v: any) => [fmtAngka(v as number, 2) + "%", "Share EUDR"]} />
+                              <Tooltip formatter={(v: any) => [fmtJumlah(v as number) + "%", "Share EUDR"]} />
                               <Line type="monotone" dataKey="Share EUDR (%)" stroke="#15803D"
                                     strokeWidth={2} dot={{ r: 2 }} />
                             </LineChart>
@@ -759,14 +753,14 @@ export function AnalisisKomposisi({ dari, sampai, modeEudr, dimensi,
                               return (
                                 <tr key={m.ym} className="border-b border-[#EDEFF2]">
                                   <td className="py-1">{m.label}</td>
-                                  <td className="text-right font-mono">{fmtAngka(m.total_kg, 0)}</td>
-                                  <td className="text-right font-mono">{fmtAngka(m.eudr_kg, 0)}</td>
-                                  <td className="text-right font-mono">{fmtAngka(m.eudr_pct, 2)}%</td>
+                                  <td className="text-right font-mono">{fmtFieldBerat(m.total_kg, "total_kg")}</td>
+                                  <td className="text-right font-mono">{fmtFieldBerat(m.eudr_kg, "eudr_kg")}</td>
+                                  <td className="text-right font-mono">{fmtPersen(m.eudr_pct)}%</td>
                                   <td className={delta === null ? ""
                                     : delta > 0.005 ? "text-[#15803D]"
                                       : delta < -0.005 ? "text-[#DC2626]" : "text-[#64676C]"}>
                                     {delta === null ? "–"
-                                      : `${delta > 0.005 ? "▲" : delta < -0.005 ? "▼" : "■"} ${fmtAngka(Math.abs(delta), 2)} poin`}
+                                      : `${delta > 0.005 ? "▲" : delta < -0.005 ? "▼" : "■"} ${fmtJumlah(Math.abs(delta))} poin`}
                                   </td>
                                 </tr>
                               );
@@ -1011,8 +1005,8 @@ function KartuPenerimaan() {
                     <XAxis type="category" dataKey="nama" fontSize={10}
                            interval={0} angle={-30} textAnchor="end" height={60} />
                     <YAxis type="number" fontSize={10}
-                           tickFormatter={(v) => fmtAngka(v as number, 0)} />
-                    <Tooltip formatter={(v: any) => [fmtAngka(v as number, 0) + " kg", "Penerimaan Karet"]} />
+                           tickFormatter={(v) => fmtJumlah(v as number)} />
+                    <Tooltip formatter={(v: any) => [fmtJumlah(v as number) + " kg", "Penerimaan Karet"]} />
                     <Bar dataKey="Penerimaan Karet (kg)" fill="#1D2434" />
                   </BarChart>
                 </ResponsiveContainer></AlatGrafik>
@@ -1043,9 +1037,9 @@ function KartuPenerimaan() {
                               ? "cursor-pointer hover:bg-[#FFF1F1]" : ""}`}
                             onClick={() => drill(b)}>
                           <td className="py-1">{b.label}</td>
-                          <td className="text-right font-mono font-semibold">{fmtAngka(b.kg_total, 0)}</td>
+                          <td className="text-right font-mono font-semibold">{fmtJumlah(b.kg_total)}</td>
                           <td className="text-right font-mono">
-                            {b.porsi !== null ? fmtAngka(b.porsi * 100, 1) + "%" : "–"}
+                            {b.porsi !== null ? fmtPersen(b.porsi * 100) + "%" : "–"}
                           </td>
                           <td className="text-right font-mono">{b.jumlah_tiket}</td>
                         </tr>
@@ -1054,7 +1048,7 @@ function KartuPenerimaan() {
                   </table>
                 </div>
                 <p className="mt-2 text-xs text-[#64676C]">
-                  Total penerimaan periode ini: <b>{fmtAngka(q.data.total_kg, 0)} kg</b>
+                  Total penerimaan periode ini: <b>{fmtFieldBerat(q.data.total_kg, "total_kg")} kg</b>
                   {" "}· sumber: {q.data.sumber}
                 </p>
                 {q.data.wilayah?.digabung?.length > 0 && (
@@ -1166,9 +1160,9 @@ function KartuTonase() {
                   <BarChart data={grafik} margin={{ top: 5, right: 20, bottom: 5, left: 10 }}>
                     <CartesianGrid strokeDasharray="3 3" />
                     <XAxis dataKey="nama" fontSize={10} />
-                    <YAxis fontSize={10} tickFormatter={(v) => fmtAngka(v as number, 1)} />
+                    <YAxis fontSize={10} tickFormatter={(v) => fmtJumlah(v as number)} />
                     <Tooltip formatter={(v: any, nama: any) =>
-                      [fmtAngka(v as number, 1) + " ton", nama]} />
+                      [fmtJumlah(v as number) + " ton", nama]} />
                     <Legend wrapperStyle={{ fontSize: 11 }} />
                     {seriBulan.map((r: any, i: number) => (
                       <Bar key={r.kunci} dataKey={r.label ?? r.kunci} stackId="ton"
@@ -1202,9 +1196,9 @@ function KartuTonase() {
                         ? "cursor-pointer hover:bg-[#FFF1F1]" : ""}`}
                       onClick={() => drill(b)}>
                     <td className="py-1">{b.label}</td>
-                    <td className="text-right font-mono">{fmtAngka(b.ton, 3)}</td>
+                    <td className="text-right font-mono">{fmtFieldBerat(b.ton, "ton")}</td>
                     <td className="text-right font-mono">
-                      {b.porsi !== null ? fmtAngka(b.porsi * 100, 1) + "%" : "–"}
+                      {b.porsi !== null ? fmtPersen(b.porsi * 100) + "%" : "–"}
                     </td>
                     <td className="text-right font-mono">{b.jumlah_tiket}</td>
                   </tr>
@@ -1217,7 +1211,7 @@ function KartuTonase() {
             </table>
             {q.data && (
               <p className="mt-2 text-xs text-[#64676C]">
-                Total: <b>{fmtAngka(q.data.total_ton, 3)}</b> ton kering · sumber {q.data.sumber}
+                Total: <b>{fmtFieldBerat(q.data.total_ton, "total_ton")}</b> ton kering · sumber {q.data.sumber}
               </p>
             )}
           </>
@@ -1258,16 +1252,16 @@ function KartuKonsentrasi() {
             {q.data?.baris.map((b: any) => (
               <tr key={b.kunci} className="border-b border-[#EDEFF2]">
                 <td className="py-1">{b.kunci} — {b.label}</td>
-                <td className="text-right font-mono">{fmtAngka(b.ton, 3)}</td>
-                <td className="text-right font-mono">{fmtAngka((b.porsi ?? 0) * 100, 1)}%</td>
+                <td className="text-right font-mono">{fmtFieldBerat(b.ton, "ton")}</td>
+                <td className="text-right font-mono">{fmtPersen((b.porsi ?? 0) * 100)}%</td>
               </tr>
             ))}
           </tbody>
         </table>
         {q.data && (
           <p className="mt-2 text-xs text-[#64676C]">
-            Porsi top {top}: <b>{fmtAngka(q.data.porsi_top * 100, 1)}%</b> dari{" "}
-            {fmtAngka(q.data.total_ton, 3)} ton.
+            Porsi top {top}: <b>{fmtPersen(q.data.porsi_top * 100)}%</b> dari{" "}
+            {fmtFieldBerat(q.data.total_ton, "total_ton")} ton.
           </p>
         )}
       </>
@@ -1304,8 +1298,8 @@ function KartuGrade() {
                 <td>{b.eudr
                   ? <span className="rounded bg-[#DCFCE7] text-[#15803D] px-1.5 py-0.5">EUDR</span>
                   : <span className="rounded bg-[#F1F2F4] text-[#475467] px-1.5 py-0.5">Biasa</span>}</td>
-                <td className="text-right font-mono">{fmtAngka(b.ton, 3)}</td>
-                <td className="text-right font-mono">{fmtAngka((b.porsi ?? 0) * 100, 1)}%</td>
+                <td className="text-right font-mono">{fmtFieldBerat(b.ton, "ton")}</td>
+                <td className="text-right font-mono">{fmtPersen((b.porsi ?? 0) * 100)}%</td>
               </tr>
             ))}
           </tbody>
@@ -1316,13 +1310,13 @@ function KartuGrade() {
               <div className="rounded-sm border border-[#BBF7D0] bg-[#F0FDF4] p-3 text-xs">
                 <div className="font-semibold text-[#15803D]">Total grade EUDR</div>
                 <div className="mt-1 font-mono text-base font-bold text-[#1D2434]">
-                  {fmtAngka(eudrTon, 3)} ton · {fmtAngka(totalTon ? eudrTon / totalTon * 100 : 0, 1)}%
+                  {fmtJumlah(eudrTon)} ton · {fmtPersen(totalTon ? eudrTon / totalTon * 100 : 0)}%
                 </div>
               </div>
               <div className="rounded-sm border border-[#E4E5E8] bg-[#F8F8F8] p-3 text-xs">
                 <div className="font-semibold text-[#475467]">Total grade biasa</div>
                 <div className="mt-1 font-mono text-base font-bold text-[#1D2434]">
-                  {fmtAngka(biasaTon, 3)} ton · {fmtAngka(totalTon ? biasaTon / totalTon * 100 : 0, 1)}%
+                  {fmtJumlah(biasaTon)} ton · {fmtPersen(totalTon ? biasaTon / totalTon * 100 : 0)}%
                 </div>
               </div>
             </div>
@@ -1493,12 +1487,12 @@ export function KartuIntakeTerakhir() {
                 </tr>
                 <tr className="border-b border-[#EDEFF2]">
                   <th scope="row" className={`${selIntake} whitespace-nowrap bg-[#F8F8F8] text-left font-medium text-[#64676C]`}>Ton kering</th>
-                  <td className={`${selIntake} font-mono tabular-nums text-[#1D2434]`}>{fmtAngka(t.dry_ton, 3)} t</td>
+                  <td className={`${selIntake} font-mono tabular-nums text-[#1D2434]`}>{fmtFieldBerat(t.dry_ton, "dry_ton")} t</td>
                 </tr>
                 <tr>
                   <th scope="row" className={`${selIntake} whitespace-nowrap bg-[#F8F8F8] text-left font-medium text-[#64676C]`}>Sehari itu</th>
                   <td className={`${selIntake} font-mono tabular-nums text-[#1D2434]`}>
-                    {t.jumlah_tiket_hari_itu} tiket · {fmtAngka(t.dry_ton_hari_itu, 3)} t
+                    {t.jumlah_tiket_hari_itu} tiket · {fmtJumlah(t.dry_ton_hari_itu)} t
                   </td>
                 </tr>
                 {t.umur_hari > 7 && (
@@ -1556,9 +1550,9 @@ export function KartuIntakeTerakhir() {
                     <td className={`${selIntake} whitespace-nowrap font-mono text-[#1D2434]`}>{b.ticket_no}</td>
                     <td className={`${selIntake} whitespace-nowrap text-[#374151]`} title={b.label_vendor}>{b.label_vendor}</td>
                     <td className={`${selIntake} whitespace-nowrap text-[#374151]`}>{b.grade ?? "–"}</td>
-                    <td className={`${selIntake} whitespace-nowrap text-right font-mono tabular-nums`}>{fmtAngka(b.wet_ton, 3)}</td>
-                    <td className={`${selIntake} whitespace-nowrap text-right font-mono tabular-nums`}>{fmtAngka(b.dry_ton, 3)}</td>
-                    <td className={`${selIntake} whitespace-nowrap text-right font-mono tabular-nums`}>{fmtAngka(b.reject_ton, 3)}</td>
+                    <td className={`${selIntake} whitespace-nowrap text-right font-mono tabular-nums`}>{fmtFieldBerat(b.wet_ton, "wet_ton")}</td>
+                    <td className={`${selIntake} whitespace-nowrap text-right font-mono tabular-nums`}>{fmtFieldBerat(b.dry_ton, "dry_ton")}</td>
+                    <td className={`${selIntake} whitespace-nowrap text-right font-mono tabular-nums`}>{fmtFieldBerat(b.reject_ton, "reject_ton")}</td>
                     <td className={`${selIntake} whitespace-nowrap text-[#374151]`} title={catatanWilayah}>{b.provinsi ?? "–"}</td>
                     <td className={`${selIntake} whitespace-nowrap text-[#374151]`} title={catatanWilayah}>{b.kabupaten ?? "–"}</td>
                     <td className={`${selIntake} whitespace-nowrap text-[#374151]`} title={catatanWilayah}>{b.kecamatan ?? "–"}</td>
@@ -1617,9 +1611,9 @@ export function KartuReject() {
         {kp && kp.reject_pct !== null && (
           <p className="mb-2 text-sm">
             {jmlBulan === 0 ? "Seluruh periode" : `Rata-rata ${labelPeriode}`}:{" "}
-            <b>{fmtAngka(kp.reject_pct, 2)}%</b>{" "}
-            ({fmtAngka(kp.reject_kg / 1000, 2)} ton reject dari{" "}
-            {fmtAngka(kp.wet_kg / 1000, 1)} ton wet) · tiket nol: {q.data.kpi.tiket_nol}
+            <b>{fmtPersen(kp.reject_pct)}%</b>{" "}
+            ({fmtJumlah(kp.reject_kg / 1000)} ton reject dari{" "}
+            {fmtJumlah(kp.wet_kg / 1000)} ton wet) · tiket nol: {q.data.kpi.tiket_nol}
           </p>
         )}
         {q.data?.terpotong && (
@@ -1640,9 +1634,9 @@ export function KartuReject() {
             {q.data?.baris.map((b: any) => (
               <tr key={`${b.tahun}-${b.bulan}`} className="border-b border-[#EDEFF2]">
                 <td className="py-1">{NAMA_BULAN[b.bulan]} {b.tahun}</td>
-                <td className="text-right font-mono">{fmtAngka(b.wet_ton, 3)}</td>
-                <td className="text-right font-mono">{fmtAngka(b.reject_ton, 3)}</td>
-                <td className="text-right font-mono">{fmtAngka(b.reject_pct, 2)}%</td>
+                <td className="text-right font-mono">{fmtFieldBerat(b.wet_ton, "wet_ton")}</td>
+                <td className="text-right font-mono">{fmtFieldBerat(b.reject_ton, "reject_ton")}</td>
+                <td className="text-right font-mono">{fmtPersen(b.reject_pct)}%</td>
               </tr>
             ))}
             {q.data?.baris.length === 0 && (
@@ -1698,11 +1692,11 @@ function KartuMarginHarian() {
               {q.data?.baris.map((b: any) => (
                 <tr key={b.tanggal} className="border-b border-[#EDEFF2]">
                   <td className="py-1">{b.tanggal.slice(8, 10)}/{b.tanggal.slice(5, 7)}</td>
-                  <td className="text-right font-mono">{fmtAngka(b.qty_kg, 0)}</td>
-                  <td className="text-right font-mono">{fmtAngka(b.harga_rp_per_kg, 2)}</td>
-                  <td className="text-right font-mono">{fmtAngka(b.harga_usc)}</td>
-                  <td className="text-right font-mono">{fmtAngka(b.sicom, 2)}</td>
-                  <td className="text-right font-mono">{fmtAngka(b.margin)}</td>
+                  <td className="text-right font-mono">{fmtFieldBerat(b.qty_kg, "qty_kg")}</td>
+                  <td className="text-right font-mono">{fmtFieldBerat(b.harga_rp_per_kg, "harga_rp_per_kg")}</td>
+                  <td className="text-right font-mono">{fmtHarga(b.harga_usc)}</td>
+                  <td className="text-right font-mono">{fmtHarga(b.sicom)}</td>
+                  <td className="text-right font-mono">{fmtHarga(b.margin)}</td>
                 </tr>
               ))}
             </tbody>
@@ -1786,9 +1780,9 @@ function KartuMarginPer() {
                   <BarChart data={grafik} margin={{ top: 5, right: 20, bottom: 5, left: 10 }}>
                     <CartesianGrid strokeDasharray="3 3" />
                     <XAxis dataKey="nama" fontSize={10} />
-                    <YAxis fontSize={10} tickFormatter={(v) => fmtAngka(v as number, 1)} />
+                    <YAxis fontSize={10} tickFormatter={(v) => fmtJumlah(v as number)} />
                     <Tooltip formatter={(v: any, nama: any) =>
-                      [v === null || v === undefined ? "–" : fmtAngka(v as number, 2) + " US¢/kg", nama]} />
+                      [v === null || v === undefined ? "–" : fmtJumlah(v as number) + " US¢/kg", nama]} />
                     <Legend wrapperStyle={{ fontSize: 11 }} />
                     {seriBulan.map((r: any, i: number) => (
                       <Bar key={r.kunci} dataKey={r.label ?? r.kunci}
@@ -1804,7 +1798,7 @@ function KartuMarginPer() {
                 Ton per bulan:{" "}
                 {(q.data.total_per_bulan?.ton ?? []).map((t: number, i: number) => (
                   <span key={i} className="mr-2 font-mono">
-                    {bulan[i]?.label} {fmtAngka(t, 1)} t
+                    {bulan[i]?.label} {fmtJumlah(t)} t
                   </span>
                 ))}
               </p>
@@ -1827,10 +1821,10 @@ function KartuMarginPer() {
               {q.data?.baris.map((b: any) => (
                 <tr key={b.kunci} className="border-b border-[#EDEFF2]">
                   <td className="py-1">{b.kunci}</td>
-                  <td className="text-right font-mono">{fmtAngka(b.ton, 3)}</td>
-                  <td className="text-right font-mono">{fmtAngka(b.sicom)}</td>
-                  <td className="text-right font-mono">{fmtAngka(b.op_price)}</td>
-                  <td className="text-right font-mono">{fmtAngka(b.op_margin)}</td>
+                  <td className="text-right font-mono">{fmtFieldBerat(b.ton, "ton")}</td>
+                  <td className="text-right font-mono">{fmtHarga(b.sicom)}</td>
+                  <td className="text-right font-mono">{fmtHarga(b.op_price)}</td>
+                  <td className="text-right font-mono">{fmtHarga(b.op_margin)}</td>
                 </tr>
               ))}
             </tbody>
@@ -1928,10 +1922,10 @@ function KartuKonsistensiIntake() {
   const baris: any[] = d?.baris ?? [];
   const ringkas: any = d?.ringkasan ?? {};
 
-  const fmtTrip = (n: any) => fmtAngka(n ?? 0, 0);
-  const fmtPct = (n: any) => `${fmtAngka((n ?? 0) * 100, 1)}%`;
-  const fmtRate = (n: any) => fmtAngka(n ?? 0, 1);
-  const fmtKg = (n: any) => fmtAngka(n ?? 0, 0);
+  const fmtTrip = (n: any) => fmtJumlah(n ?? 0);
+  const fmtPct = (n: any) => `${fmtPersen((n ?? 0) * 100)}%`;
+  const fmtRate = (n: any) => fmtJumlah(n ?? 0);
+  const fmtKg = (n: any) => fmtJumlah(n ?? 0);
 
   return (
     <Kartu idMetrik="konsistensi_intake_vendor"

@@ -6,7 +6,7 @@ export type DataPreferensi = {
   efektif: PreferensiFormat;
   pribadi: Partial<PreferensiFormat>;
   bawaan: PreferensiFormat;
-  terkunci: Record<keyof PreferensiFormat, boolean>;
+  terkunci: Partial<Record<keyof PreferensiFormat, boolean>>;
 };
 
 type PatchPreferensi = { [K in keyof PreferensiFormat]?: PreferensiFormat[K] | null };
@@ -39,7 +39,14 @@ export function PreferensiProvider({ children, admin }: { children: ReactNode; a
     retry: 1,
   });
   const nilai = query.data ?? BAKU;
-  useEffect(() => { aturPreferensiFormat(nilai.efektif); }, [nilai.efektif]);
+  useEffect(() => {
+    aturPreferensiFormat(nilai.efektif);
+    const root = document.documentElement;
+    root.dataset.tema = nilai.efektif.tema;
+    root.dataset.kepadatan = nilai.efektif.kepadatan;
+    root.dataset.ukuranHuruf = nilai.efektif.ukuran_huruf;
+    root.dataset.kurangiAnimasi = String(nilai.efektif.kurangi_animasi || window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+  }, [nilai.efektif]);
 
   const simpanPribadi = async (patch: PatchPreferensi) => {
     const baru = await kirimMetode("/api/preferensi", "PUT", patch) as DataPreferensi;

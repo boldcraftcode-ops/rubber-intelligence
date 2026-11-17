@@ -24,7 +24,11 @@ def test_preferensi_login_dan_nilai_baku(klien):
     response = klien.get("/api/preferensi")
     assert response.status_code == 200
     assert response.json()["efektif"] == {
-        "desimal_angka": 3, "desimal_persen": 1, "satuan_berat": "otomatis"}
+        "desimal_angka": 3, "desimal_persen": 1, "satuan_berat": "otomatis",
+        "pemisah_desimal": ",", "format_tanggal": "dd/mm/yyyy", "angka_ringkas": False,
+        "tema": "terang", "kepadatan": "nyaman", "ukuran_huruf": "normal",
+        "kurangi_animasi": False, "halaman_awal": "ringkasan", "baris_per_halaman": 25,
+        "ingat_filter": True, "pemisah_csv": ","}
 
 
 def test_preferensi_pribadi_dan_reset_per_kunci(klien):
@@ -43,6 +47,7 @@ def test_preferensi_pribadi_dan_reset_per_kunci(klien):
     {"desimal_angka": -1}, {"desimal_angka": 5},
     {"desimal_persen": 3}, {"satuan_berat": "kilogram"},
     {"unknown": 2}, {"desimal_angka": 1.5},
+    {"baris_per_halaman": 15}, {"tema": "neon"}, {"pemisah_csv": "|"},
 ])
 def test_preferensi_menolak_nilai_di_luar_rentang(klien, patch):
     assert klien.put("/api/preferensi", json=patch).status_code == 422
