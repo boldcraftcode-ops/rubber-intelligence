@@ -87,6 +87,25 @@ def test_harga_slab_membentuk_harga_slab1_slab2_slab3_dan_ttsr(klien):
     assert harga["SLAB3"] == harga["SLAB3 TTSR"] == 27700
 
 
+def test_harga_grade_masa_berlaku_sampai(klien):
+    klien.post("/api/grade", json={"item_code": "SLAB"})
+    klien.post("/api/grade", json={"item_code": "SLAB1"})
+    tersimpan = klien.post("/api/harga-grade", json={
+        "tanggal": "2026-10-15", "berlaku_sampai": "2026-10-20",
+        "baris": [{"item_code": "SLAB", "harga_rp_per_kg": 30000}],
+    })
+    assert tersimpan.status_code == 200
+    selama = klien.get("/api/harga-grade/terkini", params={"tanggal": "2026-10-20"}).json()
+    sesudah = klien.get("/api/harga-grade/terkini", params={"tanggal": "2026-10-21"}).json()
+    assert {b["item_code"]: b["harga_rp_per_kg"] for b in selama["baris"]}["SLAB1"] == 30000
+    assert {b["item_code"]: b["harga_rp_per_kg"] for b in sesudah["baris"]}["SLAB1"] is None
+    invalid = klien.post("/api/harga-grade", json={
+        "tanggal": "2026-10-15", "berlaku_sampai": "2026-10-14",
+        "baris": [{"item_code": "SLAB", "harga_rp_per_kg": 30000}],
+    })
+    assert invalid.status_code == 422
+
+
 def test_harga_grade_tolak_grade_tak_dikenal(klien):
     r = klien.post("/api/harga-grade", json={
         "tanggal": "2026-10-15",

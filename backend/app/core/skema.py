@@ -36,6 +36,9 @@ KOLOM_BARU: dict[str, list[tuple[str, str]]] = {
     "pengguna": [
         ("foto_profil", "TEXT"),
     ],
+    "harga_grade": [
+        ("berlaku_sampai", "DATE"),
+    ],
     "tiket_baris": [
         ("kabupaten_norm", "VARCHAR(120)"),
         ("kecamatan_norm", "VARCHAR(120)"),

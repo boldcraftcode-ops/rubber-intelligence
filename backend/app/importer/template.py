@@ -362,6 +362,7 @@ def _impor_template_impl(path: str, session: Session, pengunggah: str = "?",
     kode_grade = {g.item_code for g in session.scalars(select(Grade))}
     harga_masuk: dict[dt.date, dict[str, Decimal]] = defaultdict(dict)
     catatan_harga: dict[tuple[dt.date, str], str | None] = {}
+    berlaku_sampai_harga: dict[tuple[dt.date, str], dt.date | None] = {}
     for i, ambil in baca("Harga_Grade") or []:
         tanggal = wajib_tanggal("Harga_Grade", i, ambil, "tanggal", "Tanggal")
         if tanggal is None:
@@ -374,11 +375,22 @@ def _impor_template_impl(path: str, session: Session, pengunggah: str = "?",
                             "Harga_Rp_per_Kg")
         if harga is None:
             continue
+        akhir_mentah = ambil("berlaku_sampai")
+        akhir = ke_tanggal(akhir_mentah) if akhir_mentah not in (None, "") else None
+        if akhir_mentah not in (None, "") and akhir is None:
+            tolak("Harga_Grade", i, "TANGGAL_SALAH",
+                  f"Kolom Berlaku_Sampai berisi '{akhir_mentah}' yang tidak terbaca sebagai tanggal.")
+            continue
+        if akhir is not None and akhir < tanggal:
+            tolak("Harga_Grade", i, "RENTANG_TANGGAL_SALAH",
+                  "Berlaku_Sampai tidak boleh sebelum Tanggal.")
+            continue
         if kode_grade and item not in kode_grade:
             catat("Harga_Grade", i, "GRADE_TAK_DIKENAL",
                   f"Item Code '{item}' tidak ada di master grade. Tambahkan dulu "
                   "di menu Grade & Harga bila memang grade baru.")
         harga_masuk[tanggal][item] = harga
+        berlaku_sampai_harga[(tanggal, item)] = akhir
         catatan_harga[(tanggal, item)] = ke_teks(ambil("catatan"))
         n += 1
 
@@ -392,12 +404,22 @@ def _impor_template_impl(path: str, session: Session, pengunggah: str = "?",
             tolak("Harga_Grade", None, "HARGA_SLAB_TURUNAN", str(exc))
             continue
         for item, harga in hasil_harga.items():
+            if "SLAB" in daftar_harga:
+                akhir_harga = berlaku_sampai_harga.get((tanggal, "SLAB"))
+            elif "SLAB2" in daftar_harga and item in {"SLAB2", "SLAB2 TTSR", "SLAB3", "SLAB3 TTSR"}:
+                akhir_harga = berlaku_sampai_harga.get((tanggal, "SLAB2"))
+            elif item == "SLAB1 TTSR" and "SLAB1" in daftar_harga:
+                akhir_harga = berlaku_sampai_harga.get((tanggal, "SLAB1"))
+            else:
+                akhir_harga = berlaku_sampai_harga.get((tanggal, item))
             hg = session.scalar(select(HargaGrade).where(
                 HargaGrade.tanggal == tanggal, HargaGrade.item_code == item))
             if hg is None:
-                hg = HargaGrade(tanggal=tanggal, item_code=item, harga_rp_per_kg=harga)
+                hg = HargaGrade(tanggal=tanggal, berlaku_sampai=akhir_harga,
+                                item_code=item, harga_rp_per_kg=harga)
                 session.add(hg)
             hg.harga_rp_per_kg = harga
+            hg.berlaku_sampai = akhir_harga
             hg.catatan = catatan_harga.get((tanggal, item), "Harga turunan otomatis dari SLAB")
             hg.diisi_oleh = pengunggah
             hg.unggahan_id = unggahan.id

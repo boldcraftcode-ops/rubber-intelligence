@@ -99,6 +99,7 @@ function KartuMasterGrade() {
 function KartuHargaGrade() {
   const qc = useQueryClient();
   const [tanggal, setTanggal] = useState(hariIni());
+  const [berlakuSampai, setBerlakuSampai] = useState("");
   const [harga, setHarga] = useState<Record<string, string>>({});
   const [info, setInfo] = useState<{ jenis: "sukses" | "error"; teks: string } | null>(null);
 
@@ -165,7 +166,9 @@ function KartuHargaGrade() {
           harga_rp_per_kg: Number(v.replace(/\./g, "").replace(",", ".")),
         }));
       if (!baris.length) throw new Error("Isi dulu minimal satu harga.");
-      return kirimJson("/api/harga-grade", { tanggal, baris, pengisi: pengisi() });
+      return kirimJson("/api/harga-grade", {
+        tanggal, berlaku_sampai: berlakuSampai || null, baris, pengisi: pengisi(),
+      });
     },
     onSuccess: (d) => {
       setInfo({ jenis: "sukses", teks: d.pesan });
@@ -185,7 +188,16 @@ function KartuHargaGrade() {
           <div>
             <label className={kelasLabel}>Berlaku sejak</label>
             <input type="date" className={kelasInput} value={tanggal}
-                   onChange={(e) => setTanggal(e.target.value)} />
+                   onChange={(e) => {
+                     const baru = e.target.value;
+                     setTanggal(baru);
+                     if (berlakuSampai && berlakuSampai < baru) setBerlakuSampai("");
+                   }} />
+          </div>
+          <div>
+            <label className={kelasLabel}>Berlaku sampai (opsional)</label>
+            <input type="date" className={kelasInput} min={tanggal} value={berlakuSampai}
+                   onChange={(e) => setBerlakuSampai(e.target.value)} />
           </div>
           <button className={kelasTombol} disabled={simpan.isPending}
                   onClick={() => { setInfo(null); simpan.mutate(); }}>
@@ -205,7 +217,7 @@ function KartuHargaGrade() {
             <tr className="text-left text-[#64676C] border-b">
               <th className="py-1">Grade</th>
               <th className="text-right">Harga berlaku</th>
-              <th>Sejak</th>
+              <th>Sejak</th><th>Sampai</th>
               <th className="text-right">US¢/kg</th>
               <th className="text-right">Margin indikatif</th>
               <th className="pl-3">Harga baru (Rp/kg)</th>
@@ -223,6 +235,9 @@ function KartuHargaGrade() {
                 </td>
                 <td className="text-[#64676C]">
                   {b.berlaku_sejak ? fmtTanggal(b.berlaku_sejak) : "belum ada"}
+                </td>
+                <td className="text-[#64676C]">
+                  {b.berlaku_sampai ? fmtTanggal(b.berlaku_sampai) : b.berlaku_sejak ? "tanpa batas" : "–"}
                 </td>
                 <td className="text-right font-mono">
                   {b.harga_usc_per_kg ? fmtAngka(b.harga_usc_per_kg, 2) : "–"}
@@ -268,7 +283,7 @@ function KartuHargaGrade() {
           <table className="w-full text-xs">
             <thead>
               <tr className="text-left text-[#64676C] border-b">
-                <th className="py-1">Berlaku sejak</th><th>Grade</th>
+                <th className="py-1">Berlaku sejak</th><th>Berlaku sampai</th><th>Grade</th>
                 <th className="text-right">Rp/kg</th><th>Diisi oleh</th>
               </tr>
             </thead>
@@ -276,6 +291,7 @@ function KartuHargaGrade() {
               {riwayat.data?.map((h: any, i: number) => (
                 <tr key={i} className="border-b border-[#EDEFF2]">
                   <td className="py-1">{fmtTanggal(h.tanggal)}</td>
+                  <td>{h.berlaku_sampai ? fmtTanggal(h.berlaku_sampai) : "tanpa batas"}</td>
                   <td className="font-mono">{h.item_code}</td>
                   <td className="text-right font-mono">{fmtAngka(h.harga_rp_per_kg, 0)}</td>
                   <td className="text-[#64676C]">{h.diisi_oleh ?? "-"}</td>

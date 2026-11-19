@@ -130,8 +130,10 @@ teknis yang saya pilih dan bisa diubah kapan saja.
 
 ## Default teknis Fase 7
 35. **Harga per grade = daftar harga (price list)**, berlaku sejak tanggal
-    isian sampai ada harga baru. Diisi lewat form (bulk per tanggal) atau
-    bulk import sheet 'Harga_Grade' (template unduhan tersedia). Grade harus
+    isian sampai ada harga baru atau sampai tanggal akhir opsional (inklusif).
+    Setelah tanggal akhir, harga dianggap tidak tersedia sampai ada harga baru.
+    Diisi lewat form atau bulk import sheet 'Harga_Grade' (template unduhan
+    tersedia). Grade harus
     ada di master (form menolak; import memberi peringatan). Tercatat di
     audit log; menimpa tanggal sama tidak menggandakan.
 36. **Perhitungan per grade kini resmi** untuk pembelian harian: jumlah dry

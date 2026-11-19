@@ -74,6 +74,8 @@ def bangun_mart(session: Session) -> None:
         for grade, berat in per_grade.items():
             lookup = harga_per_grade.get(grade)
             harga = lookup.pada(tanggal) if lookup else None
+            if harga is not None and harga.berlaku_sampai is not None and tanggal > harga.berlaku_sampai:
+                harga = None
             if harga is None:
                 lengkap = False
                 break

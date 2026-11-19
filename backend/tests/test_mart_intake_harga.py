@@ -47,6 +47,19 @@ def test_amount_pembelian_dari_intake_menggantikan_data_manual(sesi_harga):
         ("SLAB1", 10, 200_000), ("SLAB2", 5, 150_000)}
 
 
+def test_harga_yang_sudah_kedaluwarsa_tidak_dipakai(sesi_harga):
+    tanggal = dt.date(2026, 5, 10)
+    sesi_harga.add_all([
+        tiket("T1", tanggal, "SLAB1", "10.000"),
+        HargaGrade(tanggal=dt.date(2026, 5, 1), berlaku_sampai=dt.date(2026, 5, 9),
+                   item_code="SLAB1", harga_rp_per_kg=Decimal("20000")),
+    ])
+    sesi_harga.flush()
+    bangun_mart(sesi_harga)
+    hasil = sesi_harga.get(MartHarian, tanggal)
+    assert hasil is not None and hasil.amount_rp is None
+
+
 def test_tanggal_tanpa_harga_satu_grade_dikecualikan(sesi_harga):
     tanggal = dt.date(2026, 5, 10)
     sesi_harga.add_all([

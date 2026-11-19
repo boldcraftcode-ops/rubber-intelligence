@@ -45,6 +45,7 @@ class BarisHarga(BaseModel):
 
 class HargaGradeMasuk(BaseModel):
     tanggal: dt.date
+    berlaku_sampai: dt.date | None = None
     baris: list[BarisHarga] = Field(min_length=1)
     pengisi: str = "?"
 
@@ -92,7 +93,9 @@ def pasang_router_grade(app, ambil_session):
         baris = session.scalars(select(HargaGrade).order_by(
             HargaGrade.tanggal.desc(), HargaGrade.item_code).limit(min(limit, 500)))
         return [{
-            "tanggal": h.tanggal.isoformat(), "item_code": h.item_code,
+            "tanggal": h.tanggal.isoformat(),
+            "berlaku_sampai": h.berlaku_sampai.isoformat() if h.berlaku_sampai else None,
+            "item_code": h.item_code,
             "harga_rp_per_kg": float(h.harga_rp_per_kg),
             "catatan": h.catatan, "diisi_oleh": h.diisi_oleh,
         } for h in baris]
@@ -114,12 +117,15 @@ def pasang_router_grade(app, ambil_session):
                 HargaGrade.item_code == g.item_code,
                 HargaGrade.tanggal <= tanggal,
             ).order_by(HargaGrade.tanggal.desc())).first()
+            if h and h.berlaku_sampai is not None and tanggal > h.berlaku_sampai:
+                h = None
             harga_rp = float(h.harga_rp_per_kg) if h else None
             harga_usc = rumus.rp_ke_usc(harga_rp, kurs) if (harga_rp and kurs) else None
             hasil.append({
                 "item_code": g.item_code, "kelompok": g.kelompok, "eudr": g.eudr,
                 "harga_rp_per_kg": harga_rp,
                 "berlaku_sejak": h.tanggal.isoformat() if h else None,
+                "berlaku_sampai": h.berlaku_sampai.isoformat() if h and h.berlaku_sampai else None,
                 "harga_usc_per_kg": round(harga_usc, 4) if harga_usc else None,
                 "margin_indikatif_usc": round(sicom - harga_usc, 4)
                 if (harga_usc and sicom is not None) else None,
@@ -129,6 +135,8 @@ def pasang_router_grade(app, ambil_session):
 
     @router.post("/harga-grade")
     def simpan_harga(data: HargaGradeMasuk, session: Session = dep):
+        if data.berlaku_sampai is not None and data.berlaku_sampai < data.tanggal:
+            raise HTTPException(422, "Berlaku sampai tidak boleh sebelum tanggal berlaku sejak.")
         kode_sah = {g.item_code for g in session.scalars(select(Grade))}
         for b in data.baris:
             if b.item_code not in kode_sah:
@@ -146,16 +154,18 @@ def pasang_router_grade(app, ambil_session):
                 HargaGrade.tanggal == data.tanggal,
                 HargaGrade.item_code == item_code))
             if hg is None:
-                hg = HargaGrade(tanggal=data.tanggal, item_code=item_code,
-                                harga_rp_per_kg=harga_rp)
+                hg = HargaGrade(tanggal=data.tanggal, berlaku_sampai=data.berlaku_sampai,
+                                item_code=item_code, harga_rp_per_kg=harga_rp)
                 session.add(hg)
             hg.harga_rp_per_kg = harga_rp
+            hg.berlaku_sampai = data.berlaku_sampai
             hg.catatan = "Harga turunan otomatis dari SLAB" if item_code not in harga_input else next(
                 (b.catatan for b in data.baris if b.item_code == item_code), None)
             hg.diisi_oleh = data.pengisi
             n += 1
         catat_audit(session, data.pengisi, "ubah", "harga_grade", {
             "tanggal": data.tanggal.isoformat(),
+            "berlaku_sampai": data.berlaku_sampai.isoformat() if data.berlaku_sampai else None,
             "baris": [{"item_code": kode, "harga_rp_per_kg": str(nilai)}
                       for kode, nilai in perluasan.items()]})
         session.commit()
@@ -181,11 +191,11 @@ def pasang_router_grade(app, ambil_session):
         wb = openpyxl.Workbook()
         ws = wb.active
         ws.title = "Harga_Grade"
-        ws.append(["Tanggal", "Item_Code", "Harga_Rp_per_Kg", "Catatan"])
+        ws.append(["Tanggal", "Item_Code", "Harga_Rp_per_Kg", "Berlaku_Sampai", "Catatan"])
         hari_ini = dt.date.today()
         for g in session.scalars(select(Grade).order_by(Grade.item_code)):
             if g.item_code != "ALL":
-                ws.append([hari_ini, g.item_code, None, None])
+                ws.append([hari_ini, g.item_code, None, None, None])
         buf = io.BytesIO()
         wb.save(buf)
         buf.seek(0)

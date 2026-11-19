@@ -360,15 +360,15 @@ class PeringatanData(Base):
 
 
 class HargaGrade(Base):
-    """Daftar harga beli per grade (Rp/kg), berlaku sejak tanggal tertentu.
-    Dipakai sebagai INFORMASI/indikatif; Amount resmi tetap total per hari
-    (hasil kalkulasi pembayaran intake). Lihat docs/ASUMSI.md."""
+    """Harga beli per grade (Rp/kg) dengan tanggal mulai dan akhir opsional;
+    dipakai untuk kalkulasi pembelian dari intake dan aturan slab turunan."""
 
     __tablename__ = "harga_grade"
     __table_args__ = (UniqueConstraint("tanggal", "item_code", name="uq_harga_grade"),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     tanggal: Mapped[dt.date] = mapped_column(Date, index=True)
+    berlaku_sampai: Mapped[dt.date | None] = mapped_column(Date, nullable=True)
     item_code: Mapped[str] = mapped_column(String(50), index=True)
     harga_rp_per_kg: Mapped[Decimal] = mapped_column(Numeric(12, 2))
     catatan: Mapped[str | None] = mapped_column(Text, nullable=True)
