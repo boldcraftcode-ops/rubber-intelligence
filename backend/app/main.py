@@ -325,7 +325,7 @@ def buat_app(engine: Engine | None = None) -> FastAPI:
         s.unggahan_id = unggahan_id
         session.merge(s)
         session.flush()
-        bangun_mart(session)
+        bangun_mart(session, sinkronkan_pembelian=False)
         evaluasi_alarm(session)
         session.commit()
         return {"status": "tersimpan", "tanggal": data.tanggal.isoformat(),
@@ -368,7 +368,7 @@ def buat_app(engine: Engine | None = None) -> FastAPI:
         k.unggahan_id = unggahan_id
         session.merge(k)
         session.flush()
-        bangun_mart(session)
+        bangun_mart(session, sinkronkan_pembelian=False)
         evaluasi_alarm(session)
         session.commit()
         return {"status": "tersimpan", "berlaku_dari": data.berlaku_dari.isoformat(),

@@ -2,12 +2,11 @@ import datetime as dt
 from decimal import Decimal
 
 import pytest
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 
 from app.mart import bangun_mart
 from app.models import Base, HargaGrade, MartHarian, Pembelian, TiketBaris
-from sqlalchemy import select
 
 
 @pytest.fixture()
@@ -45,6 +44,24 @@ def test_amount_pembelian_dari_intake_menggantikan_data_manual(sesi_harga):
     baris_beli = list(sesi_harga.scalars(select(Pembelian).where(Pembelian.tanggal == tanggal)))
     assert {(b.item_code, float(b.qty_kering_kg), float(b.amount_rp)) for b in baris_beli} == {
         ("SLAB1", 10, 200_000), ("SLAB2", 5, 150_000)}
+
+
+def test_sicom_rebuild_tidak_mengubah_baris_pembelian(sesi_harga):
+    tanggal = dt.date(2026, 5, 10)
+    lama = Pembelian(tanggal=tanggal, item_code="ALL", kode_vendor="", ticket_no="",
+                     qty_kering_kg=Decimal("99"), amount_rp=Decimal("123456"))
+    sesi_harga.add_all([
+        tiket("T1", tanggal, "SLAB1", "10.000"),
+        HargaGrade(tanggal=dt.date(2026, 5, 1), item_code="SLAB1",
+                   harga_rp_per_kg=Decimal("20000")),
+        lama,
+    ])
+    sesi_harga.flush()
+    bangun_mart(sesi_harga, sinkronkan_pembelian=False)
+    baris = list(sesi_harga.scalars(select(Pembelian).where(Pembelian.tanggal == tanggal)))
+    assert len(baris) == 1
+    assert baris[0].item_code == "ALL"
+    assert float(baris[0].amount_rp) == pytest.approx(123456)
 
 
 def test_harga_yang_sudah_kedaluwarsa_tidak_dipakai(sesi_harga):

@@ -28,7 +28,7 @@ from .models import (
 )
 
 
-def bangun_mart(session: Session) -> None:
+def bangun_mart(session: Session, *, sinkronkan_pembelian: bool = True) -> None:
     session.execute(delete(MartHarian))
     session.execute(delete(MartBulanan))
 
@@ -87,15 +87,16 @@ def bangun_mart(session: Session) -> None:
             pembelian_harian[tanggal] = (qty, amount)
             pembelian_per_grade[tanggal] = rincian_harga
 
-    # Ganti data Pembelian lama hanya pada tanggal yang memiliki tiket intake.
-    # Pada hari tanpa harga lengkap, hapus total lama agar tidak menyisakan
-    # angka parsial/keliru. Hari tanpa intake tetap mempertahankan data historis.
-    for tanggal in tanggal_dengan_intake:
-        session.execute(delete(Pembelian).where(Pembelian.tanggal == tanggal))
-        for grade, (qty, amount) in pembelian_per_grade.get(tanggal, {}).items():
-            session.add(Pembelian(tanggal=tanggal, item_code=grade, kode_vendor="",
-                                  ticket_no="", qty_kering_kg=qty, amount_rp=amount))
-    session.flush()
+    # Sumber hasil tak perlu ditulis ulang untuk perubahan yang tidak menyentuh
+    # intake/harga (mis. pembaruan SICOM atau kurs); ini menghindari ribuan
+    # DELETE/INSERT yang tidak relevan pada setiap input harian.
+    if sinkronkan_pembelian:
+        for tanggal in tanggal_dengan_intake:
+            session.execute(delete(Pembelian).where(Pembelian.tanggal == tanggal))
+            for grade, (qty, amount) in pembelian_per_grade.get(tanggal, {}).items():
+                session.add(Pembelian(tanggal=tanggal, item_code=grade, kode_vendor="",
+                                      ticket_no="", qty_kering_kg=qty, amount_rp=amount))
+        session.flush()
 
     stok_per_tanggal: dict[dt.date, Decimal] = defaultdict(Decimal)
     for s in session.scalars(select(Stok)):
