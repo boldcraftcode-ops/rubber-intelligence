@@ -19,6 +19,7 @@ from sqlalchemy.orm import Session
 from .core import rumus
 from .mart import bangun_mart
 from .core.alarm import catat_audit
+from .core.harga_grade import perluas_harga_slab
 from .core.lookup import kurs_pada, sicom_pada
 from .models import Grade, HargaGrade
 
@@ -134,29 +135,39 @@ def pasang_router_grade(app, ambil_session):
                 raise HTTPException(422, f"Grade '{b.item_code}' tidak ada di master. "
                                          "Tambahkan dulu lewat form master grade di "
                                          "halaman ini, lalu simpan harga lagi.")
+        harga_input = {b.item_code: Decimal(str(b.harga_rp_per_kg)) for b in data.baris}
+        try:
+            perluasan = perluas_harga_slab(harga_input, kode_sah)
+        except ValueError as exc:
+            raise HTTPException(422, str(exc)) from exc
         n = 0
-        for b in data.baris:
+        for item_code, harga_rp in perluasan.items():
             hg = session.scalar(select(HargaGrade).where(
                 HargaGrade.tanggal == data.tanggal,
-                HargaGrade.item_code == b.item_code))
+                HargaGrade.item_code == item_code))
             if hg is None:
-                hg = HargaGrade(tanggal=data.tanggal, item_code=b.item_code,
-                                harga_rp_per_kg=Decimal(str(b.harga_rp_per_kg)))
+                hg = HargaGrade(tanggal=data.tanggal, item_code=item_code,
+                                harga_rp_per_kg=harga_rp)
                 session.add(hg)
-            hg.harga_rp_per_kg = Decimal(str(b.harga_rp_per_kg))
-            hg.catatan = b.catatan
+            hg.harga_rp_per_kg = harga_rp
+            hg.catatan = "Harga turunan otomatis dari SLAB" if item_code not in harga_input else next(
+                (b.catatan for b in data.baris if b.item_code == item_code), None)
             hg.diisi_oleh = data.pengisi
             n += 1
         catat_audit(session, data.pengisi, "ubah", "harga_grade", {
             "tanggal": data.tanggal.isoformat(),
-            "baris": [b.model_dump() for b in data.baris]})
+            "baris": [{"item_code": kode, "harga_rp_per_kg": str(nilai)}
+                      for kode, nilai in perluasan.items()]})
         session.commit()
         bangun_mart(session)
         session.commit()
+        rincian_slab = (" SLAB1=harga Slab; SLAB2=Slab−Rp300/kg; "
+                        "SLAB3=SLAB2−Rp2.000/kg (termasuk TTSR)."
+                        if any(b.item_code.strip().upper() == "SLAB" for b in data.baris) else "")
         return {"status": "tersimpan",
                 "pesan": f"{n} harga grade untuk "
                          f"{data.tanggal.strftime('%d/%m/%Y')} tersimpan. "
-                         "Mengisi tanggal yang sama menimpa, tidak menggandakan."}
+                         "Mengisi tanggal yang sama menimpa, tidak menggandakan." + rincian_slab}
 
     @router.get("/harga-grade/template")
     def template_harga(session: Session = dep):

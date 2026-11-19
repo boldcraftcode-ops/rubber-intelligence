@@ -71,6 +71,22 @@ def test_harga_grade_form_dan_terkini(klien):
     assert len(slab2) == 1 and slab2[0]["harga_rp_per_kg"] == 28500
 
 
+def test_harga_slab_membentuk_harga_slab1_slab2_slab3_dan_ttsr(klien):
+    grades = ["SLAB", "SLAB1", "SLAB1 TTSR", "SLAB2", "SLAB2 TTSR", "SLAB3", "SLAB3 TTSR"]
+    for code in grades:
+        assert klien.post("/api/grade", json={"item_code": code}).status_code == 200
+    r = klien.post("/api/harga-grade", json={
+        "tanggal": "2026-10-15",
+        "baris": [{"item_code": "SLAB", "harga_rp_per_kg": 30000}],
+        "pengisi": "admin-uji"})
+    assert r.status_code == 200
+    data = klien.get("/api/harga-grade/terkini", params={"tanggal": "2026-10-16"}).json()
+    harga = {row["item_code"]: row["harga_rp_per_kg"] for row in data["baris"]}
+    assert harga["SLAB1"] == harga["SLAB1 TTSR"] == 30000
+    assert harga["SLAB2"] == harga["SLAB2 TTSR"] == 29700
+    assert harga["SLAB3"] == harga["SLAB3 TTSR"] == 27700
+
+
 def test_harga_grade_tolak_grade_tak_dikenal(klien):
     r = klien.post("/api/harga-grade", json={
         "tanggal": "2026-10-15",

@@ -22,6 +22,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from ..core.alarm import evaluasi_alarm
+from ..core.harga_grade import perluas_harga_slab
 from ..mart import bangun_mart
 from ..core.klasifikasi_vendor import bakukan as bakukan_klasifikasi
 from ..models import (
@@ -359,6 +360,8 @@ def _impor_template_impl(path: str, session: Session, pengunggah: str = "?",
     # Daftar harga beli per grade (Rp/kg), berlaku sejak tanggal baris.
     n = 0
     kode_grade = {g.item_code for g in session.scalars(select(Grade))}
+    harga_masuk: dict[dt.date, dict[str, Decimal]] = defaultdict(dict)
+    catatan_harga: dict[tuple[dt.date, str], str | None] = {}
     for i, ambil in baca("Harga_Grade") or []:
         tanggal = wajib_tanggal("Harga_Grade", i, ambil, "tanggal", "Tanggal")
         if tanggal is None:
@@ -375,16 +378,29 @@ def _impor_template_impl(path: str, session: Session, pengunggah: str = "?",
             catat("Harga_Grade", i, "GRADE_TAK_DIKENAL",
                   f"Item Code '{item}' tidak ada di master grade. Tambahkan dulu "
                   "di menu Grade & Harga bila memang grade baru.")
-        hg = session.scalar(select(HargaGrade).where(
-            HargaGrade.tanggal == tanggal, HargaGrade.item_code == item))
-        if hg is None:
-            hg = HargaGrade(tanggal=tanggal, item_code=item, harga_rp_per_kg=harga)
-            session.add(hg)
-        hg.harga_rp_per_kg = harga
-        hg.catatan = ke_teks(ambil("catatan"))
-        hg.diisi_oleh = pengunggah
-        hg.unggahan_id = unggahan.id
+        harga_masuk[tanggal][item] = harga
+        catatan_harga[(tanggal, item)] = ke_teks(ambil("catatan"))
         n += 1
+
+    for tanggal, daftar_harga in harga_masuk.items():
+        try:
+            hasil_harga = perluas_harga_slab(daftar_harga, kode_grade) if kode_grade else dict(daftar_harga)
+            for item, harga in daftar_harga.items():
+                if item not in kode_grade:
+                    hasil_harga[item] = harga
+        except ValueError as exc:
+            tolak("Harga_Grade", None, "HARGA_SLAB_TURUNAN", str(exc))
+            continue
+        for item, harga in hasil_harga.items():
+            hg = session.scalar(select(HargaGrade).where(
+                HargaGrade.tanggal == tanggal, HargaGrade.item_code == item))
+            if hg is None:
+                hg = HargaGrade(tanggal=tanggal, item_code=item, harga_rp_per_kg=harga)
+                session.add(hg)
+            hg.harga_rp_per_kg = harga
+            hg.catatan = catatan_harga.get((tanggal, item), "Harga turunan otomatis dari SLAB")
+            hg.diisi_oleh = pengunggah
+            hg.unggahan_id = unggahan.id
     hasil.jumlah["harga_grade"] = n
 
     # ------------------------------------------------------------ sicom

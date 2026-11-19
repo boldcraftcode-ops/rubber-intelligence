@@ -135,10 +135,13 @@ teknis yang saya pilih dan bisa diubah kapan saja.
     ada di master (form menolak; import memberi peringatan). Tercatat di
     audit log; menimpa tanggal sama tidak menggandakan.
 36. **Perhitungan per grade kini resmi** untuk pembelian harian: jumlah dry
-    intake × harga grade yang berlaku. Data harga yang belum tersedia tidak
-    diekstrapolasi; semua grade pada tanggal tersebut harus memiliki harga.
-    Harga per grade tetap dipakai untuk menampilkan informasi margin indikatif
-    bila kurs/SICOM pendukungnya tersedia.
+    intake × harga grade yang berlaku. Harga acuan `SLAB` otomatis dipetakan ke
+    `SLAB1` (termasuk `SLAB1 TTSR`), `SLAB2` = harga SLAB − Rp300/kg (termasuk
+    TTSR), dan `SLAB3` = harga SLAB2 − Rp2.000/kg (termasuk TTSR). Jika input
+    harga mulai dari `SLAB2`, `SLAB3` tetap dihitung sebagai harga SLAB2 −
+    Rp2.000/kg. Data harga yang belum tersedia tidak diekstrapolasi; semua
+    grade tiket pada tanggal tersebut harus memiliki harga. Harga per grade
+    tetap dipakai untuk menampilkan margin indikatif bila kurs/SICOM ada.
 37. **Master grade** dikelola lewat menu (tambah/ubah; kode TTSR otomatis
     EUDR). Grade tidak pernah dihapus dari sistem, hanya ditambah/diubah,
     agar data historis tetap tertaut.
