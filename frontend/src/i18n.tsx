@@ -267,6 +267,8 @@ const KAMUS: Record<string, string> = {
   "Hari dengan harga grade yang belum lengkap dikecualikan dari total periode.": "Days with missing grade prices are excluded from period totals.",
   "Tidak ada intake pada rentang ini.": "No intake in this date range.",
   "Ringkasan pembelian gagal dimuat.": "Could not load purchase summary.",
+  "Detail penyebab": "Error detail",
+  "Kesalahan tidak diketahui.": "Unknown error.",
   "Isi qty kering & amount; harga Rp/kg, harga US¢/kg, dan margin harian dihitung sendiri memakai kurs & SICOM yang berlaku.": "Enter dry quantity and amount; the Rp/kg price, US¢/kg price and daily margin are calculated from the prevailing exchange rate and SICOM.",
   "Qty kering dan amount harus lebih dari 0.": "Dry quantity and amount must be greater than 0.",
   "Pilih dulu vendornya.": "Choose the vendor first.",

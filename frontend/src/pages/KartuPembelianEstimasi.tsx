@@ -44,7 +44,10 @@ export default function KartuPembelianEstimasi() {
         <label className="text-xs text-[#64676C]">{t("Sampai")}<input className={`${kelasInput} mt-1`} type="date" value={sampai} min={dari} onChange={(e) => setSampai(e.target.value)} /></label>
       </div>
     </div>
-    {q.isError && <p role="alert" className="mt-3 text-sm text-[#B42318]">{t("Ringkasan pembelian gagal dimuat.")}</p>}
+    {q.isError && <div role="alert" className="mt-3 rounded-sm border border-[#FECACA] bg-[#FEF2F2] p-3 text-sm text-[#B42318]">
+      <p className="font-semibold">{t("Ringkasan pembelian gagal dimuat.")}</p>
+      <p className="mt-1">{t("Detail penyebab")}:  {q.error instanceof Error ? q.error.message : t("Kesalahan tidak diketahui.")}</p>
+    </div>}
     {q.isLoading ? <p className="mt-4 text-sm text-[#64676C]">{t("Memuat…")}</p> : p && <>
       <div className="mt-4 grid gap-3 sm:grid-cols-3">
         <div className="rounded-sm border border-[#E4E5E8] bg-[#F8F8F8] p-3"><p className="text-xs text-[#64676C]">{t("Total berat kering")}</p><b className="font-mono text-lg">{fmtAngka(p.qty_kering_kg / 1000, 2)} ton</b><p className="text-xs text-[#64676C]">{t("vs periode sebelumnya")}: {perubahan("qty_kering_kg")}</p></div>
