@@ -20,6 +20,8 @@ from .models import (
     MartHarian,
     ParameterPabrik,
     Pembelian,
+    HargaGrade,
+    TiketBaris,
     Sicom,
     Stok,
     TargetMargin,
@@ -35,38 +37,85 @@ def bangun_mart(session: Session) -> None:
     param_cari = PencariBerlaku(
         [(p.berlaku_dari, p) for p in session.scalars(select(ParameterPabrik))])
 
-    # Pembelian: pakai tingkat terhalus yang tersedia per tanggal.
-    # Bila suatu tanggal punya baris selain 'ALL', baris ALL diabaikan
-    # (menghindari hitung ganda total + rincian).
-    per_tanggal: dict[dt.date, list[Pembelian]] = defaultdict(list)
+    # Nilai pembelian dihitung dari tiket × harga grade untuk setiap tanggal
+    # yang memiliki intake. Pembelian tersimpan hanya menjadi fallback tanggal
+    # yang sama sekali belum memiliki intake historis; tidak menggantikan hasil
+    # intake dan tidak dipakai bila tanggal intake belum punya harga lengkap.
+    pembelian_lama: dict[dt.date, list[Pembelian]] = defaultdict(list)
     for p in session.scalars(select(Pembelian)):
-        per_tanggal[p.tanggal].append(p)
+        pembelian_lama[p.tanggal].append(p)
+
+    tiket_per_tanggal: dict[dt.date, dict[str, Decimal]] = defaultdict(lambda: defaultdict(Decimal))
+    tanggal_dengan_intake: set[dt.date] = set()
+    invalid_tanggal: set[dt.date] = set()
+    for t in session.scalars(select(TiketBaris)):
+        tanggal_dengan_intake.add(t.ticket_date)
+        if not t.dry_kg or t.dry_kg <= 0:
+            continue
+        if not t.item_code:
+            invalid_tanggal.add(t.ticket_date)
+            continue
+        tiket_per_tanggal[t.ticket_date][t.item_code] += t.dry_kg
+
+    harga_per_grade: dict[str, PencariBerlaku] = {}
+    harga_rows: dict[str, list[tuple[dt.date, HargaGrade]]] = defaultdict(list)
+    for h in session.scalars(select(HargaGrade)):
+        harga_rows[h.item_code].append((h.tanggal, h))
+    harga_per_grade = {kode: PencariBerlaku(rows) for kode, rows in harga_rows.items()}
+    pembelian_harian: dict[dt.date, tuple[Decimal, Decimal]] = {}
+    pembelian_per_grade: dict[dt.date, dict[str, tuple[Decimal, Decimal]]] = {}
+    for tanggal, per_grade in tiket_per_tanggal.items():
+        if tanggal in invalid_tanggal:
+            continue
+        qty = Decimal(0)
+        amount = Decimal(0)
+        rincian_harga: dict[str, tuple[Decimal, Decimal]] = {}
+        lengkap = True
+        for grade, berat in per_grade.items():
+            lookup = harga_per_grade.get(grade)
+            harga = lookup.pada(tanggal) if lookup else None
+            if harga is None:
+                lengkap = False
+                break
+            nilai_grade = berat * harga.harga_rp_per_kg
+            qty += berat
+            amount += nilai_grade
+            rincian_harga[grade] = (berat, nilai_grade)
+        if lengkap and qty:
+            pembelian_harian[tanggal] = (qty, amount)
+            pembelian_per_grade[tanggal] = rincian_harga
+
+    # Ganti data Pembelian lama hanya pada tanggal yang memiliki tiket intake.
+    # Pada hari tanpa harga lengkap, hapus total lama agar tidak menyisakan
+    # angka parsial/keliru. Hari tanpa intake tetap mempertahankan data historis.
+    for tanggal in tanggal_dengan_intake:
+        session.execute(delete(Pembelian).where(Pembelian.tanggal == tanggal))
+        for grade, (qty, amount) in pembelian_per_grade.get(tanggal, {}).items():
+            session.add(Pembelian(tanggal=tanggal, item_code=grade, kode_vendor="",
+                                  ticket_no="", qty_kering_kg=qty, amount_rp=amount))
+    session.flush()
 
     stok_per_tanggal: dict[dt.date, Decimal] = defaultdict(Decimal)
     for s in session.scalars(select(Stok)):
         stok_per_tanggal[s.tanggal] += s.stok_kg
 
-    semua_tanggal = sorted(set(per_tanggal) | set(stok_per_tanggal))
+    semua_tanggal = sorted(set(tanggal_dengan_intake) | set(pembelian_lama) | set(stok_per_tanggal))
 
     harian_bulanan: dict[tuple[int, int], list[rumus.BarisHarian]] = defaultdict(list)
 
     for tanggal in semua_tanggal:
-        baris = per_tanggal.get(tanggal, [])
-        rinci = [b for b in baris if b.item_code != "ALL"]
-        dipakai = rinci or baris
-        granularitas = None
-        if dipakai:
-            if any(b.ticket_no for b in dipakai):
-                granularitas = "tiket"
-            elif any(b.kode_vendor for b in dipakai):
-                granularitas = "vendor"
-            elif rinci:
-                granularitas = "grade"
-            else:
-                granularitas = "total"
-
-        qty = sum((b.qty_kering_kg for b in dipakai), Decimal(0))
-        amount = sum((b.amount_rp for b in dipakai), Decimal(0))
+        hasil_beli = pembelian_harian.get(tanggal)
+        granularitas = "grade" if hasil_beli else None
+        if tanggal not in tanggal_dengan_intake:
+            legacy = pembelian_lama.get(tanggal, [])
+            rinci = [b for b in legacy if b.item_code != "ALL"]
+            dipakai = rinci or legacy
+            if dipakai:
+                qty = sum((b.qty_kering_kg for b in dipakai), Decimal(0))
+                amount = sum((b.amount_rp for b in dipakai), Decimal(0))
+                hasil_beli = (qty, amount)
+                granularitas = "tiket" if any(b.ticket_no for b in dipakai) else "grade" if rinci else "total"
+        qty, amount = hasil_beli if hasil_beli else (Decimal(0), Decimal(0))
 
         k = kurs_cari.pada(tanggal)
         s = sicom_cari.pada(tanggal)
@@ -92,8 +141,8 @@ def bangun_mart(session: Session) -> None:
 
         session.add(MartHarian(
             tanggal=tanggal,
-            qty_kering_kg=float(qty) if dipakai else None,
-            amount_rp=amount if dipakai else None,
+            qty_kering_kg=float(qty) if hasil_beli else None,
+            amount_rp=amount if hasil_beli else None,
             harga_rp_per_kg=harga_rp,
             kurs=kurs_nilai,
             sicom_usc=sicom_nilai,
@@ -108,7 +157,7 @@ def bangun_mart(session: Session) -> None:
             rasio_stok=rasio,
         ))
 
-        if qty and kurs_nilai and sicom_nilai is not None:
+        if hasil_beli and qty and kurs_nilai and sicom_nilai is not None:
             harian_bulanan[(tanggal.year, tanggal.month)].append(
                 rumus.BarisHarian(float(qty), float(amount), kurs_nilai, sicom_nilai))
 

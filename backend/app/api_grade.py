@@ -3,8 +3,8 @@
 - Master grade: tambah/ubah lewat menu (kode, kelompok, flag EUDR, keterangan).
 - Harga per grade: form harian (bulk per tanggal) + bulk import .xlsx lewat
   tab Unggah Data (sheet 'Harga_Grade'); template unduhan disediakan.
-- Margin per grade dari daftar harga berlabel INDIKATIF — Amount resmi tetap
-  total pembayaran per hari [lihat ASUMSI.md].
+- Nilai pembelian resmi dihitung ulang dari berat kering intake × harga
+  grade yang berlaku; hari yang belum lengkap harganya tidak dihitung.
 """
 from __future__ import annotations
 
@@ -17,13 +17,15 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from .core import rumus
+from .mart import bangun_mart
 from .core.alarm import catat_audit
 from .core.lookup import kurs_pada, sicom_pada
 from .models import Grade, HargaGrade
 
-CATATAN_INDIKATIF = ("Margin per grade di sini INDIKATIF: dihitung dari daftar "
-                     "harga grade yang Anda isi, bukan dari Amount pembayaran "
-                     "aktual (Amount resmi = total per hari).")
+CATATAN_INDIKATIF = ("Nilai pembelian harian resmi dihitung dari berat kering intake × "
+                     "harga grade yang berlaku pada tanggal tersebut; hari dengan "
+                     "grade tanpa harga tidak dihitung. Margin per grade yang tampil "
+                     "di sini tetap INDIKATIF karena memakai kurs dan SICOM yang tersedia.")
 
 
 class GradeMasuk(BaseModel):
@@ -148,6 +150,8 @@ def pasang_router_grade(app, ambil_session):
         catat_audit(session, data.pengisi, "ubah", "harga_grade", {
             "tanggal": data.tanggal.isoformat(),
             "baris": [b.model_dump() for b in data.baris]})
+        session.commit()
+        bangun_mart(session)
         session.commit()
         return {"status": "tersimpan",
                 "pesan": f"{n} harga grade untuk "

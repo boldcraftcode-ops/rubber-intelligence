@@ -118,10 +118,15 @@ teknis yang saya pilih dan bisa diubah kapan saja.
     Data vs format template), file asli disimpan di `backend/unggahan/`
     (ikut backup harian, tidak pernah dihapus), setiap unggahan tercatat di
     audit log, dan mart + alarm dihitung ulang otomatis.
-34. **Amount pembelian** dicatat sebagai total per hari (jawaban pengguna:
-    hasil kalkulasi total pembayaran getah intake per hari). Karena Amount
-    diturunkan dari pembayaran intake, aturan rekonsiliasi "Dry tiket per
-    tanggal = Quantity pembelian" adalah pemeriksaan konsistensi yang sah.
+34. **Nilai pembelian harian resmi** dihitung dari data intake: jumlah berat
+    kering per grade dikalikan harga Rp/kg grade yang berlaku pada tanggal
+    tiket. Hari hanya dihitung bila semua grade yang muncul memiliki harga yang
+    berlaku; jika ada harga grade yang belum tersedia, hari tersebut belum
+    menghasilkan nilai/kuantitas pembelian resmi. Pada tanggal yang memiliki
+    tiket, baris Pembelian lama diganti hasil kalkulasi; bila harga belum lengkap,
+    baris lama tanggal itu dihapus sampai harga tersedia. Data Pembelian yang
+    diinput/impor hanya dipakai untuk tanggal tanpa intake. Harga baru/berubah
+    membangun ulang mart.
 
 ## Default teknis Fase 7
 35. **Harga per grade = daftar harga (price list)**, berlaku sejak tanggal
@@ -129,10 +134,11 @@ teknis yang saya pilih dan bisa diubah kapan saja.
     bulk import sheet 'Harga_Grade' (template unduhan tersedia). Grade harus
     ada di master (form menolak; import memberi peringatan). Tercatat di
     audit log; menimpa tanggal sama tidak menggandakan.
-36. **Margin per grade dari daftar harga berlabel INDIKATIF** — bukan dari
-    Amount pembayaran aktual (Amount resmi = total/hari). Apakah daftar harga
-    ini akan dipakai untuk alokasi Amount per grade secara resmi masih
-    [TERBUKA] (lihat #4) — sistem tidak memutuskan sendiri.
+36. **Perhitungan per grade kini resmi** untuk pembelian harian: jumlah dry
+    intake × harga grade yang berlaku. Data harga yang belum tersedia tidak
+    diekstrapolasi; semua grade pada tanggal tersebut harus memiliki harga.
+    Harga per grade tetap dipakai untuk menampilkan informasi margin indikatif
+    bila kurs/SICOM pendukungnya tersedia.
 37. **Master grade** dikelola lewat menu (tambah/ubah; kode TTSR otomatis
     EUDR). Grade tidak pernah dihapus dari sistem, hanya ditambah/diubah,
     agar data historis tetap tertaut.

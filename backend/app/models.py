@@ -234,8 +234,9 @@ class PengaturanTraceability(Base):
 
 
 class Pembelian(Base):
-    """Amount pembelian. Granularitas fleksibel: total/hari (item_code='ALL'),
-    per grade, per vendor, atau per tiket. Kolom kunci kosong disimpan ''."""
+    """Nilai pembelian harian/per grade. Pada tanggal intake, baris dibangun
+    dari dry_kg × harga grade berlaku; data lama dipakai hanya tanpa intake.
+    Kolom kunci kosong disimpan ''."""
 
     __tablename__ = "pembelian"
     __table_args__ = (

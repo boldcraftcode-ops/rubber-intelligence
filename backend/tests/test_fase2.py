@@ -146,8 +146,10 @@ def test_qty_dari_tiket(tmp_path):
         assert hasil.jumlah["tiket_baris"] == 2
         assert hasil.jumlah["pembelian"] == 1
         assert hasil.ditolak["Pembelian_Harian"] == 1  # 17 Okt tanpa tiket
-        p = s.scalar(select(Pembelian).where(Pembelian.ticket_no == "T001"))
-        assert p is not None and float(p.qty_kering_kg) == 6000  # Dry tiket T001
+        # Tidak ada harga grade berlaku pada tanggal tiket: impor pembelian
+        # lama diganti, dan mart tidak menerbitkan nilai/qty parsial.
+        p = s.scalar(select(Pembelian).where(Pembelian.tanggal == dt.date(2026, 10, 16)))
+        assert p is None
         teks = "\n".join(hasil.peringatan)
         assert "dipakai jumlah Dry tiket" in teks
         assert "Isi Qty_Kering_Kg atau unggah tiketnya dahulu" in teks
