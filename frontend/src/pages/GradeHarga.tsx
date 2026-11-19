@@ -111,8 +111,50 @@ function KartuHargaGrade() {
     queryFn: () => ambilJson("/api/harga-grade?limit=30"),
   });
 
-  // prefill kolom input dengan harga yang sedang berlaku
+  // Harga acuan langsung mengisi pratinjau grade turunan sebelum disimpan.
   useEffect(() => { setHarga({}); }, [tanggal]);
+
+  const ubahHarga = (kode: string, nilai: string) => {
+    setHarga((sebelum) => {
+      const baru = { ...sebelum, [kode]: nilai };
+      const bersihkanTurunan = () => {
+        for (const turunan of ["SLAB1", "SLAB1 TTSR", "SLAB2", "SLAB2 TTSR", "SLAB3", "SLAB3 TTSR"])
+          delete baru[turunan];
+      };
+      const angkaHarga = (s: string) => Number(s.replace(/\\./g, "").replace(",", "."));
+      const aturTurunan = (item: string, nilaiTurunan: string) => {
+        if (terkini.data?.baris.some((b: any) => b.item_code === item)) baru[item] = nilaiTurunan;
+      };
+      if (kode.trim().toUpperCase() === "SLAB") {
+        bersihkanTurunan();
+        if (nilai.trim()) {
+          const slab = angkaHarga(nilai);
+          aturTurunan("SLAB1", String(slab));
+          aturTurunan("SLAB1 TTSR", String(slab));
+          aturTurunan("SLAB2", String(slab - 300));
+          aturTurunan("SLAB2 TTSR", String(slab - 300));
+          aturTurunan("SLAB3", String(slab - 2300));
+          aturTurunan("SLAB3 TTSR", String(slab - 2300));
+        }
+      } else if (kode.trim().toUpperCase() === "SLAB2") {
+        delete baru["SLAB3"]; delete baru["SLAB3 TTSR"];
+        if (nilai.trim()) {
+          const slab3 = angkaHarga(nilai) - 2000;
+          aturTurunan("SLAB2 TTSR", nilai);
+          aturTurunan("SLAB3", String(slab3));
+          aturTurunan("SLAB3 TTSR", String(slab3));
+        }
+      } else if (kode.trim().toUpperCase() === "SLAB1") {
+        aturTurunan("SLAB1 TTSR", nilai);
+      }
+      return baru;
+    });
+  };
+
+  const hargaSlabUtama = (harga.SLAB ?? "").trim() !== "";
+  const hargaSlab2Utama = !hargaSlabUtama && (harga.SLAB2 ?? "").trim() !== "";
+  const turunanOtomatis = (kode: string) => hargaSlabUtama && ["SLAB1", "SLAB1 TTSR", "SLAB2", "SLAB2 TTSR", "SLAB3", "SLAB3 TTSR"].includes(kode)
+    || hargaSlab2Utama && ["SLAB2 TTSR", "SLAB3", "SLAB3 TTSR"].includes(kode);
 
   const simpan = useMutation({
     mutationFn: () => {
@@ -194,7 +236,8 @@ function KartuHargaGrade() {
                   <input className={`${kelasInput} w-32 text-right`}
                          inputMode="decimal" placeholder="kosong = tetap"
                          value={harga[b.item_code] ?? ""}
-                         onChange={(e) => setHarga({ ...harga, [b.item_code]: e.target.value })} />
+                         readOnly={turunanOtomatis(b.item_code)}
+                         onChange={(e) => ubahHarga(b.item_code, e.target.value)} />
                 </td>
               </tr>
             ))}
