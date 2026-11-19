@@ -20,8 +20,8 @@ from .core import rumus
 from .mart import bangun_mart
 from .core.alarm import catat_audit
 from .core.harga_grade import perluas_harga_slab
-from .core.lookup import kurs_pada, sicom_pada
-from .models import Grade, HargaGrade
+from .core.lookup import PencariBerlaku, kurs_pada, sicom_pada
+from .models import Grade, HargaGrade, TiketBaris
 
 CATATAN_INDIKATIF = ("Nilai pembelian harian resmi dihitung dari berat kering intake × "
                      "harga grade yang berlaku pada tanggal tersebut; hari dengan "
@@ -52,6 +52,77 @@ class HargaGradeMasuk(BaseModel):
 
 def pasang_router_grade(app, ambil_session):
     router = APIRouter(prefix="/api")
+
+    def _rekap_pembelian(session: Session, dari: dt.date, sampai: dt.date) -> dict:
+        tiket = session.scalars(select(TiketBaris).where(
+            TiketBaris.ticket_date >= dari, TiketBaris.ticket_date <= sampai,
+            TiketBaris.dry_kg > 0).order_by(TiketBaris.ticket_date, TiketBaris.item_code))
+        berat: dict[dt.date, dict[str, Decimal]] = {}
+        for row in tiket:
+            grade = (row.item_code or "").strip().upper() or "GRADE_KOSONG"
+            berat.setdefault(row.ticket_date, {})[grade] = (
+                berat.setdefault(row.ticket_date, {}).get(grade, Decimal(0))
+                + Decimal(str(row.dry_kg)))
+        kode = {g.item_code.upper(): g.item_code for g in session.scalars(select(Grade))}
+        harga_rows: dict[str, list[tuple[dt.date, HargaGrade]]] = {}
+        for h in session.scalars(select(HargaGrade).where(HargaGrade.tanggal <= sampai)):
+            harga_rows.setdefault(h.item_code.upper(), []).append((h.tanggal, h))
+        cari = {g: PencariBerlaku(rows) for g, rows in harga_rows.items()}
+        harian = []
+        total_qty = Decimal(0)
+        total_amount = Decimal(0)
+        hari_lengkap = 0
+        for tanggal, grades in sorted(berat.items()):
+            rincian = []
+            hilang = []
+            qty_hari = sum(grades.values(), Decimal(0))
+            amount_hari = Decimal(0)
+            for item, qty in sorted(grades.items()):
+                item_asli = kode.get(item, item)
+                peta = cari.get(item)
+                price = peta.pada(tanggal) if peta else None
+                if price and price.berlaku_sampai and tanggal > price.berlaku_sampai:
+                    price = None
+                if price is None:
+                    hilang.append(item_asli)
+                    harga_rp = amount_grade = None
+                else:
+                    harga_rp = float(price.harga_rp_per_kg)
+                    amount_grade = qty * price.harga_rp_per_kg
+                    amount_hari += amount_grade
+                    amount_grade = float(amount_grade)
+                rincian.append({"grade": item_asli, "qty_kering_kg": float(qty),
+                                "harga_rp_per_kg": harga_rp, "estimasi_rp": amount_grade})
+            lengkap = not hilang
+            if lengkap:
+                hari_lengkap += 1
+                total_qty += qty_hari
+                total_amount += amount_hari
+            harian.append({
+                "tanggal": tanggal.isoformat(), "lengkap": lengkap,
+                "qty_kering_kg": float(qty_hari) if lengkap else None,
+                "estimasi_rp": float(amount_hari) if lengkap else None,
+                "harga_rata_rp_per_kg": float(amount_hari / qty_hari) if lengkap and qty_hari else None,
+                "grade_tanpa_harga": hilang, "rincian": rincian,
+            })
+        return {"total_hari": len(harian), "hari_lengkap": hari_lengkap,
+                "hari_belum_lengkap": len(harian) - hari_lengkap,
+                "qty_kering_kg": float(total_qty), "estimasi_rp": float(total_amount),
+                "harga_rata_rp_per_kg": float(total_amount / total_qty) if total_qty else None,
+                "harian": harian}
+
+    @router.get("/pembelian/ringkasan")
+    def ringkasan_pembelian(dari: dt.date, sampai: dt.date, session: Session = Depends(ambil_session)):
+        if sampai < dari:
+            raise HTTPException(422, "Tanggal sampai harus sama atau setelah tanggal dari.")
+        panjang = (sampai - dari).days + 1
+        if panjang > 180:
+            raise HTTPException(422, "Rentang maksimum ringkasan adalah 180 hari.")
+        periode = _rekap_pembelian(session, dari, sampai)
+        sebelum_sampai = dari - dt.timedelta(days=1)
+        sebelumnya = _rekap_pembelian(session, sebelum_sampai - dt.timedelta(days=panjang - 1), sebelum_sampai)
+        return {"dari": dari.isoformat(), "sampai": sampai.isoformat(),
+                "periode": periode, "sebelumnya": sebelumnya}
     dep = Depends(ambil_session)
 
     # ------------------------------------------------------------ master grade

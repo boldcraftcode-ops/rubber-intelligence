@@ -1,12 +1,15 @@
 """Tes Fase 7: master grade (menu isi grade) & harga per grade (form + bulk)."""
 import datetime as dt
 import io
+from decimal import Decimal
 
 import openpyxl
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine
+from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
+from app.models import HargaGrade, TiketBaris
 
 from app.main import buat_app
 
@@ -104,6 +107,32 @@ def test_harga_grade_masa_berlaku_sampai(klien):
         "baris": [{"item_code": "SLAB", "harga_rp_per_kg": 30000}],
     })
     assert invalid.status_code == 422
+
+
+def test_api_ringkasan_pembelian_menampilkan_kelengkapan_dan_perbandingan(tmp_path):
+    engine = create_engine("sqlite://", future=True,
+                           connect_args={"check_same_thread": False}, poolclass=StaticPool)
+    klien = TestClient(buat_app(engine))
+    klien.post("/api/grade", json={"item_code": "SLAB1"})
+    with Session(engine) as session:
+        session.add_all([
+            TiketBaris(ticket_no="A", line_seq=1, ticket_date=dt.date(2026, 10, 15),
+                      kode_vendor="V1", item_code="SLAB1", dry_kg=100),
+            TiketBaris(ticket_no="B", line_seq=1, ticket_date=dt.date(2026, 10, 16),
+                      kode_vendor="V1", item_code="SLAB2", dry_kg=50),
+            HargaGrade(tanggal=dt.date(2026, 10, 1), item_code="SLAB1",
+                       harga_rp_per_kg=Decimal("20000")),
+        ])
+        session.commit()
+    hasil = klien.get("/api/pembelian/ringkasan", params={
+        "dari": "2026-10-15", "sampai": "2026-10-16"})
+    assert hasil.status_code == 200
+    periode = hasil.json()["periode"]
+    assert periode["qty_kering_kg"] == 100
+    assert periode["estimasi_rp"] == 2_000_000
+    assert periode["hari_lengkap"] == 1 and periode["hari_belum_lengkap"] == 1
+    assert periode["harian"][1]["grade_tanpa_harga"] == ["SLAB2"]
+    assert hasil.json()["sebelumnya"]["total_hari"] == 0
 
 
 def test_harga_grade_tolak_grade_tak_dikenal(klien):

@@ -5,6 +5,7 @@ import {
   Bar, BarChart, CartesianGrid, Cell, ComposedChart, LabelList, Legend, Line, LineChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis, } from "recharts";
 import { Kartu, KartuMuatSaatDiminta, KepalaPanel, NAMA_BULAN, Panel5W1H, PilihRentangBulan, TombolRefreshKartu, ambilJson, fmtTanggal, awalTahunBerjalan, bulanBerjalan, kelasTombolAnalisa, kelasTombolKecil, pesanGalat, urlApi, useQueryKartu, KerangkaMuatKartu, KerangkaMuatTabel, PengukurAmbang, useCountUp, fmtHarga, fmtUang, fmtJumlah, fmtPersen } from "../bersama";
 import { useBahasa } from "../i18n";
+import KartuPembelianEstimasi from "./KartuPembelianEstimasi";
 
 import { AlatGrafik } from "../GrafikTools";
 
@@ -1684,6 +1685,8 @@ export default function Ringkasan({ ke }: { ke?: (tab: string) => void }) {
         keterangan="Pemeriksaan alarm, kualitas data, dan rekomendasi harga dimuat saat diminta."
         anak={<PanelPerhatian ke={ke} />}
       />
+
+      <KartuPembelianEstimasi />
 
       <KartuMuatSaatDiminta
         otomatis
