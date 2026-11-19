@@ -7,6 +7,7 @@ import {
 import { useBahasa } from "../i18n";
 
 const pengisiSekarang = () => localStorage.getItem("op-margin.pengisi") || "?";
+const fmtBulanKurs = (tanggal: string) => `${tanggal.slice(5, 7)}/${tanggal.slice(0, 4)}`;
 
 /** Angka gaya Indonesia: "1.571,5" -> 1571.5 */
 const bacaAngka = (teks: string) =>
@@ -100,7 +101,7 @@ function PanelKesegaran({ data, isiStok, isiBeli }: {
                  : "border-[#E4E5E8] bg-[#F8F8F8]"}`}>
             <p className="text-xs text-[#64676C]">{s.sumber}</p>
             <p className="font-semibold text-[#1D2434]">
-              {s.tanggal_terakhir ? fmtTanggal(s.tanggal_terakhir) : "–"}
+              {s.tanggal_terakhir ? s.sumber === "Kurs" ? fmtBulanKurs(s.tanggal_terakhir) : fmtTanggal(s.tanggal_terakhir) : "–"}
             </p>
             <p className="text-xs text-[#64676C]">
               {s.umur_hari !== null
@@ -109,7 +110,7 @@ function PanelKesegaran({ data, isiStok, isiBeli }: {
               {s.terlambat && <span className="ml-1 font-semibold">⚠</span>}
             </p>
             <p className="mt-1 text-[10px] uppercase tracking-wide text-[#9AA0A6]">
-              {s.wajib_harian ? t("wajib harian") : t("saat berubah")}
+              {s.wajib_harian ? t("wajib harian") : s.sumber === "Kurs" ? t("bulanan") : t("saat berubah")}
             </p>
           </div>
         ))}
@@ -607,7 +608,7 @@ function KartuSicom({ pengisi }: { pengisi: string }) {
 function KartuKurs({ pengisi }: { pengisi: string }) {
   const qc = useQueryClient();
   const { t } = useBahasa();
-  const [berlakuDari, setBerlakuDari] = useState(hariIni());
+  const [bulanBerlaku, setBulanBerlaku] = useState(hariIni().slice(0, 7));
   const [nilai, setNilai] = useState("");
   const [info, setInfo] = useState<{ jenis: "sukses" | "error"; teks: string } | null>(null);
   const sorotBaris = useSorotBaris();
@@ -618,12 +619,12 @@ function KartuKurs({ pengisi }: { pengisi: string }) {
 
   const simpan = useMutation({
     mutationFn: () => kirimJson("/api/kurs", {
-      berlaku_dari: berlakuDari, idr_per_usd: bacaAngka(nilai),
+      berlaku_dari: `${bulanBerlaku}-01`, idr_per_usd: bacaAngka(nilai),
       pengisi: pengisi || "?",
     }),
     onSuccess: (d) => {
       setInfo({ jenis: "sukses", teks: d.pesan });
-      sorotBaris.tandai(berlakuDari);
+      sorotBaris.tandai(`${bulanBerlaku}-01`);
       setNilai("");
       qc.invalidateQueries({ queryKey: ["kurs"] });
       qc.invalidateQueries({ queryKey: ["input-harian"] });
@@ -636,7 +637,7 @@ function KartuKurs({ pengisi }: { pengisi: string }) {
     <section data-animasi-kartu className="rounded-sm bg-white p-5 shadow-sm border border-[#E4E5E8]">
       <h2 className="text-lg font-semibold text-[#1D2434]">{t("Kurs USD/IDR")}</h2>
       <p className="mb-4 text-sm text-[#64676C]">
-        {t("Ditetapkan perusahaan dari data bank. Isi hanya saat kurs berubah — berlaku sejak tanggal yang dipilih (boleh di tengah bulan).")}
+        {t("Kurs referensi diisi bulanan. Nilai berlaku mulai bulan yang dipilih sampai ada kurs bulanan baru.")}
       </p>
       <form className="grid grid-cols-1 gap-3 sm:grid-cols-3"
             onSubmit={(e) => {
@@ -649,9 +650,9 @@ function KartuKurs({ pengisi }: { pengisi: string }) {
               simpan.mutate();
             }}>
         <div>
-          <label className={kelasLabel}>{t("Berlaku sejak")}</label>
-          <input type="date" className={kelasInput} value={berlakuDari}
-                 onChange={(e) => setBerlakuDari(e.target.value)} required />
+          <label className={kelasLabel}>{t("Bulan berlaku")}</label>
+          <input type="month" className={kelasInput} value={bulanBerlaku}
+                 onChange={(e) => setBulanBerlaku(e.target.value)} required />
         </div>
         <div>
           <label className={kelasLabel}>{t("Kurs (IDR per USD)")}</label>
@@ -671,7 +672,7 @@ function KartuKurs({ pengisi }: { pengisi: string }) {
       <table className="w-full text-sm">
         <thead>
           <tr className="border-b border-[#E4E5E8] text-left text-[#64676C]">
-            <th className="py-1">{t("Berlaku sejak")}</th>
+            <th className="py-1">{t("Bulan berlaku")}</th>
             <th className="py-1 text-right">IDR/USD</th>
             <th className="py-1 pl-4">{t("Sumber")}</th>
           </tr>
@@ -679,7 +680,7 @@ function KartuKurs({ pengisi }: { pengisi: string }) {
         <tbody>
           {riwayat.data?.map((b: any) => (
             <tr key={b.berlaku_dari} className={`border-b border-[#EDEFF2] ${sorotBaris.kelas(b.berlaku_dari)}`}>
-              <td className="py-1">{fmtTanggal(b.berlaku_dari)}</td>
+              <td className="py-1">{fmtBulanKurs(b.berlaku_dari)}</td>
               <td className="py-1 text-right font-mono">{fmtAngka(b.idr_per_usd, 0)}</td>
               <td className="py-1 pl-4 text-[#64676C]">{b.sumber ?? "-"}</td>
             </tr>

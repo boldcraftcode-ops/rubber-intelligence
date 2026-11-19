@@ -70,7 +70,7 @@ def data_terlambat(session: Session, hari_ini: dt.date | None = None,
             "tanggal_terakhir": terakhir.isoformat() if terakhir else None,
             "umur_hari": telat,
             "terlambat": telat is None or (telat > batas_hari and nama != "Kurs"),
-            "catatan": "kurs hanya diisi saat berubah" if nama == "Kurs" else None,
+            "catatan": "kurs referensi bulanan" if nama == "Kurs" else None,
         })
     return hasil
 

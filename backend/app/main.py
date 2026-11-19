@@ -1,4 +1,4 @@
-"""API OP Margin (Fase 2): input cepat harian SICOM & kurs + riwayat.
+"""API OP Margin: input harian SICOM, input kurs referensi bulanan + riwayat.
 
 - Backend hanya mendengarkan 127.0.0.1 (lihat CARA_MENJALANKAN).
 - Setiap input manual dicatat sebagai "unggahan" di lapisan raw supaya
