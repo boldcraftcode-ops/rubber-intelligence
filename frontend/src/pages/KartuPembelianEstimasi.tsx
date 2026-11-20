@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { ambilJson, fmtAngka, fmtTanggal, kelasInput } from "../bersama";
+import { ambilJson, fmtAngka, fmtTanggal, kelasInput, kelasTombolKecil } from "../bersama";
+import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { useBahasa } from "../i18n";
 
 const hariISO = (tanggal: Date) => {
@@ -20,6 +21,7 @@ export default function KartuPembelianEstimasi() {
   const awal = new Date(sekarang); awal.setDate(awal.getDate() - 6);
   const [dari, setDari] = useState(hariISO(awal));
   const [sampai, setSampai] = useState(hariISO(sekarang));
+  const [detailTerbuka, setDetailTerbuka] = useState(false);
   const url = `/api/pembelian/ringkasan?dari=${dari}&sampai=${sampai}`;
   const q = useQuery<Hasil>({ queryKey: ["ringkasan-pembelian", dari, sampai], queryFn: () => ambilJson(url), enabled: !!dari && !!sampai && dari <= sampai });
   const p = q.data?.periode;
@@ -32,6 +34,11 @@ export default function KartuPembelianEstimasi() {
     return `${pct > 0 ? "+" : ""}${fmtAngka(pct, 1)}%`;
   };
   const lengkapPersen = p?.total_hari ? (p.hari_lengkap / p.total_hari) * 100 : 0;
+  const chartHarian = (p?.harian ?? []).map((h) => ({
+    tanggal: fmtTanggal(h.tanggal),
+    berat_ton: h.lengkap && h.qty_kering_kg != null ? h.qty_kering_kg / 1000 : null,
+    nilai_juta: h.lengkap && h.estimasi_rp != null ? h.estimasi_rp / 1_000_000 : null,
+  }));
 
   return <section className="rounded-sm border border-[#E4E5E8] bg-white p-5 shadow-sm">
     <div className="flex flex-wrap items-start justify-between gap-3">
@@ -54,19 +61,44 @@ export default function KartuPembelianEstimasi() {
         <div className="rounded-sm border border-[#E4E5E8] bg-[#F8F8F8] p-3"><p className="text-xs text-[#64676C]">{t("Estimasi nilai pembelian")}</p><b className="font-mono text-lg">Rp {fmtAngka(p.estimasi_rp, 0)}</b><p className="text-xs text-[#64676C]">{t("vs periode sebelumnya")}: {perubahan("estimasi_rp")}</p></div>
         <div className="rounded-sm border border-[#E4E5E8] bg-[#F8F8F8] p-3"><p className="text-xs text-[#64676C]">{t("Harga rata-rata tertimbang")}</p><b className="font-mono text-lg">{p.harga_rata_rp_per_kg == null ? "–" : `Rp ${fmtAngka(p.harga_rata_rp_per_kg, 0)}/kg`}</b><p className="text-xs text-[#64676C]">{t("Hari harga lengkap")}: {p.hari_lengkap}/{p.total_hari} ({fmtAngka(lengkapPersen, 0)}%)</p></div>
       </div>
-      <div className="mt-4 overflow-x-auto">
-        <table className="w-full text-xs">
-          <thead><tr className="border-b text-left text-[#64676C]"><th className="py-2">{t("Tanggal")}</th><th className="text-right">{t("Berat kering")}</th><th className="text-right">{t("Estimasi nilai")}</th><th className="text-right">{t("Harga tertimbang")}</th><th>{t("Kelengkapan harga")}</th></tr></thead>
-          <tbody>{p.harian.map((h) => <tr key={h.tanggal} className="border-b border-[#EDEFF2] align-top">
-            <td className="py-2">{fmtTanggal(h.tanggal)}{h.rincian.map((r) => <div key={r.grade} className="pl-2 pt-1 text-[10px] text-[#64676C]">{r.grade}: {fmtAngka(r.qty_kering_kg / 1000, 3)} ton × {r.harga_rp_per_kg == null ? "–" : `Rp ${fmtAngka(r.harga_rp_per_kg, 0)}/kg`}</div>)}</td>
-            <td className="text-right font-mono">{h.qty_kering_kg == null ? "–" : `${fmtAngka(h.qty_kering_kg / 1000, 3)} ton`}</td>
-            <td className="text-right font-mono">{h.estimasi_rp == null ? "–" : `Rp ${fmtAngka(h.estimasi_rp, 0)}`}{h.rincian.some((r) => r.estimasi_rp != null) && <div className="text-[10px] text-[#64676C]">{h.rincian.filter((r) => r.estimasi_rp != null).map((r) => `${r.grade}: Rp ${fmtAngka(r.estimasi_rp, 0)}`).join(" · ")}</div>}</td>
-            <td className="text-right font-mono">{h.harga_rata_rp_per_kg == null ? "–" : `Rp ${fmtAngka(h.harga_rata_rp_per_kg, 0)}/kg`}</td>
-            <td>{h.lengkap ? <span className="text-[#15803D]">{t("Lengkap")}</span> : <span className="text-[#B54708]">{t("Belum lengkap")}: {h.grade_tanpa_harga.join(", ")}</span>}</td>
-          </tr>)}{p.harian.length === 0 && <tr><td colSpan={5} className="py-4 text-center text-[#64676C]">{t("Tidak ada intake pada rentang ini.")}</td></tr>}</tbody>
-        </table>
-      </div>
+      {chartHarian.length ? <div className="mt-4 grid gap-4 lg:grid-cols-2">
+        <div className="rounded-sm border border-[#E4E5E8] p-3">
+          <h3 className="mb-2 text-sm font-semibold text-[#1D2434]">{t("Berat intake kering per hari (ton)")}</h3>
+          <div className="h-56">
+            <ResponsiveContainer width="100%" height="100%"><BarChart data={chartHarian} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="tanggal" interval="preserveStartEnd" tick={{ fontSize: 10 }} />
+              <YAxis tick={{ fontSize: 10 }} tickFormatter={(v) => fmtAngka(Number(v), 0)} />
+              <Tooltip formatter={(v) => [`${fmtAngka(Number(v), 2)} ton`, t("Berat kering")]} />
+              <Bar dataKey="berat_ton" name={t("Berat kering")} fill="#1D2434" radius={[2, 2, 0, 0]} />
+            </BarChart></ResponsiveContainer>
+          </div>
+        </div>
+        <div className="rounded-sm border border-[#E4E5E8] p-3">
+          <h3 className="mb-2 text-sm font-semibold text-[#1D2434]">{t("Estimasi nilai pembelian per hari (Rp juta)")}</h3>
+          <div className="h-56">
+            <ResponsiveContainer width="100%" height="100%"><BarChart data={chartHarian} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="tanggal" interval="preserveStartEnd" tick={{ fontSize: 10 }} />
+              <YAxis tick={{ fontSize: 10 }} tickFormatter={(v) => fmtAngka(Number(v), 0)} />
+              <Tooltip formatter={(v) => [`Rp ${fmtAngka(Number(v), 2)} juta`, t("Estimasi nilai")]} />
+              <Bar dataKey="nilai_juta" name={t("Estimasi nilai")} fill="#FF1313" radius={[2, 2, 0, 0]} />
+            </BarChart></ResponsiveContainer>
+          </div>
+        </div>
+      </div> : <p className="mt-4 rounded-sm bg-[#F8F8F8] p-4 text-center text-sm text-[#64676C]">{t("Tidak ada intake pada rentang ini.")}</p>}
       <p className="mt-2 text-[11px] text-[#64676C]">{t("Hari dengan harga grade yang belum lengkap dikecualikan dari total periode.")}</p>
+      {p.harian.length > 0 && <button type="button" className={`${kelasTombolKecil} mt-2`} aria-expanded={detailTerbuka} onClick={() => setDetailTerbuka((v) => !v)}>
+        {detailTerbuka ? t("Tutup detail") : t("Cek detail")}
+      </button>}
+      {detailTerbuka && <div className="mt-3 max-h-[32rem] overflow-auto rounded-sm border border-[#E4E5E8]">
+        <table className="w-full text-xs">
+          <thead className="sticky top-0 bg-[#F8F8F8]"><tr className="border-b text-left text-[#64676C]"><th className="py-2">{t("Tanggal / grade")}</th><th className="text-right">{t("Berat kering")}</th><th className="text-right">{t("Harga Rp/kg")}</th><th className="text-right">{t("Estimasi nilai")}</th><th>{t("Kelengkapan harga")}</th></tr></thead>
+          <tbody>{p.harian.map((h) => <Fragment key={h.tanggal}>
+            {h.rincian.map((r) => <tr key={`${h.tanggal}-${r.grade}`} className="border-b border-[#EDEFF2]"><td className="py-2">{fmtTanggal(h.tanggal)} · {r.grade}</td><td className="text-right font-mono">{fmtAngka(r.qty_kering_kg / 1000, 3)} ton</td><td className="text-right font-mono">{r.harga_rp_per_kg == null ? "–" : fmtAngka(r.harga_rp_per_kg, 0)}</td><td className="text-right font-mono">{r.estimasi_rp == null ? "–" : `Rp ${fmtAngka(r.estimasi_rp, 0)}`}</td><td>{h.lengkap ? <span className="text-[#15803D]">{t("Lengkap")}</span> : <span className="text-[#B54708]">{t("Belum lengkap")}: {h.grade_tanpa_harga.join(", ")}</span>}</td></tr>)}
+          </Fragment>)}</tbody>
+        </table>
+      </div>}
     </>}
   </section>;
 }
