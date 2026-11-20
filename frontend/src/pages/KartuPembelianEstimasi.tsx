@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { ambilJson, fmtAngka, fmtTanggal, kelasInput, kelasTombolKecil } from "../bersama";
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { useBahasa } from "../i18n";
+import { AlatGrafik } from "../GrafikTools";
 
 const hariISO = (tanggal: Date) => {
   const y = tanggal.getFullYear();
@@ -65,25 +66,25 @@ export default function KartuPembelianEstimasi() {
         <div className="rounded-sm border border-[#E4E5E8] p-3">
           <h3 className="mb-2 text-sm font-semibold text-[#1D2434]">{t("Berat intake kering per hari (ton)")}</h3>
           <div className="h-56">
-            <ResponsiveContainer width="100%" height="100%"><BarChart data={chartHarian} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+            <AlatGrafik id="pembelian-intake-berat"><ResponsiveContainer width="100%" height="100%"><BarChart data={chartHarian} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" />
               <XAxis dataKey="tanggal" interval="preserveStartEnd" tick={{ fontSize: 10 }} />
               <YAxis tick={{ fontSize: 10 }} tickFormatter={(v) => fmtAngka(Number(v), 0)} />
               <Tooltip formatter={(v) => [`${fmtAngka(Number(v), 2)} ton`, t("Berat kering")]} />
               <Bar dataKey="berat_ton" name={t("Berat kering")} fill="#1D2434" radius={[2, 2, 0, 0]} />
-            </BarChart></ResponsiveContainer>
+            </BarChart></ResponsiveContainer></AlatGrafik>
           </div>
         </div>
         <div className="rounded-sm border border-[#E4E5E8] p-3">
           <h3 className="mb-2 text-sm font-semibold text-[#1D2434]">{t("Estimasi nilai pembelian per hari (Rp juta)")}</h3>
           <div className="h-56">
-            <ResponsiveContainer width="100%" height="100%"><BarChart data={chartHarian} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
+            <AlatGrafik id="pembelian-intake-nilai"><ResponsiveContainer width="100%" height="100%"><BarChart data={chartHarian} margin={{ top: 8, right: 8, left: 0, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" />
               <XAxis dataKey="tanggal" interval="preserveStartEnd" tick={{ fontSize: 10 }} />
               <YAxis tick={{ fontSize: 10 }} tickFormatter={(v) => fmtAngka(Number(v), 0)} />
               <Tooltip formatter={(v) => [`Rp ${fmtAngka(Number(v), 2)} juta`, t("Estimasi nilai")]} />
               <Bar dataKey="nilai_juta" name={t("Estimasi nilai")} fill="#FF1313" radius={[2, 2, 0, 0]} />
-            </BarChart></ResponsiveContainer>
+            </BarChart></ResponsiveContainer></AlatGrafik>
           </div>
         </div>
       </div> : <p className="mt-4 rounded-sm bg-[#F8F8F8] p-4 text-center text-sm text-[#64676C]">{t("Tidak ada intake pada rentang ini.")}</p>}
